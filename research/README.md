@@ -16,6 +16,9 @@ May 2026) and carry per-source caveats noted inline.
 
 ## Start here
 
+- **[`differentiation.md`](./differentiation.md)** — 🎯 the capstone: what exists +
+  what *our* differentiators are. Candidate differentiators scored, recommended
+  thesis, feasibility. **The decision artifact for this stage.**
 - **[`PRIMER.md`](./PRIMER.md)** — fast, skimmable reference (TL;DR per product,
   master table, glossary, "where each wins"). Use this throughout the project.
 - **[`comparison/00-overview.md`](./comparison/00-overview.md)** — landscape map +
@@ -25,7 +28,12 @@ May 2026) and carry per-source caveats noted inline.
 
 | File | What's in it |
 |------|--------------|
+| [`differentiation.md`](./differentiation.md) | 🎯 **Capstone** — candidate differentiators scored, recommended thesis ("the assistant that proves what it did"), feasibility |
 | [`PRIMER.md`](./PRIMER.md) | **Quick reference** — TL;DR, master comparison table, glossary, when-each-wins |
+| [`landscape.md`](./landscape.md) | **Wider landscape** — consumer giants (ChatGPT/Claude/Gemini/Siri/Copilot) + other OSS + white-space map |
+| [`user-needs.md`](./user-needs.md) | **Demand side** — jobs-to-be-done, top frustrations, adoption/abandonment triggers, "great vibes" decoded |
+| [`evaluation.md`](./evaluation.md) | **Accuracy & eval** — agent benchmarks, real task-success, failure modes, what improves accuracy |
+| [`cost-economics.md`](./cost-economics.md) | **Cost** — what drives $/task, real cost data, reduction levers, pricing models |
 | [`comparison/`](./comparison/) | **Eight deep-dive specs** (01–08) + overview/scorecard (00) — one per dimension |
 | [`comparison.md`](./comparison.md) | Original **synthesis** — convergence matrix, real differentiators, open opportunity space |
 | [`openclaw.md`](./openclaw.md) | OpenClaw dossier — ~375K-star incumbent; architecture, traction, security debt, pros/cons |

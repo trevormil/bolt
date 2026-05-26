@@ -1,6 +1,13 @@
 - Getting started
   - [Home](README.md)
   - [⚡ Primer — quick reference](PRIMER.md)
+  - [🎯 Differentiation (capstone)](differentiation.md)
+
+- Landscape & demand
+  - [Wider landscape (giants + OSS)](landscape.md)
+  - [User needs & pain points](user-needs.md)
+  - [Accuracy & evaluation](evaluation.md)
+  - [Cost economics](cost-economics.md)
 
 - The comparison
   - [Overview & scorecard](comparison/00-overview.md)
