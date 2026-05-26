@@ -6,6 +6,13 @@
   - [💳 Payment & wallet architecture](payment-architecture.md)
   - [⛓️ BitBadges integration (substrate)](bitbadges-integration.md)
 
+- Plan audit
+  - [🔎 Audit summary & actions](audit/00-summary.md)
+  - [Edge cases & feasibility](audit/01-edge-cases.md)
+  - [Security & trust threat model](audit/02-security-trust.md)
+  - [Failure modes & ops](audit/03-failure-ops.md)
+  - [New ideas & demo scenario](audit/04-new-ideas.md)
+
 - Landscape & demand
   - [Wider landscape (giants + OSS)](landscape.md)
   - [User needs & pain points](user-needs.md)

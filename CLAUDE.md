@@ -3,10 +3,13 @@
 A personal assistant built from scratch to rival OpenClaw (Vellum hiring-partner
 project). See [`README.md`](./README.md) for the spec.
 
-**Status:** design done — [`ARCHITECTURE.md`](./ARCHITECTURE.md) is the E2E
-reference and the phased implementation backlog is seeded (`backlog/0001–0020`,
-Phases 0–7). **Ready to begin implementation at Phase 0.** Pick up tickets via
-`/ticket list`.
+**Status:** design done + **plan-audited** — [`ARCHITECTURE.md`](./ARCHITECTURE.md)
+is the E2E reference (see §13 for the audit-hardening invariants + the ~10-ticket
+**MVP slice**), backlog seeded (`backlog/0001–0025`), audit findings in
+[`research/audit/`](./research/audit/) (start at `00-summary.md`). **Ready to
+build.** Order: 0001 scaffold → **0002 signer→devnet (CRITICAL, validate a real tx
+day 1)** → the MVP slice. The reconciliation invariant (**0023**) is non-negotiable
+before vault/payment tickets are trustworthy. Pick up via `/ticket list`.
 
 ## How we work here (the approach moving forward)
 

@@ -21,3 +21,11 @@ research/payment-architecture.md + research/bitbadges-integration.md.
 - Human set as manager (only human can update rules)
 - Rules enforced by the chain (non-bypassable)
 - Agent can create multiple vaults (per purpose)
+
+## Audit refinement (2026-05-26)
+- **Atomic manager handoff (M3/T-09/F-09):** create -> set human as manager ->
+  lock manager-update perms -> VERIFY agent has zero manager capability, as ONE
+  tested primitive. No window where the agent is manager.
+- **GATE (M2):** verify the devnet USDC->backing-address funding path works
+  (BitBadges Q) BEFORE building this. Pre-fund the demo vault from alice.
+- Cap demo at 2-3 vaults; "unlimited" is a future claim (F-09).

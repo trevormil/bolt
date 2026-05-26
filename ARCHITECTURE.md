@@ -103,6 +103,12 @@ belongs to, and dispatches to that persona sub-agent. Multi-agent but
 **disciplined**: persona-scoped (not open-ended spawning), depth-limited, and
 strictly no cross-compartment memory access. The ledger makes every hop legible.
 
+> **Routing is deterministic (audit M5):** persona resolution is a DB lookup /
+> explicit `/switch` command — **never inferred by an LLM from the message body**
+> (that's a compartment-leak + misroute-charges-wrong-wallet vector). Isolation is
+> enforced by tests (inject persona A's context into B → assert absent), not by
+> convention.
+
 ### Persona / compartment — the core primitive
 A persona bundles, hard-walled:
 - **identity** (`SOUL`-style personality/voice),
@@ -163,8 +169,11 @@ the agent spends within them. Rules are protocol-enforced and non-bypassable.
 
 ### 5.4 Free-form `x/bank` balance
 Besides rule-bound vaults, each persona has a plain Cosmos `x/bank` balance for
-discretionary spend — a small, **capped** "petty cash" tier. Anything
-significant lives in vaults.
+discretionary spend — a small "petty cash" tier. **Hard ceiling (≤ $25/persona),
+enforced by never funding above it** — this tier has no on-chain rule enforcement,
+so a prompt injection or key leak could otherwise drain it with no recourse (audit
+T-01/T-05). Current free-form balance is surfaced every turn. Anything significant
+lives in rule-bound vaults.
 
 ### 5.5 PaymentRequest — HITL funding (Stripe-link style)
 The agent never pulls funds. When it needs money it **spins up a BitBadges
@@ -176,6 +185,12 @@ Every tool call, spend, vault op, and funding event is logged in a legible,
 auditable ledger — surfaced in Telegram (summaries) and the web app (full view).
 This is the trust thesis made concrete: *who did what, under whose authority,
 what it cost.*
+
+> **Critical invariant (audit M1/F-01):** ledger entries for on-chain actions are
+> written **only from chain-confirmed state** (tx hash + block height), **never
+> from the LLM's interpretation** of a broadcast result. The LLM is never in the
+> "confirmed" write path — a polling reconciler is (see §13). Without this, a
+> hallucinated "payment sent" silently falsifies the entire trust thesis.
 
 ---
 
@@ -210,9 +225,9 @@ endpoint → Cosmos signing path. No IBC/Skip → no swaps/bridging (deferred).
 
 - **Runtime:** `bun` + TypeScript, monorepo.
 - **Telegram:** `grammY` (modern TS bot framework).
-- **Web app:** Next.js (App Router) *or* Vite SPA + Hono API — TBD (lean Next.js;
-  mirrors the Meridian app pattern). Hosts onboarding, vault/budget/ledger UIs,
-  and the streamlined sign pages.
+- **Web app:** **Vite SPA + Hono API** (bun-native, lowest-friction — decided per
+  audit M8). Hosts onboarding, vault/budget/ledger UIs, and the streamlined sign
+  pages (which decode txs to plain English — never raw hex).
 - **Chain:** the `bitbadges` SDK + `cosmjs` for signing/broadcast to the Meridian
   RPC; `bitbadgeschaind` available on the droplet.
 - **Agents:** thin custom orchestrator + persona sub-agents (lean on the models;
@@ -220,8 +235,10 @@ endpoint → Cosmos signing path. No IBC/Skip → no swaps/bridging (deferred).
 - **Tools:** MCP TypeScript SDK (client).
 - **LLM:** provider router (e.g. Claude default for quality, a cheap model for
   routine) — pinned, env-configured.
-- **Storage:** `bun:sqlite` + per-compartment markdown; vector index for retrieval.
-- **Observability:** **Langfuse** (reuse the AgentForge W1–3 key/endpoint via env).
+- **Storage:** `bun:sqlite` + per-compartment markdown; **`sqlite-vec`** for the
+  vector index (no separate process — audit M8).
+- **Observability:** **Langfuse** (reuse the AgentForge W1–3 key/endpoint via env);
+  **wire in Phase 0** so traces exist from day one (audit M9).
 - **Evals:** golden-set harness + LLM-as-judge, run in CI; datasets/scores in Langfuse.
 
 ---
@@ -278,8 +295,53 @@ hybrid BM25 + dense search, per-compartment and hard-walled, serving both
 
 ## 12. Open questions
 
-- Free-form balance **cap** value (per persona).
+- **(gates the demo)** USDC→vault funding on the isolated devnet — can `alice`'s
+  `ibc/` USDC bank-send to a fresh backing address, or is the Noble hook required?
+  (audit M2 — BitBadges Q for Trevor.)
 - **Per-persona vs per-purpose** vault mapping (a persona may own several vaults).
 - Which **MCP servers** ship in the demo (calendar? email? a BitBadges tool?).
-- **Web stack** final pick (Next.js vs Vite+Hono).
-- The single **demo scenario** that best shows the thesis end-to-end.
+- *(Resolved by the audit:* free-form cap ≤ $25/persona · web stack = Vite+Hono ·
+  demo = Scenario C+A, ticket 0020 · routing = deterministic.)*
+
+## 13. Audit hardening — must-implement invariants
+
+From the plan audit ([research/audit/00-summary.md](./research/audit/00-summary.md)).
+The design is sound; these are the non-negotiable invariants + the MVP scope.
+
+### Chain-state reconciliation (the single most important invariant)
+```
+For every on-chain action:
+1. BEFORE BROADCAST: fetch fresh sequence (LCD); re-query vault/budget state from
+   chain (never cache); simulate the tx — reject pre-flight on sim failure.
+2. AFTER BROADCAST: persist {pending_tx_hash, persona, action, amount} to durable
+   storage BEFORE returning control to the LLM.
+3. CONFIRM (async, out of LLM path): poll the tx hash until included or N-block
+   timeout → write CONFIRMED (block height + hash) or FAILED. The LLM never writes
+   a "confirmed" entry.
+4. PER-PERSONA TX MUTEX: no 2nd tx from a wallet until the 1st confirms/fails.
+5. ON RESTART: reconcile all PENDING entries against chain before new work.
+Idempotency: treat every action as possibly-already-executed; query before re-broadcast.
+```
+This eliminates hallucinated-payment (M1/F-01), sequence races (M6/F-02), and
+restart double-spend (F-12). Implemented in **ticket 0023**.
+
+### Other must-fix invariants
+- **Atomic vault creation** (M3): create → set human manager → lock manager-update
+  perms → verify agent has zero manager capability — one tested primitive (0012).
+- **Free-form cap** ≤ $25/persona, enforced (M4 / §5.4).
+- **Deterministic routing** + tested isolation (M5 / §4).
+- **Plain-English sign page**, no hex (M7 / 0017).
+
+### MVP scope (≈10 tickets — 22 is weeks, not days)
+**Build:** 0001 scaffold · **0002 signer→devnet (CRITICAL, first — validate a real
+tx day 1)** · 0003 Telegram · 0005 agent loop + 1 MCP tool · 0006 compartments
+(2 personas, sqlite-vec) · 0007 manual routing · 0008 per-persona wallet
+(pre-funded) · **0023 chain-state reconciliation** · 0012+0013 one pre-funded
+vault + spend · 0014 PaymentRequest funding · minimal 0011 ledger → Telegram.
+**Defer:** 0004, 0009, 0010, 0015/0016, 0018, 0019, 0022, 0024, most 0025.
+
+### Pre-mainnet hardening (deferred — devnet uses worthless tokens)
+Memory provenance + ingest scanning · second-channel confirm for high-value ·
+Langfuse scrub + key rotation · web CSRF/clickjacking headers · MCP responses as
+untrusted · proactive runs read-only by default · prod RPC redundancy · hot keys
+off bare env. Tracked in **ticket 0024**.

@@ -18,3 +18,8 @@ task that spends within rules, a PaymentRequest funds it, all shown in the ledge
 ## Acceptance criteria
 - Written demo script (steps + expected ledger output)
 - Runs end-to-end on the Meridian devnet
+
+## Audit refinement (2026-05-26)
+**Pinned demo = Scenario C+A** (recurring payment + vault-creation moment), ~5-7
+min live on the devnet. Full script: research/audit/04-new-ideas.md §Recommended
+demo. Demo-day risks + mitigations: research/audit/03-failure-ops.md §Demo-day.

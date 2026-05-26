@@ -19,3 +19,9 @@ no cross-compartment leakage; routing decision itself must not read persona memo
 - Message routed to correct persona
 - No cross-compartment memory access during routing
 - Depth/spawn bounds enforced
+
+## Audit refinement (2026-05-26)
+Routing is **deterministic** — DB lookup / explicit `/switch`, NEVER LLM-inferred
+from message body (compartment-leak + misroute-charges-wrong-wallet vector, audit
+M5/T-07/T-08/F-11). Enforce isolation with a test: inject persona A context into B
+→ assert absent. v1 = manual switch only.

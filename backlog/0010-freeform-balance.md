@@ -18,3 +18,8 @@ significant value routes through vaults.
 ## Acceptance criteria
 - Persona holds a discretionary balance
 - Configurable cap enforced
+
+## Audit refinement (2026-05-26)
+**Hard ceiling ≤ $25/persona**, enforced by never funding above it (audit
+M4/T-01/T-05) — this tier has no on-chain rule enforcement. Surface the balance
+every turn. (Deferred from MVP, but the cap is mandatory whenever it ships.)

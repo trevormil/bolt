@@ -19,3 +19,7 @@ the `bitbadges` SDK / cosmjs and a persona hot key. See docs/runbooks/meridian-d
 - Load a hot key (dev: `alice`) and resolve its `bb1` address
 - Build → sign → broadcast a no-op/transfer tx to `rpc.meridian.trevormil.com`; confirm in a block
 - Balance + tx-status helpers
+
+## Audit refinement (2026-05-26)
+**Do this FIRST (after scaffold) — highest-risk unknown.** Validate a real
+broadcast+confirmed tx on the devnet before any business logic. Bumped to critical.
