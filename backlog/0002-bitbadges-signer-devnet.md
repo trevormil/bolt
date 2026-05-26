@@ -1,7 +1,7 @@
 ---
 id: 2
 title: "BitBadges signer wired to the Meridian devnet"
-status: open
+status: in-progress
 priority: critical
 type: feature
 source: planning
