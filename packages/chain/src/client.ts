@@ -2,6 +2,7 @@ import { DirectSecp256k1HdWallet } from "@cosmjs/proto-signing";
 import {
   SigningStargateClient,
   StargateClient,
+  assertIsDeliverTxSuccess,
   type Coin,
   type DeliverTxResponse,
 } from "@cosmjs/stargate";
@@ -70,13 +71,17 @@ export async function sendCoins(
   );
   try {
     log.info(`send ${amount}${denom} → ${recipient} from ${account.address}`);
-    return await client.sendTokens(
+    const result = await client.sendTokens(
       account.address,
       recipient,
       [{ denom, amount }],
       DEFAULT_FEE,
       "vellum chain validation",
     );
+    // sendTokens resolves on block inclusion even when code != 0 — throw so a
+    // failed tx never reaches caller code (or the ledger) as a success.
+    assertIsDeliverTxSuccess(result);
+    return result;
   } finally {
     client.disconnect();
   }
@@ -93,9 +98,19 @@ export async function confirmTx(
 ): Promise<{ height: number; code: number }> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    const res = await fetch(
-      `${env.BITBADGES_LCD}/cosmos/tx/v1beta1/txs/${hash}`,
-    );
+    // Bound each request so a stalled LCD connection can't blow past timeoutMs.
+    const remaining = timeoutMs - (Date.now() - start);
+    let res: Response;
+    try {
+      res = await fetch(`${env.BITBADGES_LCD}/cosmos/tx/v1beta1/txs/${hash}`, {
+        signal: AbortSignal.timeout(Math.min(remaining, 5_000)),
+      });
+    } catch (e) {
+      // Abort/network error → keep polling within the overall budget.
+      if (e instanceof Error && e.message.startsWith("tx ")) throw e;
+      await new Promise((r) => setTimeout(r, 500));
+      continue;
+    }
     if (res.ok) {
       const body = (await res.json()) as {
         tx_response?: { code?: number; height?: string; raw_log?: string };
