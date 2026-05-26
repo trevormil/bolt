@@ -786,18 +786,52 @@ ledger is raw data on-chain; the UI layer is vellum's responsibility.
 - **Cost ledger UI**: Not heavy in isolation but time competes with wallet/vault
   plumbing.
 
-**Testnet note**: The testnet faucet is offline (as of April 25, 2026 per the
-docs). The docs suggest using mainnet in "chaosnet" mode with CHAOS tokens for
-testing. Confirm current testnet status before planning a testnet-only demo.
+### Live environment: the Meridian devnet (verified 2026-05-26)
+
+We are **not** using the public BitBadges testnet (faucet offline). Instead we
+use the **Meridian devnet** — a standalone `bitbadges-1` chain already running on
+the founder's DigitalOcean droplet (the Meridian prediction-markets project).
+Confirmed live by direct query:
+
+| | Value |
+|---|---|
+| Chain ID | `bitbadges-1` (standalone — its own genesis, not public BitBadges mainnet) |
+| RPC (Tendermint) | `https://rpc.meridian.trevormil.com` — live, height ~328.8K, current blocks |
+| LCD (Cosmos REST) | `https://lcd.meridian.trevormil.com` — live |
+| Aggregator API | `https://api.meridian.trevormil.com` |
+| Web | `https://meridian.trevormil.com` |
+| Droplet | `meridian` @ `198.199.70.29` (nyc1) |
+| App version | `Bitbadgeschain` (cosmos-sdk, CometBFT 0.38.19) |
+
+**Denoms confirmed present on funded accounts** (queried via LCD): `ubadge`
+(native, 9-dec gas/stake), `ustake`, **three `ibc/...` denoms** (USDC-like
+bridged assets usable for smart-token vault backing), and a
+**`badges:49:chaosnet`** wrapped-badge denom — i.e. the chain is already
+exercising IBC-backed and CosmosCoinWrapperPath mechanisms. Funded seed accounts
+exist (`oracle` = `bb1teqphl...`, `e2e-alice` = `bb1sdt4dn...`, both heavily
+funded; `faucet`/`bot` mnemonics live on the droplet at
+`/etc/meridian/fixtures/`).
+
+**Access state (2026-05-26):** public RPC/LCD are reachable for reads/queries
+and for broadcasting *signed* txs. To sign as a funded wallet we need a key —
+the seed mnemonics live on the droplet (SSH) and aren't in this checkout, and
+SSH-by-IP (`root@`/`ubuntu@`) is publickey-denied from the harness session.
+**Resolution options (pending):** (a) generate a fresh agent wallet and have the
+operator fund it from the droplet faucet; (b) provide a funded mnemonic; (c) fix
+SSH access (alias/user/IdentityFile) so the harness can use the faucet directly.
+No EVM endpoint is exposed on this devnet (Caddy routes web/api/lcd/rpc only) —
+agents use the **Cosmos signing path** (`bitbadgeschaind` / cosmjs / the
+`bitbadges` SDK Cosmos adapter), not the EVM adapter.
 
 ---
 
 ## 12. Open questions and risks
 
-1. **Testnet status**: Faucet offline as of April 2026. The docs suggest using
-   mainnet chaosnet mode. Confirm whether the USDC (Noble) IBC path is live on
-   whichever environment we use for the demo, or whether CHAOS tokens suffice
-   for the vault demo.
+1. **Environment — resolved:** use the **Meridian devnet** (`bitbadges-1` on the
+   founder's droplet), live and confirmed — see §11. Remaining sub-question is
+   only *write access*: how the agent gets a funded, signable wallet (generate +
+   faucet-fund, supplied mnemonic, or SSH fix). IBC USDC-like denoms are already
+   present on funded accounts, so the vault demo has backing assets available.
 
 2. **`bb tx bank send` syntax**: The docs focus heavily on `bb tx tokenization
    ...` commands. Standard Cosmos bank sends (plain BADGE or USDC between
