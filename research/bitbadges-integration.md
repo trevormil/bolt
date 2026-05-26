@@ -812,13 +812,18 @@ exist (`oracle` = `bb1teqphl...`, `e2e-alice` = `bb1sdt4dn...`, both heavily
 funded; `faucet`/`bot` mnemonics live on the droplet at
 `/etc/meridian/fixtures/`).
 
-**Access state (2026-05-26):** public RPC/LCD are reachable for reads/queries
-and for broadcasting *signed* txs. To sign as a funded wallet we need a key —
-the seed mnemonics live on the droplet (SSH) and aren't in this checkout, and
-SSH-by-IP (`root@`/`ubuntu@`) is publickey-denied from the harness session.
-**Resolution options (pending):** (a) generate a fresh agent wallet and have the
-operator fund it from the droplet faucet; (b) provide a funded mnemonic; (c) fix
-SSH access (alias/user/IdentityFile) so the harness can use the faucet directly.
+**Access state (2026-05-26) — RESOLVED:** SSH to the droplet is set up via a
+harness-dedicated ed25519 key (`~/.meridian-ssh/id_ed25519`, public half
+authorized on `/root/.ssh/authorized_keys`). Connect with the committed helper
+`bin/meridian-ssh` (there is no `meridian` ssh alias — it's `root@198.199.70.29`).
+Full ops in [docs/runbooks/meridian-devnet.md](../docs/runbooks/meridian-devnet.md).
+
+**Funded signer = `alice`** (droplet keyring, `--keyring-backend test`):
+`bb1t84pw50zw4wt0redc8w9w7w0mndnvvm00egur0`, holding ~1e17 `ubadge` (gas), three
+`ibc/...` USDC-like denoms (vault backing), and `badges:49:chaosnet`. The agent
+can sign remotely (`bitbadgeschaind tx … --from alice`) or, for the app, export
+alice's key once and sign locally via the SDK/cosmjs against the public RPC.
+
 No EVM endpoint is exposed on this devnet (Caddy routes web/api/lcd/rpc only) —
 agents use the **Cosmos signing path** (`bitbadgeschaind` / cosmjs / the
 `bitbadges` SDK Cosmos adapter), not the EVM adapter.
