@@ -85,6 +85,9 @@ scratch.
 
 | Path | Purpose |
 |------|---------|
-| [`research/`](./research/) | Competitive landscape — deep dossiers on OpenClaw, Hermes, and Vellum, plus a head-to-head synthesis. |
+| [`research/`](./research/) | Competitive + landscape research, chosen differentiators, and the BitBadges integration. Start at `research/PRIMER.md`. |
+| [`backlog/`](./backlog/) | In-repo tickets (markdown), the work tracker — via the `/ticket` skill. |
+| [`docs/runbooks/`](./docs/runbooks/) | Ops runbooks (e.g. the Meridian devnet chain). |
+| [`CLAUDE.md`](./CLAUDE.md) | How we work here + key context for agents. |
 
-_(More to come as the project takes shape.)_
+_(More to come as the project takes shape — still pre-build / planning.)_
