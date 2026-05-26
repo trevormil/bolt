@@ -2,7 +2,9 @@ import { z } from "zod";
 
 // Parsed once at startup. Chain defaults to the Meridian devnet so the scaffold
 // boots without a .env; secrets are optional until their tickets wire them in.
-const schema = z.object({
+// Exported so it can be unit-tested with controlled inputs (the `env` singleton
+// below reads the real process.env once at import).
+export const envSchema = z.object({
   BITBADGES_CHAIN_ID: z.string().default("bitbadges-1"),
   BITBADGES_RPC: z.string().url().default("https://rpc.meridian.trevormil.com"),
   BITBADGES_LCD: z.string().url().default("https://lcd.meridian.trevormil.com"),
@@ -22,10 +24,10 @@ const schema = z.object({
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 });
 
-export type Env = z.infer<typeof schema>;
+export type Env = z.infer<typeof envSchema>;
 
 function parseEnv(): Env {
-  const result = schema.safeParse(process.env);
+  const result = envSchema.safeParse(process.env);
   if (!result.success) {
     // Fail fast and loud — a misconfigured environment must never boot silently.
     console.error(
