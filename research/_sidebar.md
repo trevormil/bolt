@@ -9,6 +9,13 @@
   - [Accuracy & evaluation](evaluation.md)
   - [Cost economics](cost-economics.md)
 
+- Agents talking to each other
+  - [Synthesis — personal-agent trust layer](agent-networks/00-synthesis.md)
+  - [Interop protocols (A2A, MCP, …)](agent-networks/01-protocols.md)
+  - [Economic layer (budgets, payments)](agent-networks/02-economic-layer.md)
+  - [Identity, trust & disclosure](agent-networks/03-identity-trust-disclosure.md)
+  - [Multi-agent & the API question](agent-networks/04-multiagent-and-the-api-question.md)
+
 - The comparison
   - [Overview & scorecard](comparison/00-overview.md)
   - [1 · Architecture & runtime](comparison/01-architecture-runtime.md)

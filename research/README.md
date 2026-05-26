@@ -34,6 +34,7 @@ May 2026) and carry per-source caveats noted inline.
 | [`user-needs.md`](./user-needs.md) | **Demand side** — jobs-to-be-done, top frustrations, adoption/abandonment triggers, "great vibes" decoded |
 | [`evaluation.md`](./evaluation.md) | **Accuracy & eval** — agent benchmarks, real task-success, failure modes, what improves accuracy |
 | [`cost-economics.md`](./cost-economics.md) | **Cost** — what drives $/task, real cost data, reduction levers, pricing models |
+| [`agent-networks/`](./agent-networks/) | **"Agents talking to each other"** deep-dive — interop protocols, economic layer, identity/trust/disclosure, the multi-agent-vs-API question + synthesis (the personal-agent trust layer thesis) |
 | [`comparison/`](./comparison/) | **Eight deep-dive specs** (01–08) + overview/scorecard (00) — one per dimension |
 | [`comparison.md`](./comparison.md) | Original **synthesis** — convergence matrix, real differentiators, open opportunity space |
 | [`openclaw.md`](./openclaw.md) | OpenClaw dossier — ~375K-star incumbent; architecture, traction, security debt, pros/cons |
