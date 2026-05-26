@@ -36,6 +36,14 @@ Forge is GitLab (`labs.gauntletai.com`, use `glab`, say "MR"). Final merge to
   compartment = persona with its own hard-walled memory + skills + budget/vault.
 - **Substrate: BitBadges** (the founder's L1). Mapping + feasibility in
   [`research/bitbadges-integration.md`](./research/bitbadges-integration.md).
+  **BitBadges-SDK reference implementation: the Meridian repo**
+  (`~/CompSci/gauntlet/meridian` — `apps/web/lib/chain/` LCD/broadcast/signing,
+  `apps/web/lib/prediction-market/` collection-create + approvals + transfers/intents,
+  `apps/aggregator/src/chain/` LCD client + approval/event parsers). The 3 audited
+  BitBadges items (USDC→vault funding, atomic manager handoff, sign-page plain-English
+  decode) are **confirmed feasible** by Trevor. **Rule: when you reach one of these at
+  build time, reference Meridian first, then ASK TREVOR for the exact implementation
+  pattern — do not guess the chain logic.**
 - **Chain env: the Meridian devnet** (`bitbadges-1`). Access, endpoints, and the
   funded `alice` signer in
   [`docs/runbooks/meridian-devnet.md`](./docs/runbooks/meridian-devnet.md).

@@ -19,3 +19,6 @@ in the ledger.
 - In-rule spend succeeds and is signed by the agent
 - Out-of-rule spend rejected by the chain
 - Ledger entry created
+
+## Build-time note: BitBadges pattern
+Confirmed feasible by Trevor. **Reference the Meridian repo first** (`~/CompSci/gauntlet/meridian`: `apps/web/lib/chain/` + `lib/prediction-market/`, `apps/aggregator/src/chain/`), **then ASK TREVOR for the exact implementation pattern** before writing chain logic — do not guess.

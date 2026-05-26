@@ -29,3 +29,6 @@ claim. See ARCHITECTURE.md §13 for the full contract.
 
 ## Phase
 MVP — cross-cutting, required before vault/payment tickets are trustworthy
+
+## Build-time note: BitBadges pattern
+Confirmed feasible by Trevor. **Reference the Meridian repo first** (`~/CompSci/gauntlet/meridian`: `apps/web/lib/chain/` + `lib/prediction-market/`, `apps/aggregator/src/chain/`), **then ASK TREVOR for the exact implementation pattern** before writing chain logic — do not guess.

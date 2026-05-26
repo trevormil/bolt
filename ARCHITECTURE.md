@@ -295,9 +295,10 @@ hybrid BM25 + dense search, per-compartment and hard-walled, serving both
 
 ## 12. Open questions
 
-- **(gates the demo)** USDC→vault funding on the isolated devnet — can `alice`'s
-  `ibc/` USDC bank-send to a fresh backing address, or is the Noble hook required?
-  (audit M2 — BitBadges Q for Trevor.)
+- The 3 audited BitBadges items (USDC→vault funding on devnet, atomic manager
+  handoff, sign-page plain-English decode) are **confirmed feasible** by Trevor.
+  Implementation pattern: **reference the Meridian repo, then ask Trevor** at build
+  time — don't guess the chain logic. (audit M2/M3/M7.)
 - **Per-persona vs per-purpose** vault mapping (a persona may own several vaults).
 - Which **MCP servers** ship in the demo (calendar? email? a BitBadges tool?).
 - *(Resolved by the audit:* free-form cap ≤ $25/persona · web stack = Vite+Hono ·

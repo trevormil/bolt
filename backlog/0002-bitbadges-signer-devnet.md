@@ -23,3 +23,6 @@ the `bitbadges` SDK / cosmjs and a persona hot key. See docs/runbooks/meridian-d
 ## Audit refinement (2026-05-26)
 **Do this FIRST (after scaffold) — highest-risk unknown.** Validate a real
 broadcast+confirmed tx on the devnet before any business logic. Bumped to critical.
+
+## Build-time note: BitBadges pattern
+Confirmed feasible by Trevor. **Reference the Meridian repo first** (`~/CompSci/gauntlet/meridian`: `apps/web/lib/chain/` + `lib/prediction-market/`, `apps/aggregator/src/chain/`), **then ASK TREVOR for the exact implementation pattern** before writing chain logic — do not guess.

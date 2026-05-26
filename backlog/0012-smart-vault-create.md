@@ -29,3 +29,6 @@ research/payment-architecture.md + research/bitbadges-integration.md.
 - **GATE (M2):** verify the devnet USDC->backing-address funding path works
   (BitBadges Q) BEFORE building this. Pre-fund the demo vault from alice.
 - Cap demo at 2-3 vaults; "unlimited" is a future claim (F-09).
+
+## Build-time note: BitBadges pattern
+Confirmed feasible by Trevor. **Reference the Meridian repo first** (`~/CompSci/gauntlet/meridian`: `apps/web/lib/chain/` + `lib/prediction-market/`, `apps/aggregator/src/chain/`), **then ASK TREVOR for the exact implementation pattern** before writing chain logic — do not guess.

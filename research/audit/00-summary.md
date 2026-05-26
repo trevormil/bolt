@@ -83,7 +83,12 @@ F-11 LLM-router signal leak (moot once routing is deterministic, M5) · F-13 sha
 devnet box (health-check before demo, rate-limit retries) · T-14 replay
 (Cosmos-protocol-covered).
 
-## BitBadges questions for Trevor (resolve the top risks fast)
+## BitBadges questions for Trevor — RESOLVED (all confirmed feasible)
+
+Trevor confirms all three work. Implementation pattern: **reference the Meridian
+repo (`~/CompSci/gauntlet/meridian`) first, then ask Trevor for the exact chain
+logic at build time** — do not guess. The questions, for build-time reference:
+
 
 1. **(M2, gates the demo)** On the devnet, can `alice`'s existing `ibc/` USDC be
    **bank-sent directly to a new vault backing address**, or does the IBC-backed

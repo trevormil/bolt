@@ -19,3 +19,6 @@ it and signs to fund. Agent never pulls funds.
 - Agent creates a PaymentRequest + link
 - Human signs via the link; funds move
 - Funding event lands in the ledger
+
+## Build-time note: BitBadges pattern
+Confirmed feasible by Trevor. **Reference the Meridian repo first** (`~/CompSci/gauntlet/meridian`: `apps/web/lib/chain/` + `lib/prediction-market/`, `apps/aggregator/src/chain/`), **then ASK TREVOR for the exact implementation pattern** before writing chain logic — do not guess.
