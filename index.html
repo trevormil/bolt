@@ -5,19 +5,52 @@
   <title>Vellum — Competitive Research</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="OpenClaw vs Hermes vs Vellum — deep competitive research for the Vellum personal-assistant project." />
-  <!-- GitBook-style theme (docsify's default, GitBook-inspired) -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsify@4.13.1/lib/themes/vue.css" />
+  <!-- docsify-themeable "Simple" theme = the closest docsify gets to a GitBook look -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsify-themeable@0.9.0/dist/css/theme-simple.css" />
   <style>
     :root {
-      --theme-color: #6b46c1;        /* vellum violet */
-      --sidebar-width: 19rem;
+      /* GitBook-ish: airy, system font, restrained accent */
+      --base-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --base-font-size: 15px;
+      --base-line-height: 1.7;
+      --base-color: #3b454e;
+
+      --theme-color: #6b46c1;          /* vellum violet accent */
+      --link-color: #6b46c1;
+
+      --content-max-width: 46rem;       /* comfortable GitBook reading column */
+
+      /* Sidebar: light, bordered, quiet */
+      --sidebar-width: 17rem;
+      --sidebar-background: #fbfafc;
+      --sidebar-border-width: 1px;
+      --sidebar-nav-link-color: #5c6670;
+      --sidebar-nav-link-color--active: #6b46c1;
+      --sidebar-nav-link-border-color--active: #6b46c1;
+      --sidebar-nav-link-font-weight--active: 600;
+      --sidebar-nav-pagelink-background-image: none;
+
+      /* Section headers in the sidebar (GitBook-style group labels) */
+      --sidebar-nav-strong-color: #98a1ab;
+      --sidebar-nav-strong-font-size: 0.72rem;
+
+      /* Code + tables */
+      --code-font-size: 0.85em;
+      --code-theme-background: #f7f6fa;
+      --notice-tip-border-color: #6b46c1;
     }
-    .sidebar-nav li.active > a { border-right: 3px solid var(--theme-color); }
-    .markdown-section { max-width: 56rem; }
+    /* Quiet, uppercase sidebar group labels like GitBook */
+    .sidebar-nav > ul > li > strong,
+    .sidebar-nav > ul > li:not(:has(a)) {
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    /* Tables fill the column and read cleanly */
     .markdown-section table { display: table; width: 100%; }
     .markdown-section th { background: #faf8ff; }
-    .cover-main .anchor span { color: var(--theme-color); }
-    .app-name-link img { width: 0; } /* no logo */
+    /* Pagination (prev/next) cards at the bottom of each page */
+    .pagination-item-label { color: #6b46c1; }
+    .docsify-pagination-container { border-top: 1px solid #eee; margin-top: 3rem; }
   </style>
 </head>
 <body>
@@ -30,15 +63,20 @@
       homepage: 'README.md',
       loadSidebar: true,
       subMaxLevel: 2,
-      maxLevel: 3,
       auto2top: true,
-      coverpage: true,
-      onlyCover: false,
       themeColor: '#6b46c1',
+      // Collapsible sidebar sections (GitBook-style)
+      sidebarDisplayLevel: 1,
       search: {
         placeholder: 'Search the research…',
         noData: 'No matches.',
         depth: 3,
+      },
+      pagination: {
+        previousText: 'Previous',
+        nextText: 'Next',
+        crossChapter: true,
+        crossChapterText: true,
       },
       // Strip YAML frontmatter so it doesn't render as raw text.
       plugins: [
@@ -51,6 +89,9 @@
     };
   </script>
   <script src="https://cdn.jsdelivr.net/npm/docsify@4.13.1/lib/docsify.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docsify-themeable@0.9.0/dist/js/docsify-themeable.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docsify-sidebar-collapse@1.3.4/dist/docsify-sidebar-collapse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docsify-pagination@2.10.0/dist/docsify-pagination.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/docsify@4.13.1/lib/plugins/search.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/docsify-copy-code@3.0.0/dist/docsify-copy-code.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-bash.min.js"></script>
