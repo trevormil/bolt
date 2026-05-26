@@ -3,6 +3,7 @@
   - [⚡ Primer — quick reference](PRIMER.md)
   - [🎯 Differentiation (research capstone)](differentiation.md)
   - [✅ Chosen differentiators (direction)](differentiators.md)
+  - [💳 Payment & wallet architecture](payment-architecture.md)
   - [⛓️ BitBadges integration (substrate)](bitbadges-integration.md)
 
 - Landscape & demand

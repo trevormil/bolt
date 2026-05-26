@@ -651,6 +651,11 @@ Source: [Skills overview](https://docs.bitbadges.io/token-standard/skills.md),
 
 ## 9. BB-402 — BitBadges' native x402 analog
 
+> **⚠️ DESCOPED (2026-05-26):** we are **not** using BB-402 — judged
+> overengineering; standard auth (API keys / OAuth / SIWE) gates the agent's
+> endpoints instead. Section retained for reference. See
+> [payment-architecture.md](./payment-architecture.md).
+
 BB-402 is the protocol most directly relevant to vellum's x402 differentiator.
 It is a **documented, implemented standard with its own spec page and middleware
 recipes** — not a proposed future feature.

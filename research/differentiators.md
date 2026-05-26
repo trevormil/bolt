@@ -28,12 +28,17 @@ with the economic layer from the [agent-networks work](./agent-networks/00-synth
 
 > **Substrate: BitBadges** (the founder's own Cosmos SDK L1). The economics bake
 > into BitBadges — agent wallets via the `bb` CLI, the approval/transferability
-> engine for **token budgets**, USDC-backed smart tokens for **agent vaults**,
-> and **BB-402** (BitBadges' native, already-spec'd x402 analog) for pay-per-call.
-> Full mapping + feasibility in [bitbadges-integration.md](./bitbadges-integration.md).
-> Strongest possible brand-match (it's his chain) and turns "payment-first" from a
-> feature into a moat. Open call: BitBadges as a hard core dependency vs. behind a
-> payment adapter (affects demo portability).
+> engine for **token budgets**, USDC-backed smart tokens for **agent vaults**
+> (the headline feature), the **PaymentRequest** standard for human-in-the-loop
+> funding, and the **BitBadges swap-estimate endpoint** (ETH + Cosmos) for swaps.
+> Concrete wallet/balance/funding/swap decisions in
+> [payment-architecture.md](./payment-architecture.md); primitive mapping in
+> [bitbadges-integration.md](./bitbadges-integration.md). Strongest possible
+> brand-match (it's his chain) and turns "payment-first" into a moat.
+> **Dropped:** BB-402 (overengineering — standard auth suffices). **Deferred to an
+> extension:** Skip:Go cross-chain swaps + a Solana wallet (the devnet has no IBC/
+> Skip integrations). Open call: BitBadges as a hard core dependency vs. behind a
+> payment adapter (demo portability).
 
 ## The core primitive: the unified compartment ("persona")
 
@@ -68,9 +73,14 @@ unification is the most defensible idea on this list.
 | # | Differentiator | What it is | Backed by |
 |---|---|---|---|
 | 1 | **Token budgets** | Bounded spend granted to the agent, to each persona, and to *peer* agents; hard caps + human approval gate at a threshold. | [economic layer](./agent-networks/02-economic-layer.md) |
-| 2 | **Agent vaults** | A funded/credentialed vault each persona draws on to pay, under policy. *(Working definition — a spend vault, not a secrets-only store. Confirm.)* | [economic layer](./agent-networks/02-economic-layer.md) |
-| 3 | **x402 + agent-native payments** | Pay-per-call (x402 / AP2 mandates) so the agent can autonomously buy a resource or another agent's *agentic knowledge*, within budget, returning a **cost receipt**. | [economic layer](./agent-networks/02-economic-layer.md), [protocols](./agent-networks/01-protocols.md) |
+| 2 | **Agent vaults (HEADLINE)** | Unlimited USDC-backed smart vaults, one per purpose — each a 1:1-backed token collection with protocol-enforced rules (caps/allowlists/time gates). Plus a free-form `x/bank` balance for discretionary spend. | [payment-architecture](./payment-architecture.md) |
+| 3 | **HITL funding** | Agent issues a BitBadges **PaymentRequest**; human approves to fund (trust gate on inflows; vault rules gate outflows). | [payment-architecture](./payment-architecture.md) |
 | 4 | **Cost accounting / transparency** | A live, auditable ledger: what was spent, on what, under whose authority. Proof-of-action repurposed for money. | [cost economics](./cost-economics.md), [differentiation](./differentiation.md) |
+
+> **Wallets:** dual — Cosmos (`bb1…`) + Ethereum (`0x…`), both required. **Swaps:**
+> BitBadges swap-estimate endpoint (ETH + Cosmos). **Dropped:** BB-402, Solana,
+> Skip:Go cross-chain (latter two deferred to a future extension — devnet has no
+> IBC/Skip). Full design: [payment-architecture.md](./payment-architecture.md).
 
 ## Tier 2 — Cost efficiency (the anti-token-burn pillar)
 
