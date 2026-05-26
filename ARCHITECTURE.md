@@ -115,9 +115,13 @@ A thin **global layer** holds only the minimum shared (principal identity, the
 router, a few global prefs). Cross-persona access is explicit and audited, never
 implicit.
 
-### Memory
-Per-compartment: markdown working files + a vector store for recall, partitioned
-by persona. The agent reasons only over the active persona's memory.
+### Memory (= the retrieval / RAG engine)
+Per-compartment: markdown working files + a **retrieval engine** (embeddings +
+hybrid BM25 + dense search + injection) for recall, partitioned by persona. The
+agent reasons only over the active persona's memory. **RAG is not a separate
+system — it is this retrieval layer.** Two uses, one engine: "memory of the user"
+(preferences/history) and *optional* per-compartment **document ingestion**
+(ground answers in a persona's own corpus). All hard-walled per persona.
 
 ### Tools / MCP
 An **MCP client** is the extensibility path (satisfies the PRD's "connect ≥1
@@ -216,16 +220,19 @@ endpoint → Cosmos signing path. No IBC/Skip → no swaps/bridging (deferred).
 - **Tools:** MCP TypeScript SDK (client).
 - **LLM:** provider router (e.g. Claude default for quality, a cheap model for
   routine) — pinned, env-configured.
-- **Storage:** `bun:sqlite` + per-compartment markdown.
+- **Storage:** `bun:sqlite` + per-compartment markdown; vector index for retrieval.
+- **Observability:** **Langfuse** (reuse the AgentForge W1–3 key/endpoint via env).
+- **Evals:** golden-set harness + LLM-as-judge, run in CI; datasets/scores in Langfuse.
 
 ---
 
 ## 9. Scope
 
 **In v1:** Telegram + web surfaces · orchestrator + persona sub-agents ·
-hard-walled per-persona memory · MCP tools · cost routing + ledger · per-persona
-`bb1` wallet · token budgets · **smart vaults (headline)** · free-form balance ·
-PaymentRequest funding · light proactivity · sub-minute install.
+hard-walled per-persona memory (= retrieval/RAG engine) · MCP tools · cost
+routing + ledger · per-persona `bb1` wallet · token budgets · **smart vaults
+(headline)** · free-form balance · PaymentRequest funding · light proactivity ·
+**Langfuse observability** · **eval suite (golden sets + CI)** · sub-minute install.
 
 **Deferred (TBD later):** swaps (local + cross-chain), ETH/Solana wallets,
 Skip:Go, voice, channels beyond Telegram, a skill marketplace, BB-402
@@ -246,7 +253,30 @@ Skip:Go, voice, channels beyond Telegram, a skill marketplace, BB-402
 
 ---
 
-## 11. Open questions
+## 11. Observability, evals & retrieval (cross-cutting)
+
+### Observability — Langfuse
+Trace the full path — orchestrator → persona → LLM call → tool call → chain op —
+as Langfuse traces/spans with token/cost attribution. Reuse the AgentForge W1–3
+Langfuse key + endpoint (env, never committed). **Two complementary layers:**
+Langfuse = dev/ops observability; the on-chain proof-of-action ledger (§5.6) =
+user-facing trust. Wire it from the runtime skeleton so traces exist from day one.
+
+### Evals — golden sets + CI
+- **Golden task sets** per use case, with success criteria — deterministic checks
+  where possible (did the right tx fire? within budget?), LLM-as-judge for
+  open-ended output.
+- **Budget-aware:** single-case while iterating; full-suite gated in CI (real-LLM
+  eval runs cost money — don't run the whole suite on every change).
+- Datasets + scores live in **Langfuse**; CI runs the suite and tracks pass-rate
+  over time, split by single-step / multi-step / long-horizon.
+
+### Retrieval / RAG
+Not a separate system — it is the **memory retrieval layer** (§4): embeddings +
+hybrid BM25 + dense search, per-compartment and hard-walled, serving both
+"memory of the user" and optional per-persona document ingestion.
+
+## 12. Open questions
 
 - Free-form balance **cap** value (per persona).
 - **Per-persona vs per-purpose** vault mapping (a persona may own several vaults).
