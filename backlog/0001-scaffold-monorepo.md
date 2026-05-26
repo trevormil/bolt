@@ -1,7 +1,7 @@
 ---
 id: 1
 title: "Scaffold bun/TS monorepo (agent · telegram · web · shared)"
-status: open
+status: in-progress
 priority: critical
 type: dx
 source: planning
