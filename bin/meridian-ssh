@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# SSH into the Meridian devnet droplet (standalone bitbadges-1 chain).
+#
+# Uses the harness-dedicated key at ~/.meridian-ssh/id_ed25519 (NOT committed;
+# its public half is authorized on the droplet's root authorized_keys).
+#
+# Usage:
+#   bin/meridian-ssh                      # interactive shell
+#   bin/meridian-ssh '<remote command>'   # run a command, e.g.
+#   bin/meridian-ssh 'bitbadgeschaind keys list --keyring-backend test'
+#   bin/meridian-ssh 'bitbadgeschaind query bank balances <addr>'
+set -euo pipefail
+exec ssh -i "$HOME/.meridian-ssh/id_ed25519" -o IdentitiesOnly=yes \
+  -o ConnectTimeout=15 root@198.199.70.29 "$@"

@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# List backlog tickets from frontmatter. Optional filters.
+#
+#   bin/tickets                 # all tickets, newest id first
+#   bin/tickets open            # only status: open
+#   bin/tickets open high       # status: open AND priority: high
+#
+# Portable (macOS + Linux). Reads <repo>/backlog/NNNN-*.md frontmatter.
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+BACKLOG="$ROOT/backlog"
+want_status="${1:-}"
+want_priority="${2:-}"
+
+# field <file> <key> -> first frontmatter value for key (quotes stripped)
+field() {
+  awk -v key="$2" '
+    NR==1 && $0=="---" { infm=1; next }
+    infm && $0=="---"  { exit }
+    infm && $0 ~ "^"key": " {
+      sub("^"key": *",""); gsub(/^"|"$/,""); print; exit
+    }' "$1"
+}
+
+printf '%-6s %-12s %-9s %-12s %s\n' ID STATUS PRIORITY TYPE TITLE
+printf '%-6s %-12s %-9s %-12s %s\n' "----" "------" "--------" "----" "-----"
+
+shopt -s nullglob 2>/dev/null || true
+found=""
+# newest first
+for f in $(ls -1 "$BACKLOG"/[0-9]*.md 2>/dev/null | sort -r); do
+  [ -e "$f" ] || continue
+  found=1
+  status="$(field "$f" status)"
+  priority="$(field "$f" priority)"
+  [ -n "$want_status" ]   && [ "$status" != "$want_status" ]     && continue
+  [ -n "$want_priority" ] && [ "$priority" != "$want_priority" ] && continue
+  printf '%-6s %-12s %-9s %-12s %s\n' \
+    "$(field "$f" id)" "$status" "$priority" "$(field "$f" type)" "$(field "$f" title)"
+done
+[ -n "$found" ] || echo "(no tickets yet — create one with /ticket)" >&2
