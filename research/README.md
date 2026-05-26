@@ -19,6 +19,9 @@ May 2026) and carry per-source caveats noted inline.
 - **[`differentiators.md`](./differentiators.md)** — ✅ **the chosen direction**:
   payment-first, compartmentalized personal agent. The locked differentiator list
   (token budgets, vaults, x402, cost routing, hard-walled persona memory).
+- **[`bitbadges-integration.md`](./bitbadges-integration.md)** — ⛓️ **the substrate**:
+  how the economics bake into BitBadges (founder's L1) — `bb` CLI agent wallets,
+  approval engine → token budgets, smart-token vaults, BB-402 → x402.
 - **[`differentiation.md`](./differentiation.md)** — 🎯 the research capstone:
   candidate differentiators scored + feasibility (the options `differentiators.md`
   chose from).

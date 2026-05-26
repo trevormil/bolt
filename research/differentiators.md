@@ -26,6 +26,15 @@ isolation* = control.
 This is the [cost thesis (D3)](./differentiation.md) elevated to primary, fused
 with the economic layer from the [agent-networks work](./agent-networks/00-synthesis.md).
 
+> **Substrate: BitBadges** (the founder's own Cosmos SDK L1). The economics bake
+> into BitBadges — agent wallets via the `bb` CLI, the approval/transferability
+> engine for **token budgets**, USDC-backed smart tokens for **agent vaults**,
+> and **BB-402** (BitBadges' native, already-spec'd x402 analog) for pay-per-call.
+> Full mapping + feasibility in [bitbadges-integration.md](./bitbadges-integration.md).
+> Strongest possible brand-match (it's his chain) and turns "payment-first" from a
+> feature into a moat. Open call: BitBadges as a hard core dependency vs. behind a
+> payment adapter (affects demo portability).
+
 ## The core primitive: the unified compartment ("persona")
 
 A **persona** is a fully walled unit bundling four things:
@@ -106,8 +115,10 @@ holds only what is explicitly, minimally shared.**
 
 ## Open questions still to pin (before a build plan)
 
-1. **"Agent vault" definition** — confirm: a *funded spend vault* per persona
-   (vs. a credential/secrets vault, vs. both)?
+1. **"Agent vault" definition** — *resolved by the BitBadges research:* a
+   **USDC-backed smart-token vault** per persona, where withdrawal policy (daily
+   caps, allowlists, time gates) lives in protocol-enforced `collectionApprovals`.
+   Still open: who holds the collection-manager key (human principal, per the docs).
 2. **Global layer contents** — exactly what is shared across personas (principal
    identity? a few global prefs? the router only)?
 3. **Dispatcher** — how does a user request get routed to the right persona

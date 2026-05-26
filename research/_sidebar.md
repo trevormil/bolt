@@ -3,6 +3,7 @@
   - [⚡ Primer — quick reference](PRIMER.md)
   - [🎯 Differentiation (research capstone)](differentiation.md)
   - [✅ Chosen differentiators (direction)](differentiators.md)
+  - [⛓️ BitBadges integration (substrate)](bitbadges-integration.md)
 
 - Landscape & demand
   - [Wider landscape (giants + OSS)](landscape.md)
