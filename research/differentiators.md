@@ -36,8 +36,9 @@ with the economic layer from the [agent-networks work](./agent-networks/00-synth
 > [bitbadges-integration.md](./bitbadges-integration.md). Strongest possible
 > brand-match (it's his chain) and turns "payment-first" into a moat.
 > **Dropped:** BB-402 (overengineering — standard auth suffices). **Deferred to an
-> extension:** Skip:Go cross-chain swaps + a Solana wallet (the devnet has no IBC/
-> Skip integrations). Open call: BitBadges as a hard core dependency vs. behind a
+> extension:** Ethereum + Solana wallets and Skip:Go cross-chain swaps (the devnet
+> has no IBC/Skip integrations) — the agent is single-chain (Cosmos/BitBadges)
+> only for now. Open call: BitBadges as a hard core dependency vs. behind a
 > payment adapter (demo portability).
 
 ## The core primitive: the unified compartment ("persona")
@@ -77,10 +78,11 @@ unification is the most defensible idea on this list.
 | 3 | **HITL funding** | Agent issues a BitBadges **PaymentRequest**; human approves to fund (trust gate on inflows; vault rules gate outflows). | [payment-architecture](./payment-architecture.md) |
 | 4 | **Cost accounting / transparency** | A live, auditable ledger: what was spent, on what, under whose authority. Proof-of-action repurposed for money. | [cost economics](./cost-economics.md), [differentiation](./differentiation.md) |
 
-> **Wallets:** dual — Cosmos (`bb1…`) + Ethereum (`0x…`), both required. **Swaps:**
-> BitBadges swap-estimate endpoint (ETH + Cosmos). **Dropped:** BB-402, Solana,
-> Skip:Go cross-chain (latter two deferred to a future extension — devnet has no
-> IBC/Skip). Full design: [payment-architecture.md](./payment-architecture.md).
+> **Wallet:** Cosmos only (`bb1…`) — single chain, single key. **Swaps:**
+> local-to-local on BitBadges (`x/gamm` + swap-estimate endpoint), no bridging.
+> **Dropped:** BB-402. **Deferred to a future extension:** Ethereum + Solana
+> wallets and Skip:Go cross-chain swaps (devnet has no IBC/Skip). Full design:
+> [payment-architecture.md](./payment-architecture.md).
 
 ## Tier 2 — Cost efficiency (the anti-token-burn pillar)
 

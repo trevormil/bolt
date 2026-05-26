@@ -20,8 +20,8 @@ May 2026) and carry per-source caveats noted inline.
   payment-first, compartmentalized personal agent. The locked differentiator list
   (token budgets, vaults, x402, cost routing, hard-walled persona memory).
 - **[`payment-architecture.md`](./payment-architecture.md)** — 💳 **payment/wallet design**:
-  dual wallets (Cosmos+ETH), smart vaults (headline, unlimited), free-form balance,
-  PaymentRequest HITL funding, ETH+Cosmos swaps; Skip:Go/Solana deferred.
+  Cosmos-only wallet, smart vaults (headline, unlimited), free-form balance,
+  PaymentRequest HITL funding, local-only BitBadges swaps; cross-chain deferred.
 - **[`bitbadges-integration.md`](./bitbadges-integration.md)** — ⛓️ **the substrate**:
   how the economics bake into BitBadges (founder's L1) — `bb` CLI agent wallets,
   approval engine → token budgets, smart-token vaults, BB-402 → x402.

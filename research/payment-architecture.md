@@ -16,15 +16,13 @@ made concrete. Everything here runs on **BitBadges only** (the
 [Meridian devnet](../docs/runbooks/meridian-devnet.md) for now); cross-chain is
 deferred to an extension (below).
 
-## Wallets — dual (Cosmos + Ethereum), necessary
+## Wallet — Cosmos only
 
-The agent holds **two wallets**:
-- **Cosmos** (`bb1...`) — the primary chain identity on BitBadges.
-- **Ethereum** (`0x...`) — required for EVM-side assets/auth.
-
-BitBadges derives both address formats; key management TBD (shared secp256k1 key
-→ both addresses, vs. separate keys — see open questions). **Solana is scrapped**
-(deferred with the Skip:Go extension).
+The agent holds **one wallet**: a **Cosmos** (`bb1...`) account on BitBadges.
+That's the whole identity. **Ethereum and Solana are scrapped** — no cross-chain
+wallets, no EVM-side assets. (BitBadges technically derives an EVM `0x` address
+from the same key, but we don't use or expose it.) Single chain, single key,
+single signer — the simplest possible footprint.
 
 ## Balance tiers
 
@@ -58,12 +56,13 @@ BitBadges **PaymentRequest** (the payment-request standard:
 human reviews and funds it (signs → coins move). This HITL gate is the trust
 boundary on inflows; the vault rules are the trust boundary on outflows.
 
-## Swaps — BitBadges API swap-estimate endpoint (ETH + Cosmos)
+## Swaps — local-to-local on BitBadges only
 
-Swaps use the **BitBadges-exposed swap-estimate endpoint** (`api.bitbadges.io`),
-which covers **Ethereum + Cosmos** assets. We do **not** use Skip:Go for swaps
-now. *(Verify the exact route at build time; confirm whether it operates against
-the Meridian devnet or only mainnet-scoped assets — see open questions.)*
+Swaps are **local-to-local on the BitBadges chain only** — between denoms that
+live on-chain (e.g. `ubadge` ↔ IBC USDC ↔ tokenized/badge denoms), via the
+chain's AMM (`x/gamm`) with quotes from the BitBadges **swap-estimate endpoint**.
+**No cross-chain swaps, no bridging.** *(Verify the exact endpoint route and that
+`x/gamm` pools are seeded on the Meridian devnet — see open questions.)*
 
 ## Dropped: BB-402
 
@@ -73,12 +72,13 @@ signed sessions) is sufficient for gating the agent's endpoints.
 
 ## Extension (future — not wired now)
 
-**Skip:Go cross-chain swaps + Solana.** Skip:Go ([docs.skip.build](https://docs.skip.build/go/general/supported-ecosystems-and-bridges))
-spans 120+ chains, does fast EVM↔Cosmos bridging (Hyperlane intents) and USDC
-bridging to/from Solana — but **can't be wired to the Meridian devnet**, which
-has no IBC connections or Skip integrations. It also has **no Solana DEX swaps
-yet** (bridging only). So cross-chain swaps and a Solana wallet are a
-**post-devnet extension**, added once we're on a Skip-connected environment.
+**Cross-chain: Ethereum + Solana wallets and Skip:Go swaps.** All deferred.
+Skip:Go ([docs.skip.build](https://docs.skip.build/go/general/supported-ecosystems-and-bridges))
+spans 120+ chains and does fast EVM↔Cosmos bridging + USDC bridging to/from Solana
+— but **can't be wired to the Meridian devnet** (no IBC/Skip integrations), and
+has **no Solana DEX swaps yet**. So multi-chain wallets (ETH/SOL) and cross-chain
+swaps are a **post-devnet extension**, added once we're on a Skip-connected
+environment. For now the agent is **single-chain (BitBadges/Cosmos) only**.
 Trevor is sitting on this design; revisit later.
 
 ## Open questions
@@ -89,11 +89,10 @@ Trevor is sitting on this design; revisit later.
    manager)? The trust thesis argues for locked-at-creation or human-managed.
 2. **Free-form balance cap** — how much discretionary `x/bank` value is the agent
    trusted with before everything routes through rule-bound vaults?
-3. **Swap-estimate endpoint** — exact `api.bitbadges.io` route; does it work
-   against the standalone devnet or is it mainnet-asset-scoped?
-4. **Dual-wallet key management** — one secp256k1 key for both `bb1`+`0x`, or
-   separate keys per chain? Affects the signer design.
-5. **Per-persona vs per-purpose vaults** — do vaults map onto the compartment
+3. **Local swaps** — exact `api.bitbadges.io` swap-estimate route; are `x/gamm`
+   pools seeded on the Meridian devnet so local-to-local swaps actually execute
+   there (vs. quote-only)?
+4. **Per-persona vs per-purpose vaults** — do vaults map onto the compartment
    personas, onto purposes, or both?
 
 ## Sources
