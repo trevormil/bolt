@@ -16,9 +16,12 @@ May 2026) and carry per-source caveats noted inline.
 
 ## Start here
 
-- **[`differentiation.md`](./differentiation.md)** — 🎯 the capstone: what exists +
-  what *our* differentiators are. Candidate differentiators scored, recommended
-  thesis, feasibility. **The decision artifact for this stage.**
+- **[`differentiators.md`](./differentiators.md)** — ✅ **the chosen direction**:
+  payment-first, compartmentalized personal agent. The locked differentiator list
+  (token budgets, vaults, x402, cost routing, hard-walled persona memory).
+- **[`differentiation.md`](./differentiation.md)** — 🎯 the research capstone:
+  candidate differentiators scored + feasibility (the options `differentiators.md`
+  chose from).
 - **[`PRIMER.md`](./PRIMER.md)** — fast, skimmable reference (TL;DR per product,
   master table, glossary, "where each wins"). Use this throughout the project.
 - **[`comparison/00-overview.md`](./comparison/00-overview.md)** — landscape map +

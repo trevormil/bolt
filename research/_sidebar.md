@@ -1,7 +1,8 @@
 - Getting started
   - [Home](README.md)
   - [⚡ Primer — quick reference](PRIMER.md)
-  - [🎯 Differentiation (capstone)](differentiation.md)
+  - [🎯 Differentiation (research capstone)](differentiation.md)
+  - [✅ Chosen differentiators (direction)](differentiators.md)
 
 - Landscape & demand
   - [Wider landscape (giants + OSS)](landscape.md)
