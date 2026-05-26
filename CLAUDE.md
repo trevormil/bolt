@@ -3,9 +3,10 @@
 A personal assistant built from scratch to rival OpenClaw (Vellum hiring-partner
 project). See [`README.md`](./README.md) for the spec.
 
-**Status:** research + direction done; **pre-build**. Still planning /
-brainstorming — don't scaffold the app or seed build tickets until the direction
-is finalized.
+**Status:** design done — [`ARCHITECTURE.md`](./ARCHITECTURE.md) is the E2E
+reference and the phased implementation backlog is seeded (`backlog/0001–0020`,
+Phases 0–7). **Ready to begin implementation at Phase 0.** Pick up tickets via
+`/ticket list`.
 
 ## How we work here (the approach moving forward)
 

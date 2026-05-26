@@ -48,21 +48,37 @@ allowlists, time gates, 2FA thresholds — protocol-enforced, non-bypassable). S
   exceed them.
 - This is the headline payment capability and the demo centerpiece.
 
-## Funding — PaymentRequest (human-in-the-loop)
+## Core principle — agent does the chain logic; human verifies/approves
 
-The agent **never autonomously pulls funds.** When it needs money it issues a
-BitBadges **PaymentRequest** (the payment-request standard:
-[bitbadges-integration.md §5.2](./bitbadges-integration.md)) to the human. The
-human reviews and funds it (signs → coins move). This HITL gate is the trust
-boundary on inflows; the vault rules are the trust boundary on outflows.
+The agent handles **all** the BitBadges machinery behind the scenes — creating
+vaults, configuring approval rules, building payment requests, signing within its
+limits. The human is the **verify/approve layer**: they don't touch BitBadges
+internals, they just click a link and approve (or reject). This is the trust
+thesis made tangible.
 
-## Swaps — local-to-local on BitBadges only
+## Funding — PaymentRequest (Stripe-link style)
 
-Swaps are **local-to-local on the BitBadges chain only** — between denoms that
-live on-chain (e.g. `ubadge` ↔ IBC USDC ↔ tokenized/badge denoms), via the
-chain's AMM (`x/gamm`) with quotes from the BitBadges **swap-estimate endpoint**.
-**No cross-chain swaps, no bridging.** *(Verify the exact endpoint route and that
-`x/gamm` pools are seeded on the Meridian devnet — see open questions.)*
+The agent **never autonomously pulls funds.** When it needs money it spins up a
+BitBadges **PaymentRequest** ([bitbadges-integration.md §5.2](./bitbadges-integration.md))
+and generates a **link** (Stripe-payment-link style): agent creates the request →
+generates the BitBadges link → user opens it and **signs**. We'll ship our own
+streamlined UI for the common flows; the full BitBadges UI is available for deep
+dives. This HITL gate is the trust boundary on inflows; vault rules are the trust
+boundary on outflows.
+
+## Vaults — agent creates, human manages
+
+The agent **creates** vaults autonomously (it can spin up unlimited per-purpose
+vaults), but sets the **human as the collection manager** — so only the human can
+update a vault's rules afterward, while the agent operates within them. One `bb1`
+**wallet per persona**; each persona's vaults hang off its own wallet.
+
+## Swaps — DEFERRED
+
+Swaps are **out of v1**. (`x/gamm` pools exist on the devnet and could be seeded
+as needed, but swaps add scope without serving the core demo.) Local-to-local
+BitBadges swaps, cross-chain swaps, and ETH/Solana wallets are **all deferred
+together** to a later extension — TBD.
 
 ## Dropped: BB-402
 

@@ -85,6 +85,7 @@ scratch.
 
 | Path | Purpose |
 |------|---------|
+| [`ARCHITECTURE.md`](./ARCHITECTURE.md) | **The E2E system design** — surfaces, orchestrator + personas, BitBadges payment/vault layer, trust ledger, lifecycle, stack, scope. |
 | [`research/`](./research/) | Competitive + landscape research, chosen differentiators, and the BitBadges integration. Start at `research/PRIMER.md`. |
 | [`backlog/`](./backlog/) | In-repo tickets (markdown), the work tracker — via the `/ticket` skill. |
 | [`docs/runbooks/`](./docs/runbooks/) | Ops runbooks (e.g. the Meridian devnet chain). |
