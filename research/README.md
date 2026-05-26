@@ -14,15 +14,37 @@ and pros/cons. Each dossier is reproduced **verbatim**; synthesis is isolated to
 `comparison.md` and clearly labeled as analysis. Figures are point-in-time (late
 May 2026) and carry per-source caveats noted inline.
 
+## Start here
+
+- **[`PRIMER.md`](./PRIMER.md)** — fast, skimmable reference (TL;DR per product,
+  master table, glossary, "where each wins"). Use this throughout the project.
+- **[`comparison/00-overview.md`](./comparison/00-overview.md)** — landscape map +
+  cross-dimension scorecard tying the eight deep-dives together.
+
 ## Files
 
 | File | What's in it |
 |------|--------------|
+| [`PRIMER.md`](./PRIMER.md) | **Quick reference** — TL;DR, master comparison table, glossary, when-each-wins |
+| [`comparison/`](./comparison/) | **Eight deep-dive specs** (01–08) + overview/scorecard (00) — one per dimension |
+| [`comparison.md`](./comparison.md) | Original **synthesis** — convergence matrix, real differentiators, open opportunity space |
 | [`openclaw.md`](./openclaw.md) | OpenClaw dossier — ~375K-star incumbent; architecture, traction, security debt, pros/cons |
 | [`hermes.md`](./hermes.md) | Hermes dossier — resolves to **NousResearch/hermes-agent**; self-improving skills, ~168K stars |
 | [`vellum.md`](./vellum.md) | Vellum dossier — company + David Vargas DNA + their own shipped assistant (`vellum-assistant`) |
-| [`comparison.md`](./comparison.md) | **Synthesis** — popularity table, technical convergence matrix, real differentiators, open opportunity space |
 | [`sources.md`](./sources.md) | Consolidated, de-duplicated source list |
+
+### The eight dimension specs (`comparison/`)
+
+| # | Dimension | Leads (per its head-to-head) |
+|---|-----------|------------------------------|
+| 01 | Architecture & runtime | Hermes (loop discipline) / OpenClaw (multi-agent spec) |
+| 02 | Memory, state & identity | Vellum (retrieval + entity-identity) |
+| 03 | Extensibility & tooling | Hermes (open standard) / OpenClaw (marketplace) |
+| 04 | Interaction surfaces | OpenClaw (voice + Canvas + 22 channels) |
+| 05 | Models, cost & performance | Hermes (200+ models, routing) |
+| 06 | Security & trust | Vellum by design / OpenClaw weakest by record |
+| 07 | Install, onboarding & data ownership | Hermes (most genuinely local) |
+| 08 | Ecosystem, maturity & governance | OpenClaw (dominant scale) |
 
 ## Headline findings
 
