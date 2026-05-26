@@ -13,10 +13,8 @@ import { env, createLogger } from "@vellum/shared";
 // foundation, validated against the Meridian devnet.
 
 const PREFIX = "bb";
-const DEFAULT_FEE = {
-  amount: [{ denom: "ubadge", amount: "20000" }],
-  gas: "200000",
-};
+// Devnet accepts zero-fee txs (min-gas-prices = 0), so no fee coins are attached.
+const DEFAULT_FEE = { amount: [] as Coin[], gas: "200000" };
 const log = createLogger("chain");
 
 export type { Coin };
