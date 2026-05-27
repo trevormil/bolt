@@ -26,6 +26,7 @@ export interface Meter {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  costUsd: number; // provider-reported actual cost (OpenRouter usage.cost)
   ms: number;
 }
 export interface CompleteResult {
@@ -71,6 +72,7 @@ export async function complete(
       model,
       messages,
       max_tokens: opts.maxTokens ?? 1024,
+      usage: { include: true }, // ask OpenRouter to report actual $ cost
     }),
     signal: opts.signal ?? AbortSignal.timeout(60_000),
   });
@@ -85,6 +87,7 @@ export async function complete(
       prompt_tokens?: number;
       completion_tokens?: number;
       total_tokens?: number;
+      cost?: number;
     };
   };
   const text = json.choices?.[0]?.message?.content ?? "";
@@ -92,12 +95,15 @@ export async function complete(
   const meter: Meter = {
     model,
     tier,
+    costUsd: u.cost ?? 0,
     promptTokens: u.prompt_tokens ?? 0,
     completionTokens: u.completion_tokens ?? 0,
     totalTokens: u.total_tokens ?? 0,
     ms: Date.now() - start,
   };
   // Metadata only — never log prompt/response content.
-  log.info(`${tier} · ${model} · ${meter.totalTokens} tok · ${meter.ms}ms`);
+  log.info(
+    `${tier} · ${model} · ${meter.totalTokens} tok · $${meter.costUsd.toFixed(6)} · ${meter.ms}ms`,
+  );
   return { text, meter };
 }

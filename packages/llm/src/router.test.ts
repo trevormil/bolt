@@ -35,7 +35,12 @@ describe("complete", () => {
       return new Response(
         JSON.stringify({
           choices: [{ message: { content: "hello world" } }],
-          usage: { prompt_tokens: 7, completion_tokens: 3, total_tokens: 10 },
+          usage: {
+            prompt_tokens: 7,
+            completion_tokens: 3,
+            total_tokens: 10,
+            cost: 0.00042,
+          },
         }),
         { status: 200 },
       );
@@ -51,7 +56,9 @@ describe("complete", () => {
       tier: "cheap",
       model: "test/model",
       totalTokens: 10,
+      costUsd: 0.00042,
     });
+    expect(meter.costUsd).toBeGreaterThan(0);
     expect(meter.ms).toBeGreaterThanOrEqual(0);
   });
 });
