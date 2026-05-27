@@ -2,22 +2,12 @@ import { Hono } from "hono";
 import { confirmTx } from "@vellum/chain";
 import { tracer } from "@vellum/trace";
 import { createLogger, env } from "@vellum/shared";
-import {
-  createEngine,
-  chat,
-  freeformCap,
-  llmBudget,
-  type Engine,
-} from "@vellum/engine";
+import { createEngine, chat, llmBudget, type Engine } from "@vellum/engine";
 import { PaymentRequests } from "./payment-requests.ts";
 
 // Built SPA dir, resolved from this file (cwd-independent) so the server can be
 // launched from the repo root (where .env loads) or from packages/web alike.
 const DIST = new URL("../dist/", import.meta.url).pathname;
-
-// Meridian devnet faucet mints a fixed 10 USDC/claim — used to gate against
-// overshooting the free-form cap (0010).
-const FAUCET_CLAIM_USDC = 10;
 
 const log = createLogger("web");
 
@@ -35,9 +25,13 @@ function slug(name: string): string {
 // provision wallet), chat (deterministic routing → bounded agent loop → ledger),
 // and per-persona wallet/ledger views. The persona memory hard wall + routing
 // determinism live in the engine packages; this layer just exposes them.
-export function buildApp(engine: Engine) {
+export function buildApp(
+  engine: Engine,
+  // Injectable so tests get an isolated store; prod shares the engine's sqlite
+  // file (own table). Defaults to the configured DB path.
+  paymentRequests = new PaymentRequests(env.VELLUM_DB_PATH),
+) {
   const app = new Hono();
-  const paymentRequests = new PaymentRequests(env.VELLUM_DB_PATH);
 
   app.get("/api/health", (c) => c.json({ ok: true }));
 
@@ -102,43 +96,24 @@ export function buildApp(engine: Engine) {
     return c.json({ address: wallet.address, usdc });
   });
 
-  // Devnet USDC faucet — fund a persona's wallet (10 USDC/claim). Refused once the
-  // free-form (discretionary x/bank) balance hits the cap (0010 — never fund above it).
+  // Devnet USDC faucet — fund a persona's wallet (10 USDC/claim). No free-form
+  // cap: the discretionary balance is unconstrained; spending limits live only
+  // in vaults (on-chain rules).
   app.post("/api/personas/:id/faucet", async (c) => {
     const id = c.req.param("id");
     if (!engine.store.getPersona(id))
       return c.json({ error: "unknown persona" }, 404);
     const { address } = await engine.wallets.ensureWallet(id);
-    const balances = await engine.wallets.balanceFor(id);
-    const usdc =
-      balances.find((b) => b.denom === env.VELLUM_DENOM)?.amount ?? "0";
-    const cap = freeformCap(usdc);
-    // Refuse if a full claim wouldn't fit under the cap — not just when already
-    // at it. The faucet mints a fixed amount, so gating on headroom (vs atCap)
-    // is what actually keeps the discretionary balance from overshooting (0010).
-    if (cap.headroomUsd < FAUCET_CLAIM_USDC) {
-      return c.json(
-        {
-          error: `free-form cap $${cap.capUsd} would be exceeded by a $${FAUCET_CLAIM_USDC} claim (balance $${cap.balanceUsd.toFixed(2)}, headroom $${cap.headroomUsd.toFixed(2)}) — move funds into a vault`,
-        },
-        409,
-      );
-    }
     return c.json(await engine.claimFaucet(address));
   });
 
-  // Budgets/caps for a persona (0009 LLM-spend + 0010 free-form USDC).
-  app.get("/api/personas/:id/budget", async (c) => {
+  // LLM-spend budget for a persona (0009 — OpenRouter-tracked cost guardrail).
+  // There is no free-form USDC cap; USDC spending limits live only in vaults.
+  app.get("/api/personas/:id/budget", (c) => {
     const id = c.req.param("id");
     if (!engine.store.getPersona(id))
       return c.json({ error: "unknown persona" }, 404);
-    const balances = await engine.wallets.balanceFor(id);
-    const usdc =
-      balances.find((b) => b.denom === env.VELLUM_DENOM)?.amount ?? "0";
-    return c.json({
-      llm: llmBudget(engine.ledger, id),
-      freeform: freeformCap(usdc),
-    });
+    return c.json({ llm: llmBudget(engine.ledger, id) });
   });
 
   // Spend from a persona's wallet, governed by the tx-lifecycle invariant (0023):
@@ -262,13 +237,14 @@ export function buildApp(engine: Engine) {
     });
   });
 
-  // The human signed + broadcast client-side; this verifies the tx committed on
-  // chain (truth from chain, not the client's word) and records the funding —
-  // idempotent on txHash, so a double-confirm is a no-op.
+  // The human signed + broadcast client-side (inline in the app, or via the
+  // /pay link); this verifies the tx committed on chain (truth from chain, not
+  // the client's word), records the funding in the ledger, then deletes the
+  // request — the ledger is the permanent trail, so filled requests aren't kept.
   app.post("/api/payment-requests/:reqId/confirm", async (c) => {
     const r = paymentRequests.get(c.req.param("reqId"));
-    if (!r) return c.json({ error: "unknown payment request" }, 404);
-    if (r.status === "paid") return c.json(r); // already recorded — idempotent
+    // Already filled (or never existed) — the funding, if any, is in the ledger.
+    if (!r) return c.json({ error: "unknown or already-filled request" }, 404);
     const body = (await c.req.json().catch(() => ({}))) as { txHash?: string };
     const txHash = body.txHash?.trim();
     if (!txHash) return c.json({ error: "txHash is required" }, 400);
@@ -280,6 +256,8 @@ export function buildApp(engine: Engine) {
         400,
       );
     }
+    // recordOnchain is idempotent on txHash, so a racing double-confirm can't
+    // double-credit before the row is deleted.
     engine.ledger.recordOnchain({
       personaId: r.personaId,
       kind: "funding",
@@ -288,7 +266,16 @@ export function buildApp(engine: Engine) {
       txHash,
       meta: { paymentRequestId: r.id, amount: r.amount, denom: r.denom },
     });
-    return c.json(paymentRequests.markPaid(r.id, txHash));
+    paymentRequests.delete(r.id);
+    return c.json({ ok: true, txHash, amount: r.amount });
+  });
+
+  // Dismiss a pending request without paying it (full UX for outstanding ones).
+  app.delete("/api/payment-requests/:reqId", (c) => {
+    const r = paymentRequests.get(c.req.param("reqId"));
+    if (!r) return c.json({ error: "unknown payment request" }, 404);
+    paymentRequests.delete(r.id);
+    return c.json({ ok: true });
   });
 
   app.get("/api/personas/:id/ledger", (c) => {

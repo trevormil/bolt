@@ -10,12 +10,7 @@ export {
 } from "./vaults.ts";
 export { vaultTools } from "./agent-tools.ts";
 export { chat, type ChatInput, type ChatResult } from "./chat.ts";
-export {
-  llmBudget,
-  freeformCap,
-  type LlmBudget,
-  type FreeformCap,
-} from "./budgets.ts";
+export { llmBudget, type LlmBudget } from "./budgets.ts";
 
 if (import.meta.main) {
   const { createLogger } = await import("@vellum/shared");

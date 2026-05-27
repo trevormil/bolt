@@ -24,8 +24,9 @@ export function PayPage({ reqId }: { reqId: string }) {
       .then((r) => {
         setReq(r.request);
         setPersonaName(r.personaName);
-        if (r.request.status === "paid") setDone(true);
       })
+      // A filled (or unknown) request is deleted, so its link 404s — show that
+      // rather than a payable form.
       .catch((e) => setLoadErr(e instanceof Error ? e.message : String(e)));
   }, [reqId]);
 

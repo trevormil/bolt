@@ -1,13 +1,15 @@
 import { Database } from "bun:sqlite";
 import { randomUUID } from "node:crypto";
 
-// One-time-use payment requests (0014) — the Stripe-link analog. The agent (or
-// the user) raises a request to fund a persona; the human opens the link and
-// signs a USDC transfer to the persona's wallet from their OWN (Keplr) wallet.
-// The agent never pulls funds. On confirmation the funded amount lands in the
-// persona's global balance and a `funding` ledger entry is recorded.
-export type PaymentRequestStatus = "pending" | "paid";
-
+// Pending payment requests (0014) — the Stripe-link analog. The agent (or the
+// user) raises a request to fund a persona; the human pays it inline in the web
+// app (Keplr) or by opening the /pay/:id link elsewhere. The agent never pulls
+// funds.
+//
+// This store holds ONLY outstanding (pending) requests: a row existing IS the
+// "pending" status. On fulfilment the funding is recorded in the ledger (the
+// permanent trail) and the request row is deleted — filled requests aren't kept
+// around to bloat the store.
 export interface PaymentRequest {
   id: string;
   personaId: string;
@@ -15,10 +17,7 @@ export interface PaymentRequest {
   denom: string;
   amount: string; // base µUSDC
   memo: string;
-  status: PaymentRequestStatus;
-  txHash: string | null;
   created: number;
-  paidAt: number | null;
 }
 
 interface Row {
@@ -28,10 +27,7 @@ interface Row {
   denom: string;
   amount: string;
   memo: string;
-  status: string;
-  tx_hash: string | null;
   created: number;
-  paid_at: number | null;
 }
 const toReq = (r: Row): PaymentRequest => ({
   id: r.id,
@@ -40,10 +36,7 @@ const toReq = (r: Row): PaymentRequest => ({
   denom: r.denom,
   amount: r.amount,
   memo: r.memo,
-  status: r.status as PaymentRequestStatus,
-  txHash: r.tx_hash,
   created: r.created,
-  paidAt: r.paid_at,
 });
 
 export class PaymentRequests {
@@ -58,10 +51,7 @@ export class PaymentRequests {
       denom TEXT NOT NULL,
       amount TEXT NOT NULL,
       memo TEXT NOT NULL DEFAULT '',
-      status TEXT NOT NULL DEFAULT 'pending',
-      tx_hash TEXT,
-      created INTEGER NOT NULL,
-      paid_at INTEGER)`);
+      created INTEGER NOT NULL)`);
   }
 
   create(input: {
@@ -75,8 +65,8 @@ export class PaymentRequests {
     const created = Date.now();
     this.db
       .query(
-        `INSERT INTO payment_requests (id, persona_id, to_addr, denom, amount, memo, status, created)
-         VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)`,
+        `INSERT INTO payment_requests (id, persona_id, to_addr, denom, amount, memo, created)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -107,14 +97,9 @@ export class PaymentRequests {
     ).map(toReq);
   }
 
-  /** Mark paid (idempotent — only transitions a pending row). */
-  markPaid(id: string, txHash: string): PaymentRequest | null {
-    this.db
-      .query(
-        "UPDATE payment_requests SET status = 'paid', tx_hash = ?, paid_at = ? WHERE id = ? AND status = 'pending'",
-      )
-      .run(txHash, Date.now(), id);
-    return this.get(id);
+  /** Remove a request — on fulfilment (funding now in the ledger) or dismissal. */
+  delete(id: string): void {
+    this.db.query("DELETE FROM payment_requests WHERE id = ?").run(id);
   }
 
   close(): void {

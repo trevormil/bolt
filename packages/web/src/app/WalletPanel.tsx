@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button, Icon, Input } from "@vellum/ui";
-import { api } from "./api.ts";
+import { api, type PaymentRequest } from "./api.ts";
 import { bankSendMsg, loadConfig, signAndBroadcast } from "./keplr.ts";
 import { useWallet } from "./wallet-context.tsx";
 
@@ -19,6 +19,8 @@ export function WalletPanel({ personaId }: { personaId: string }) {
   const [claiming, setClaiming] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reqVersion, setReqVersion] = useState(0);
+  const bumpRequests = useCallback(() => setReqVersion((v) => v + 1), []);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -104,32 +106,42 @@ export function WalletPanel({ personaId }: { personaId: string }) {
       {error && <p className="mt-2 text-xs text-danger">{error}</p>}
 
       {address && (
-        <FundActions
-          personaId={personaId}
-          personaAddress={address}
-          onFunded={refresh}
-        />
+        <>
+          <FundActions
+            personaId={personaId}
+            personaAddress={address}
+            onFunded={refresh}
+            onRequested={bumpRequests}
+          />
+          <PendingRequests
+            personaId={personaId}
+            version={reqVersion}
+            onChange={bumpRequests}
+            onFunded={refresh}
+          />
+        </>
       )}
     </div>
   );
 }
 
 // Human-signed funding (0027 + 0014): fund this persona directly from the
-// connected Keplr wallet, or raise a one-time PaymentRequest link the human (or
-// someone else) opens and pays.
+// connected Keplr wallet, or raise a payment request (it appears in the pending
+// list below — pay it inline or share its /pay link). The agent never pulls funds.
 function FundActions({
   personaId,
   personaAddress,
   onFunded,
+  onRequested,
 }: {
   personaId: string;
   personaAddress: string;
   onFunded: () => void;
+  onRequested: () => void;
 }) {
   const { wallet } = useWallet();
   const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState<"fund" | "request" | null>(null);
-  const [link, setLink] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -163,11 +175,9 @@ function FundActions({
     setError(null);
     setNote(null);
     try {
-      const req = await api.createPaymentRequest(personaId, {
-        amountUsdc: usd,
-      });
-      setLink(`${window.location.origin}/pay/${req.id}`);
+      await api.createPaymentRequest(personaId, { amountUsdc: usd });
       setAmount("");
+      onRequested();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -205,20 +215,126 @@ function FundActions({
       </div>
       {note && <p className="mt-2 text-xs text-muted">{note}</p>}
       {error && <p className="mt-2 text-xs text-danger">{error}</p>}
-      {link && (
-        <button
-          onClick={() => navigator.clipboard?.writeText(link)}
-          className="mt-2 flex w-full items-center gap-2 rounded-md border border-border bg-surface-3 px-2.5 py-2 text-left font-mono text-[11px] text-muted hover:text-fg"
-          title="Copy payment link"
-        >
-          <span className="truncate">{link}</span>
-          <Icon name="copy" size={12} />
-        </button>
-      )}
       <p className="mt-3 text-xs leading-relaxed text-soft">
-        “From my wallet” signs with Keplr (your address). “Request” makes a
-        one-time link anyone can open and pay — the agent never pulls funds.
+        “From my wallet” signs with Keplr (your address). “Request” raises a
+        payment request you can pay inline below or share as a link.
       </p>
+    </div>
+  );
+}
+
+// Full UX for this persona's outstanding payment requests (0014). Each can be
+// paid inline (Keplr, no page nav), shared as a /pay link, or dismissed. Filled
+// requests disappear — the server deletes them once the funding is in the ledger.
+function PendingRequests({
+  personaId,
+  version,
+  onChange,
+  onFunded,
+}: {
+  personaId: string;
+  version: number;
+  onChange: () => void;
+  onFunded: () => void;
+}) {
+  const { wallet } = useWallet();
+  const [requests, setRequests] = useState<PaymentRequest[]>([]);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void api
+      .listPaymentRequests(personaId)
+      .then(setRequests)
+      .catch(() => {});
+  }, [personaId, version]);
+
+  async function pay(req: PaymentRequest) {
+    if (!wallet) return;
+    setBusyId(req.id);
+    setError(null);
+    try {
+      const txHash = await signAndBroadcast(
+        [bankSendMsg(wallet.address, req.toAddress, req.amount, req.denom)],
+        `payment request ${req.id.slice(0, 8)}`,
+      );
+      await api.confirmPaymentRequest(req.id, txHash);
+      onChange();
+      onFunded();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function dismiss(id: string) {
+    setBusyId(id);
+    try {
+      await api.dismissPaymentRequest(id);
+      onChange();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  function copy(id: string) {
+    navigator.clipboard?.writeText(`${window.location.origin}/pay/${id}`);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId((c) => (c === id ? null : c)), 1200);
+  }
+
+  if (requests.length === 0) return null;
+
+  return (
+    <div className="mt-4 border-t border-border pt-4">
+      <div className="text-xs uppercase tracking-wide text-soft">
+        Pending requests
+      </div>
+      {error && <p className="mt-2 text-xs text-danger">{error}</p>}
+      <div className="mt-2 space-y-2">
+        {requests.map((r) => (
+          <div
+            key={r.id}
+            className="rounded-md border border-border bg-surface-3 p-2.5"
+          >
+            <div className="flex items-baseline justify-between">
+              <span className="font-mono text-sm">
+                {fmtUsdc(r.amount)} USDC
+              </span>
+              <span className="truncate pl-2 text-[11px] text-soft">
+                {r.memo}
+              </span>
+            </div>
+            <div className="mt-2 flex items-center gap-1.5">
+              <Button
+                size="sm"
+                onClick={() => pay(r)}
+                disabled={!wallet || busyId !== null}
+                title={wallet ? "Pay now with Keplr" : "Connect Keplr to pay"}
+              >
+                {busyId === r.id ? "Signing…" : "Pay"}
+              </Button>
+              <button
+                onClick={() => copy(r.id)}
+                title="Copy /pay link"
+                className="grid h-7 w-7 place-items-center rounded-md border border-border text-soft hover:text-fg"
+              >
+                <Icon name={copiedId === r.id ? "check" : "link"} size={13} />
+              </button>
+              <button
+                onClick={() => dismiss(r.id)}
+                disabled={busyId !== null}
+                title="Dismiss"
+                className="grid h-7 w-7 place-items-center rounded-md border border-border text-soft hover:text-danger"
+              >
+                <Icon name="trash" size={13} />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

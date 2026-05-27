@@ -45,13 +45,6 @@ export function LedgerView({ personaId }: { personaId: string }) {
               {budget.llm.capUsd.toFixed(2)} (24h)
             </span>
           </span>
-          <span>
-            Free-form:{" "}
-            <span className="text-muted">
-              ${budget.freeform.balanceUsd.toFixed(2)} / $
-              {budget.freeform.capUsd} cap
-            </span>
-          </span>
         </div>
       )}
 

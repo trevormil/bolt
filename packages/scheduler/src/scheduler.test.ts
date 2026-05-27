@@ -56,23 +56,20 @@ describe("checkIn", () => {
     expect(ci!.lines.some((l) => l.includes("LLM spend"))).toBe(true);
   });
 
-  test("nudges when the free-form balance is near the cap", async () => {
-    const engine = engineWith(24); // $24 of a $25 cap → $1 headroom ≤ $5
+  test("respects a custom budget-warn ratio", async () => {
+    const engine = engineWith(1);
     await persona(engine);
-    const ci = await checkIn(engine, "p");
-    expect(ci).not.toBeNull();
-    expect(ci!.lines.some((l) => l.includes("near the"))).toBe(true);
-  });
-
-  test("respects custom thresholds", async () => {
-    const engine = engineWith(10); // $15 headroom
-    await persona(engine);
-    expect(
-      await checkIn(engine, "p", { freeformWarnHeadroomUsd: 20 }),
-    ).not.toBeNull();
-    expect(
-      await checkIn(engine, "p", { freeformWarnHeadroomUsd: 5 }),
-    ).toBeNull();
+    engine.ledger.record({
+      personaId: "p",
+      kind: "message",
+      summary: "turn",
+      authority: "agent",
+      costUsd: 0.5, // 50% of the $1 cap
+    });
+    // Default 0.8 ratio → quiet at 50%; a 0.4 ratio → nudge.
+    expect(await checkIn(engine, "p")).toBeNull();
+    const ci = await checkIn(engine, "p", { budgetWarnRatio: 0.4 });
+    expect(ci!.lines.some((l) => l.includes("LLM spend"))).toBe(true);
   });
 });
 

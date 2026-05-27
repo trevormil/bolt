@@ -5,6 +5,7 @@ import type { TxChain } from "@vellum/tx";
 import { env } from "@vellum/shared";
 import { createEngine } from "@vellum/engine";
 import { buildApp, webServeOptions } from "./server.ts";
+import { PaymentRequests } from "./payment-requests.ts";
 
 const METER: Meter = {
   model: "test",
@@ -81,7 +82,7 @@ let engine: ReturnType<typeof createEngine>;
 let app: ReturnType<typeof buildApp>;
 beforeEach(() => {
   engine = makeEngine();
-  app = buildApp(engine);
+  app = buildApp(engine, new PaymentRequests(":memory:"));
 });
 
 const post = (path: string, body: unknown) =>
@@ -195,18 +196,17 @@ describe("web API", () => {
     expect(pending.status).toBe("pending");
   });
 
-  test("budget route reports LLM + free-form caps", async () => {
+  test("budget route reports the LLM-spend cap (no free-form cap)", async () => {
     await post("/api/personas", { name: "Atlas" });
     const b = (await (
       await app.request("/api/personas/atlas/budget")
     ).json()) as {
       llm: { capUsd: number; ok: boolean };
-      freeform: { capUsd: number; balanceUsd: number };
+      freeform?: unknown;
     };
     expect(b.llm.capUsd).toBe(1);
     expect(b.llm.ok).toBe(true);
-    expect(b.freeform.capUsd).toBe(25);
-    expect(b.freeform.balanceUsd).toBeCloseTo(0.0005, 6); // 500 µUSDC
+    expect(b.freeform).toBeUndefined(); // no discretionary USDC cap — vaults only
   });
 
   test("chat is refused once the LLM budget is exceeded (no model call)", async () => {
@@ -237,24 +237,24 @@ describe("web API", () => {
     expect(body.costUsd).toBe(0); // the model was NOT called
   });
 
-  test("faucet is refused once the free-form cap is reached", async () => {
-    const overCap = buildApp(
+  test("faucet has no free-form cap — claims even at a high balance", async () => {
+    const rich = buildApp(
       makeEngine({
         getBalances: async () => [
-          { denom: env.VELLUM_DENOM, amount: "25000000" },
+          { denom: env.VELLUM_DENOM, amount: "25000000" }, // $25, formerly the cap
         ],
       }),
     );
-    await overCap.request("/api/personas", {
+    await rich.request("/api/personas", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: "Rich" }),
     });
-    const res = await overCap.request("/api/personas/rich/faucet", {
+    const res = await rich.request("/api/personas/rich/faucet", {
       method: "POST",
     });
-    expect(res.status).toBe(409);
-    expect(((await res.json()) as { error: string }).error).toContain("cap");
+    expect(res.status).toBe(200);
+    expect((await res.json()) as { txHash?: string }).toHaveProperty("txHash");
   });
 
   test("vault create validates name + symbol", async () => {
@@ -371,12 +371,10 @@ describe("payment requests (0014)", () => {
     const req = (await created.json()) as {
       id: string;
       amount: string;
-      status: string;
       toAddress: string;
       memo: string;
     };
     expect(req.amount).toBe("12500000"); // µUSDC
-    expect(req.status).toBe("pending");
     expect(req.toAddress.startsWith("bb1")).toBe(true);
     expect(req.memo).toBe("lunch");
 
@@ -412,5 +410,32 @@ describe("payment requests (0014)", () => {
     expect(
       (await post(`/api/payment-requests/${req.id}/confirm`, {})).status,
     ).toBe(400);
+  });
+
+  test("dismiss deletes a pending request (no funding recorded)", async () => {
+    await post("/api/personas", { name: "Atlas" });
+    const req = (await (
+      await post("/api/personas/atlas/payment-requests", { amountUsdc: 3 })
+    ).json()) as { id: string };
+
+    const before = (await (
+      await app.request("/api/personas/atlas/payment-requests")
+    ).json()) as { requests: { id: string }[] };
+    expect(before.requests.map((r) => r.id)).toContain(req.id);
+
+    const del = await app.request(`/api/payment-requests/${req.id}`, {
+      method: "DELETE",
+    });
+    expect(del.status).toBe(200);
+
+    const after = (await (
+      await app.request("/api/personas/atlas/payment-requests")
+    ).json()) as { requests: { id: string }[] };
+    expect(after.requests).toHaveLength(0);
+    // Dismissal is not a funding event — the ledger stays clean.
+    const led = (await (
+      await app.request("/api/personas/atlas/ledger")
+    ).json()) as { entries: { kind: string }[] };
+    expect(led.entries.some((e) => e.kind === "funding")).toBe(false);
   });
 });

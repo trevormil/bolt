@@ -49,10 +49,9 @@ export const envSchema = z.object({
   // manager capability). Until Keplr (0027) supplies it dynamically, configure here.
   VELLUM_PRINCIPAL_ADDRESS: z.string().optional(),
   // Per-persona LLM-spend budget (0009): max $/persona per rolling 24h window
-  // (OpenRouter-tracked via the ledger). Free-form USDC cap (0010): the discretionary
-  // x/bank tier ceiling per persona, enforced by never funding above it.
+  // (OpenRouter-tracked via the ledger). This is a cost guardrail, NOT a limit on
+  // the user's USDC — there is no free-form spending cap; USDC limits live in vaults.
   VELLUM_LLM_BUDGET_USD: z.coerce.number().default(1),
-  VELLUM_FREEFORM_CAP_USD: z.coerce.number().default(25),
   // Per-persona check-in cadence (0018). Default 6h; lower it for demos.
   VELLUM_CHECKIN_INTERVAL_MS: z.coerce.number().default(6 * 60 * 60 * 1000),
 

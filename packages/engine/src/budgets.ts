@@ -2,7 +2,6 @@ import { env } from "@vellum/shared";
 import type { Ledger } from "@vellum/ledger";
 
 const DAY_MS = 86_400_000;
-const USDC = 1e6;
 
 export interface LlmBudget {
   spentUsd: number;
@@ -30,27 +29,7 @@ export function llmBudget(
   };
 }
 
-export interface FreeformCap {
-  balanceUsd: number;
-  capUsd: number;
-  headroomUsd: number;
-  atCap: boolean; // true once the discretionary balance reaches the ceiling
-}
-
-/**
- * Free-form USDC cap (0010): the discretionary x/bank tier has no on-chain rule
- * enforcement, so it's bounded by never funding above the ceiling. `balanceMicro`
- * is base µUSDC.
- */
-export function freeformCap(
-  balanceMicro: string,
-  capUsd = env.VELLUM_FREEFORM_CAP_USD,
-): FreeformCap {
-  const balanceUsd = Number(balanceMicro) / USDC;
-  return {
-    balanceUsd,
-    capUsd,
-    headroomUsd: Math.max(0, capUsd - balanceUsd),
-    atCap: balanceUsd >= capUsd,
-  };
-}
+// NOTE: there is intentionally no free-form / discretionary USDC cap. Spending
+// limits live exclusively in vaults (on-chain, protocol-enforced rules); the
+// free-form x/bank balance is unconstrained. The LLM-spend budget above is a
+// separate cost guardrail, not a limit on the user's money.

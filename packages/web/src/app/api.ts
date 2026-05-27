@@ -91,12 +91,6 @@ export const api = {
           remainingUsd: number;
           ok: boolean;
         };
-        freeform: {
-          balanceUsd: number;
-          capUsd: number;
-          headroomUsd: number;
-          atCap: boolean;
-        };
       }>(r),
     ),
 
@@ -147,9 +141,16 @@ export const api = {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ txHash }),
-    }).then((r) => json<PaymentRequest>(r)),
+    }).then((r) => json<{ ok: boolean; txHash: string; amount: string }>(r)),
+
+  dismissPaymentRequest: (reqId: string) =>
+    fetch(`/api/payment-requests/${reqId}`, { method: "DELETE" }).then((r) =>
+      json<{ ok: boolean }>(r),
+    ),
 };
 
+// A pending (outstanding) payment request. Filled ones are deleted — the ledger
+// keeps the permanent funding trail — so any request the API returns is pending.
 export interface PaymentRequest {
   id: string;
   personaId: string;
@@ -157,10 +158,7 @@ export interface PaymentRequest {
   denom: string;
   amount: string; // base µUSDC
   memo: string;
-  status: "pending" | "paid";
-  txHash: string | null;
   created: number;
-  paidAt: number | null;
 }
 
 export interface Vault {
