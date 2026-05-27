@@ -62,19 +62,36 @@ interface AccountInfo {
   accountNumber: number;
   sequence: number;
 }
-async function fetchAccount(address: string): Promise<AccountInfo> {
+interface AccountResponse {
+  account?: { account_number?: string; sequence?: string };
+}
+
+/**
+ * Parse a cosmos auth/accounts response into AccountInfo, or null when the
+ * account isn't registered on-chain. The distinction matters: account numbers
+ * are zero-based, so a registered first account legitimately has number 0 —
+ * "not found" must be signalled by the missing account object (or a non-OK
+ * response), never by treating 0 as a sentinel. Pure for unit testing.
+ */
+export function parseAccountResponse(
+  ok: boolean,
+  json: AccountResponse,
+): AccountInfo | null {
+  if (!ok) return null; // 404 etc. — account does not exist
+  const acct = json.account;
+  if (!acct || acct.account_number == null) return null; // no account on-chain
+  return {
+    accountNumber: Number(acct.account_number),
+    sequence: Number(acct.sequence ?? 0),
+  };
+}
+
+async function fetchAccount(address: string): Promise<AccountInfo | null> {
   const res = await fetch(
     `${env.BITBADGES_LCD}/cosmos/auth/v1beta1/accounts/${address}`,
     { signal: AbortSignal.timeout(15_000) },
   );
-  const json = (await res.json()) as {
-    account?: { account_number?: string; sequence?: string };
-  };
-  const acct = json.account ?? {};
-  return {
-    accountNumber: Number(acct.account_number ?? 0),
-    sequence: Number(acct.sequence ?? 0),
-  };
+  return parseAccountResponse(res.ok, (await res.json()) as AccountResponse);
 }
 
 /**
@@ -91,12 +108,13 @@ export async function signAndBroadcast(
 ): Promise<string> {
   const address = adapter.address;
   const publicKey = await adapter.getPublicKey();
-  const { accountNumber, sequence } = await fetchAccount(address);
-  if (accountNumber <= 0) {
+  const account = await fetchAccount(address);
+  if (!account) {
     throw new Error(
       `account ${address} is unregistered on-chain — fund it (any coin) first`,
     );
   }
+  const { accountNumber, sequence } = account;
   const txContext = {
     testnet: false,
     sender: { address, accountNumber, sequence, publicKey },

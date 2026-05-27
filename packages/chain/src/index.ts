@@ -14,6 +14,7 @@ export {
   deriveAdapter,
   signAndBroadcast,
   bankSendMsg,
+  parseAccountResponse,
   type MsgJson,
 } from "./sdk.ts";
 
