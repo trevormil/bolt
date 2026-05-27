@@ -1,12 +1,12 @@
 ---
 id: 6
 title: "Persona/compartment core — hard-walled memory + SOUL"
-status: open
+status: in-progress
 priority: critical
 type: feature
 source: planning
 created: 2026-05-26
-updated: 2026-05-26
+updated: 2026-05-27
 prs: []
 refs: ["ARCHITECTURE.md"]
 ---

@@ -35,6 +35,13 @@
         "@vellum/shared": "workspace:*",
       },
     },
+    "packages/persona": {
+      "name": "@vellum/persona",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vellum/shared": "workspace:*",
+      },
+    },
     "packages/shared": {
       "name": "@vellum/shared",
       "version": "0.0.0",
@@ -144,6 +151,8 @@
     "@vellum/chain": ["@vellum/chain@workspace:packages/chain"],
 
     "@vellum/llm": ["@vellum/llm@workspace:packages/llm"],
+
+    "@vellum/persona": ["@vellum/persona@workspace:packages/persona"],
 
     "@vellum/shared": ["@vellum/shared@workspace:packages/shared"],
 
