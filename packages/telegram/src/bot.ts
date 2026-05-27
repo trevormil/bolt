@@ -18,7 +18,11 @@ export function buildBot(token: string): Bot {
     return onCallback(ctx);
   });
   bot.on("message:text", (ctx) => {
-    log.info(`message from @${who(ctx)}: ${ctx.message.text}`);
+    // Never log raw message bodies — they can contain secrets / payment context.
+    // Metadata only (sender + length).
+    log.info(
+      `message:text from @${who(ctx)} (${ctx.message.text.length} chars)`,
+    );
     return onText(ctx);
   });
   return bot;
