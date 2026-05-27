@@ -23,7 +23,10 @@ bun packages/web/src/server.ts          # API on :8787
 cd packages/web && bun run dev:web      # SPA on :5173, proxies /api → :8787
 ```
 
-`VELLUM_DB_PATH` (default `./vellum.db`) and `WEB_PORT` (default `8787`) are env-tunable.
+`VELLUM_DB_PATH` (default `./vellum.db`), `WEB_PORT` (default `8787`), and `WEB_HOST`
+(default `127.0.0.1`) are env-tunable. The API is **unauthenticated**, so the server
+binds **loopback only** by default — exposing it beyond localhost (e.g. `WEB_HOST=0.0.0.0`)
+is an explicit opt-in and should sit behind auth/a firewall.
 
 ## What works today
 

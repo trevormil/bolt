@@ -45,7 +45,13 @@ export function buildApp(engine: Engine) {
     };
     const name = (body.name ?? "").trim();
     if (!name) return c.json({ error: "name is required" }, 400);
-    const id = body.id?.trim() || slug(name);
+    // An explicit id must be slug-safe: routing encodes it into `/switch <id>`
+    // (\S+) and it becomes a path param, so spaces/punctuation break chat.
+    const explicit = body.id?.trim();
+    if (explicit && !/^[a-z0-9-]+$/.test(explicit)) {
+      return c.json({ error: "id must match /^[a-z0-9-]+$/" }, 400);
+    }
+    const id = explicit || slug(name);
     if (engine.store.getPersona(id)) {
       return c.json({ error: `persona already exists: ${id}` }, 409);
     }
@@ -131,10 +137,15 @@ export function buildApp(engine: Engine) {
   return app;
 }
 
+// Bun.serve options. Binds loopback by default (the API is unauthenticated);
+// set WEB_HOST=0.0.0.0 to expose beyond localhost. Exported for testability.
+export function webServeOptions(app: ReturnType<typeof buildApp>) {
+  return { port: env.WEB_PORT, hostname: env.WEB_HOST, fetch: app.fetch };
+}
+
 if (import.meta.main) {
-  const engine = createEngine();
-  const app = buildApp(engine);
-  const port = env.WEB_PORT;
-  log.info(`Vellum web · http://localhost:${port}`);
-  Bun.serve({ port, fetch: app.fetch });
+  const app = buildApp(createEngine());
+  const opts = webServeOptions(app);
+  log.info(`Vellum web · http://${opts.hostname}:${opts.port}`);
+  Bun.serve(opts);
 }

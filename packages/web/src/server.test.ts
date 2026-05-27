@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import type { Meter } from "@vellum/llm";
 import type { RunLoop } from "@vellum/orchestrator";
 import { createEngine } from "./engine.ts";
-import { buildApp } from "./server.ts";
+import { buildApp, webServeOptions } from "./server.ts";
 
 const METER: Meter = {
   model: "test",
@@ -108,6 +108,36 @@ describe("web API", () => {
     };
     expect(led.entries.some((e) => e.kind === "message")).toBe(true);
     expect(led.summary.totalCostUsd).toBeCloseTo(0.0002, 9);
+  });
+
+  test("rejects slug-unsafe explicit ids; a valid slug id works end to end", async () => {
+    expect(
+      (await post("/api/personas", { id: "foo bar", name: "Foo" })).status,
+    ).toBe(400);
+    expect(
+      (await post("/api/personas", { id: "Foo_Bar", name: "Foo" })).status,
+    ).toBe(400);
+
+    expect(
+      (await post("/api/personas", { id: "atlas-2", name: "Atlas Two" }))
+        .status,
+    ).toBe(201);
+    expect((await app.request("/api/personas/atlas-2/wallet")).status).toBe(
+      200,
+    );
+    expect((await app.request("/api/personas/atlas-2/ledger")).status).toBe(
+      200,
+    );
+    const chat = await post("/api/chat", {
+      conversationId: "c1",
+      personaId: "atlas-2",
+      message: "hi",
+    });
+    expect(chat.status).toBe(200);
+  });
+
+  test("server binds loopback by default", () => {
+    expect(webServeOptions(app).hostname).toBe("127.0.0.1");
   });
 
   test("chat validates input + unknown persona", async () => {

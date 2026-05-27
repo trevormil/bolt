@@ -27,9 +27,11 @@ export const envSchema = z.object({
   LANGFUSE_HOST: z.string().url().optional(),
 
   // Web app: persistent sqlite path (personas/memory/wallets/routing/ledger) +
-  // the API/static server port.
+  // the API/static server bind. Defaults to loopback — the API is unauthenticated,
+  // so exposing it beyond localhost is an explicit opt-in (WEB_HOST=0.0.0.0).
   VELLUM_DB_PATH: z.string().default("./vellum.db"),
   WEB_PORT: z.coerce.number().default(8787),
+  WEB_HOST: z.string().default("127.0.0.1"),
 
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 });
