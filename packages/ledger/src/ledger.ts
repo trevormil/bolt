@@ -193,6 +193,19 @@ export class Ledger {
     };
   }
 
+  /** Cost + tokens for a persona since `sinceTs` (rolling-window budgets, 0009). */
+  spendSince(
+    personaId: string,
+    sinceTs: number,
+  ): { costUsd: number; tokens: number } {
+    const r = this.db
+      .query(
+        "SELECT COALESCE(SUM(cost_usd),0) AS c, COALESCE(SUM(tokens),0) AS t FROM ledger WHERE persona_id = ? AND ts >= ?",
+      )
+      .get(personaId, sinceTs) as { c: number; t: number };
+    return { costUsd: r.c, tokens: r.t };
+  }
+
   close(): void {
     this.db.close();
   }

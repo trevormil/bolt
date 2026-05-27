@@ -39,9 +39,7 @@ export interface VaultServiceDeps {
   createVault?: typeof tokCreateVault;
   confirmTx?: typeof chainConfirmTx;
   // Fetch a confirmed tx's LCD response (for parsing the new vault's ids).
-  fetchTx?: (
-    hash: string,
-  ) => Promise<{
+  fetchTx?: (hash: string) => Promise<{
     events?: { type: string; attributes: { key: string; value: string }[] }[];
   }>;
   defaultManager?: string; // fallback manager addr (engine passes env.VELLUM_PRINCIPAL_ADDRESS)

@@ -3,6 +3,7 @@ import { tracer } from "@vellum/trace";
 import { createLogger, env } from "@vellum/shared";
 import { createEngine, type Engine } from "./engine.ts";
 import { vaultTools } from "./agent-tools.ts";
+import { freeformCap, llmBudget } from "./budgets.ts";
 
 // Built SPA dir, resolved from this file (cwd-independent) so the server can be
 // launched from the repo root (where .env loads) or from packages/web alike.
@@ -79,13 +80,40 @@ export function buildApp(engine: Engine) {
     return c.json({ address: wallet.address, usdc });
   });
 
-  // Devnet USDC faucet — fund a persona's wallet (10 USDC/claim).
+  // Devnet USDC faucet — fund a persona's wallet (10 USDC/claim). Refused once the
+  // free-form (discretionary x/bank) balance hits the cap (0010 — never fund above it).
   app.post("/api/personas/:id/faucet", async (c) => {
     const id = c.req.param("id");
     if (!engine.store.getPersona(id))
       return c.json({ error: "unknown persona" }, 404);
     const { address } = await engine.wallets.ensureWallet(id);
+    const balances = await engine.wallets.balanceFor(id);
+    const usdc =
+      balances.find((b) => b.denom === env.VELLUM_DENOM)?.amount ?? "0";
+    const cap = freeformCap(usdc);
+    if (cap.atCap) {
+      return c.json(
+        {
+          error: `free-form cap $${cap.capUsd} reached ($${cap.balanceUsd.toFixed(2)}) — move funds into a vault`,
+        },
+        409,
+      );
+    }
     return c.json(await engine.claimFaucet(address));
+  });
+
+  // Budgets/caps for a persona (0009 LLM-spend + 0010 free-form USDC).
+  app.get("/api/personas/:id/budget", async (c) => {
+    const id = c.req.param("id");
+    if (!engine.store.getPersona(id))
+      return c.json({ error: "unknown persona" }, 404);
+    const balances = await engine.wallets.balanceFor(id);
+    const usdc =
+      balances.find((b) => b.denom === env.VELLUM_DENOM)?.amount ?? "0";
+    return c.json({
+      llm: llmBudget(engine.ledger, id),
+      freeform: freeformCap(usdc),
+    });
   });
 
   // Spend from a persona's wallet, governed by the tx-lifecycle invariant (0023):
@@ -190,6 +218,18 @@ export function buildApp(engine: Engine) {
     }
     if (!engine.store.getPersona(personaId)) {
       return c.json({ error: `unknown persona: ${personaId}` }, 404);
+    }
+    // Per-persona LLM-spend budget (0009): refuse BEFORE the model call when the
+    // rolling-window cap is reached — bounds a runaway agent's spend.
+    const budget = llmBudget(engine.ledger, personaId);
+    if (!budget.ok) {
+      return c.json({
+        reply: `Daily LLM budget of $${budget.capUsd.toFixed(2)} reached (spent $${budget.spentUsd.toFixed(4)}). It resets on a rolling 24h window.`,
+        personaId,
+        costUsd: 0,
+        tokens: 0,
+        budgetExceeded: true,
+      });
     }
     // Deterministically bind this conversation to the chosen persona, then
     // dispatch. The agent reasons only over that persona's own memory.

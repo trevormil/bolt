@@ -55,9 +55,8 @@ const fakeCreateTxEvents = {
   ],
 };
 
-let app: ReturnType<typeof buildApp>;
-beforeEach(() => {
-  const engine = createEngine({
+function makeEngine(over: Parameters<typeof createEngine>[0] = {}) {
+  return createEngine({
     dbPath: ":memory:",
     embedder: null, // BM25-only; no embedding API in tests
     runLoop: fakeRunLoop,
@@ -74,7 +73,14 @@ beforeEach(() => {
       confirmTx: async () => ({ height: 9, code: 0 }),
       fetchTx: async () => fakeCreateTxEvents,
     },
+    ...over,
   });
+}
+
+let engine: ReturnType<typeof createEngine>;
+let app: ReturnType<typeof buildApp>;
+beforeEach(() => {
+  engine = makeEngine();
   app = buildApp(engine);
 });
 
@@ -187,6 +193,68 @@ describe("web API", () => {
     const pending = (await wd.json()) as { kind: string; status: string };
     expect(pending.kind).toBe("vault_op");
     expect(pending.status).toBe("pending");
+  });
+
+  test("budget route reports LLM + free-form caps", async () => {
+    await post("/api/personas", { name: "Atlas" });
+    const b = (await (
+      await app.request("/api/personas/atlas/budget")
+    ).json()) as {
+      llm: { capUsd: number; ok: boolean };
+      freeform: { capUsd: number; balanceUsd: number };
+    };
+    expect(b.llm.capUsd).toBe(1);
+    expect(b.llm.ok).toBe(true);
+    expect(b.freeform.capUsd).toBe(25);
+    expect(b.freeform.balanceUsd).toBeCloseTo(0.0005, 6); // 500 µUSDC
+  });
+
+  test("chat is refused once the LLM budget is exceeded (no model call)", async () => {
+    await post("/api/personas", { name: "Atlas" });
+    // Seed >$1 of spend in the rolling window.
+    engine.ledger.recordAgentRun("atlas", "prior", [
+      {
+        model: "m",
+        tier: "cheap",
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 1000,
+        costUsd: 1.5,
+        ms: 0,
+      },
+    ]);
+    const res = await post("/api/chat", {
+      conversationId: "c1",
+      personaId: "atlas",
+      message: "hi",
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      budgetExceeded?: boolean;
+      costUsd: number;
+    };
+    expect(body.budgetExceeded).toBe(true);
+    expect(body.costUsd).toBe(0); // the model was NOT called
+  });
+
+  test("faucet is refused once the free-form cap is reached", async () => {
+    const overCap = buildApp(
+      makeEngine({
+        getBalances: async () => [
+          { denom: env.VELLUM_DENOM, amount: "25000000" },
+        ],
+      }),
+    );
+    await overCap.request("/api/personas", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Rich" }),
+    });
+    const res = await overCap.request("/api/personas/rich/faucet", {
+      method: "POST",
+    });
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: string }).error).toContain("cap");
   });
 
   test("vault create validates name + symbol", async () => {

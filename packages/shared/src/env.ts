@@ -48,6 +48,11 @@ export const envSchema = z.object({
   // The human principal's bb1 address — set as vault manager (agent has zero
   // manager capability). Until Keplr (0027) supplies it dynamically, configure here.
   VELLUM_PRINCIPAL_ADDRESS: z.string().optional(),
+  // Per-persona LLM-spend budget (0009): max $/persona per rolling 24h window
+  // (OpenRouter-tracked via the ledger). Free-form USDC cap (0010): the discretionary
+  // x/bank tier ceiling per persona, enforced by never funding above it.
+  VELLUM_LLM_BUDGET_USD: z.coerce.number().default(1),
+  VELLUM_FREEFORM_CAP_USD: z.coerce.number().default(25),
 
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 });

@@ -82,6 +82,24 @@ export const api = {
       body: JSON.stringify(input),
     }).then((r) => json<ChatReply>(r)),
 
+  budget: (id: string) =>
+    fetch(`/api/personas/${id}/budget`).then((r) =>
+      json<{
+        llm: {
+          spentUsd: number;
+          capUsd: number;
+          remainingUsd: number;
+          ok: boolean;
+        };
+        freeform: {
+          balanceUsd: number;
+          capUsd: number;
+          headroomUsd: number;
+          atCap: boolean;
+        };
+      }>(r),
+    ),
+
   listVaults: (id: string) =>
     fetch(`/api/personas/${id}/vaults`)
       .then((r) => json<{ vaults: Vault[] }>(r))

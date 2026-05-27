@@ -2,9 +2,12 @@ import { useEffect, useState } from "react";
 import { Badge, Card, Icon } from "@vellum/ui";
 import { api, type LedgerEntry, type LedgerSummary } from "./api.ts";
 
+type Budget = Awaited<ReturnType<typeof api.budget>>;
+
 export function LedgerView({ personaId }: { personaId: string }) {
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
   const [summary, setSummary] = useState<LedgerSummary | null>(null);
+  const [budget, setBudget] = useState<Budget | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -13,6 +16,7 @@ export function LedgerView({ personaId }: { personaId: string }) {
       setEntries(d.entries);
       setSummary(d.summary);
     });
+    api.budget(personaId).then((b) => live && setBudget(b));
     return () => {
       live = false;
     };
@@ -31,6 +35,25 @@ export function LedgerView({ personaId }: { personaId: string }) {
         />
         <Stat label="Actions" value={String(summary?.entries ?? 0)} />
       </div>
+
+      {budget && (
+        <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-soft">
+          <span>
+            LLM budget:{" "}
+            <span className={budget.llm.ok ? "text-muted" : "text-danger"}>
+              ${budget.llm.spentUsd.toFixed(4)} / $
+              {budget.llm.capUsd.toFixed(2)} (24h)
+            </span>
+          </span>
+          <span>
+            Free-form:{" "}
+            <span className="text-muted">
+              ${budget.freeform.balanceUsd.toFixed(2)} / $
+              {budget.freeform.capUsd} cap
+            </span>
+          </span>
+        </div>
+      )}
 
       <h3 className="mb-2 mt-6 text-sm font-medium text-muted">
         Proof-of-action ledger
