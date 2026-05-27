@@ -166,6 +166,17 @@ export class TxManager {
     };
 
     try {
+      // Durable per-persona guard (§13.4): no new tx while ANY row for this
+      // persona is still pending — including after a confirmation timeout (row
+      // stays pending) or a crash+restart (reconcile() settles it first). This
+      // is the authoritative guard; the in-memory lock just serializes the
+      // check+broadcast window so two concurrent spends can't both pass it.
+      if (this.pending(personaId).length > 0) {
+        throw new Error(
+          `persona ${personaId} has a pending tx — wait for it to settle`,
+        );
+      }
+
       const from = this.wallets.addressFor(personaId);
       if (!from) throw new Error(`no wallet for persona: ${personaId}`);
 
