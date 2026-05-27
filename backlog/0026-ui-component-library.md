@@ -7,7 +7,7 @@ type: feature
 source: planning
 created: 2026-05-27
 updated: 2026-05-27
-prs: []
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/6"]
 refs: ["ARCHITECTURE.md"]
 ---
 
