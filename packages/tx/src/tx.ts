@@ -301,8 +301,11 @@ export class TxManager {
     const hash = row.hash;
     try {
       const { height } = await this.chain.confirmTx(hash);
-      this.setStatus(id, "confirmed", { height });
-      this.ledger.record({
+      // Ledger FIRST, then mark confirmed. A crash between the two leaves the row
+      // PENDING so reconcile() re-drives it; recordOnchain is idempotent on the
+      // txHash, so the retry is a no-op rather than a duplicate ledger entry. The
+      // reverse order would lose the entry forever (reconcile skips confirmed rows).
+      this.ledger.recordOnchain({
         personaId: row.personaId,
         kind: row.kind,
         summary: `${row.kind} ${usdc(row.amount)} → ${row.to}`,
@@ -310,6 +313,7 @@ export class TxManager {
         txHash: hash,
         meta: { height, denom: row.denom, amount: row.amount, to: row.to },
       });
+      this.setStatus(id, "confirmed", { height });
       log.info(`confirmed ${hash.slice(0, 10)} @ ${height}`);
     } catch (e) {
       const error = e instanceof Error ? e.message : String(e);

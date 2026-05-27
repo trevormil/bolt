@@ -13,6 +13,10 @@ import {
 // launched from the repo root (where .env loads) or from packages/web alike.
 const DIST = new URL("../dist/", import.meta.url).pathname;
 
+// Meridian devnet faucet mints a fixed 10 USDC/claim — used to gate against
+// overshooting the free-form cap (0010).
+const FAUCET_CLAIM_USDC = 10;
+
 const log = createLogger("web");
 
 function slug(name: string): string {
@@ -95,10 +99,13 @@ export function buildApp(engine: Engine) {
     const usdc =
       balances.find((b) => b.denom === env.VELLUM_DENOM)?.amount ?? "0";
     const cap = freeformCap(usdc);
-    if (cap.atCap) {
+    // Refuse if a full claim wouldn't fit under the cap — not just when already
+    // at it. The faucet mints a fixed amount, so gating on headroom (vs atCap)
+    // is what actually keeps the discretionary balance from overshooting (0010).
+    if (cap.headroomUsd < FAUCET_CLAIM_USDC) {
       return c.json(
         {
-          error: `free-form cap $${cap.capUsd} reached ($${cap.balanceUsd.toFixed(2)}) — move funds into a vault`,
+          error: `free-form cap $${cap.capUsd} would be exceeded by a $${FAUCET_CLAIM_USDC} claim (balance $${cap.balanceUsd.toFixed(2)}, headroom $${cap.headroomUsd.toFixed(2)}) — move funds into a vault`,
         },
         409,
       );

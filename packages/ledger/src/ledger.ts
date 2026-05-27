@@ -93,6 +93,12 @@ export class Ledger {
     this.db.run(
       "CREATE INDEX IF NOT EXISTS idx_ledger_persona_ts ON ledger(persona_id, ts)",
     );
+    // One ledger row per on-chain tx. Lets recordOnchain() dedupe a crash-retry
+    // (confirm → crash → reconcile re-confirms) into a no-op instead of a double
+    // entry. Partial so the many LLM-cost rows (tx_hash IS NULL) are unconstrained.
+    this.db.run(
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_ledger_txhash ON ledger(tx_hash) WHERE tx_hash IS NOT NULL",
+    );
   }
 
   /** Append one immutable entry. */
@@ -129,6 +135,23 @@ export class Ledger {
       txHash: input.txHash ?? null,
       meta: input.meta ?? {},
     };
+  }
+
+  /**
+   * Idempotent insert for a confirmed on-chain tx, keyed on txHash (0023). Safe
+   * to call again after a crash between the ledger write and the tx row being
+   * marked confirmed: the second call returns `created: false` and writes
+   * nothing. Requires a non-null txHash (use record() for off-chain entries).
+   */
+  recordOnchain(input: LedgerInput & { txHash: string }): {
+    entry: LedgerEntry;
+    created: boolean;
+  } {
+    const existing = this.db
+      .query("SELECT * FROM ledger WHERE tx_hash = ?")
+      .get(input.txHash) as LedgerRow | null;
+    if (existing) return { entry: toEntry(existing), created: false };
+    return { entry: this.record(input), created: true };
   }
 
   /**
