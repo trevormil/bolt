@@ -11,6 +11,65 @@ const DIST = new URL("../dist/", import.meta.url).pathname;
 
 const log = createLogger("web");
 
+// Sum the µamount of `denom` credited TO `toAddress` by a tx's coin_received
+// events. Used to verify a payment-request tx actually moved the requested funds
+// to the persona — confirming the tx merely committed isn't enough (any
+// confirmed hash could otherwise be replayed to fake a funding). Pure for tests.
+export function creditedAmount(
+  events: { type: string; attributes?: { key: string; value: string }[] }[],
+  toAddress: string,
+  denom: string,
+): bigint {
+  let total = 0n;
+  for (const e of events) {
+    if (e.type !== "coin_received") continue;
+    let receiver: string | undefined;
+    let amount: string | undefined;
+    for (const a of e.attributes ?? []) {
+      if (a.key === "receiver") receiver = a.value;
+      else if (a.key === "amount") amount = a.value;
+    }
+    if (receiver !== toAddress || !amount) continue;
+    // amount is comma-separated "<micro><denom>" entries.
+    for (const part of amount.split(",")) {
+      if (part.endsWith(denom)) {
+        const num = part.slice(0, part.length - denom.length);
+        if (/^[0-9]+$/.test(num)) total += BigInt(num);
+      }
+    }
+  }
+  return total;
+}
+
+// Fetch a committed tx and confirm it credited `toAddress` at least `minMicro`
+// of `denom`.
+async function verifyCredit(
+  hash: string,
+  toAddress: string,
+  denom: string,
+  minMicro: string,
+): Promise<boolean> {
+  const res = await fetch(
+    `${env.BITBADGES_LCD}/cosmos/tx/v1beta1/txs/${hash}`,
+    {
+      signal: AbortSignal.timeout(15_000),
+    },
+  );
+  if (!res.ok) return false;
+  const j = (await res.json()) as {
+    tx_response?: {
+      events?: {
+        type: string;
+        attributes?: { key: string; value: string }[];
+      }[];
+    };
+  };
+  return (
+    creditedAmount(j.tx_response?.events ?? [], toAddress, denom) >=
+    BigInt(minMicro)
+  );
+}
+
 function slug(name: string): string {
   return (
     name
@@ -250,6 +309,19 @@ export function buildApp(
     if (!txHash) return c.json({ error: "txHash is required" }, 400);
     try {
       await confirmTx(txHash); // throws on revert / not-yet-committed
+      // Verify the tx actually credited THIS persona the requested amount —
+      // not just that some tx with this hash committed. Without this, any
+      // confirmed hash could be replayed to fabricate a funding entry.
+      const ok = await verifyCredit(txHash, r.toAddress, r.denom, r.amount);
+      if (!ok) {
+        return c.json(
+          {
+            error:
+              "tx did not transfer the requested amount of USDC to this persona",
+          },
+          400,
+        );
+      }
     } catch (e) {
       return c.json(
         { error: e instanceof Error ? e.message : "tx not confirmed" },

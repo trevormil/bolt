@@ -4,7 +4,7 @@ import type { RunLoop } from "@vellum/orchestrator";
 import type { TxChain } from "@vellum/tx";
 import { env } from "@vellum/shared";
 import { createEngine } from "@vellum/engine";
-import { buildApp, webServeOptions } from "./server.ts";
+import { buildApp, creditedAmount, webServeOptions } from "./server.ts";
 import { PaymentRequests } from "./payment-requests.ts";
 
 const METER: Meter = {
@@ -410,6 +410,37 @@ describe("payment requests (0014)", () => {
     expect(
       (await post(`/api/payment-requests/${req.id}/confirm`, {})).status,
     ).toBe(400);
+  });
+
+  test("creditedAmount sums only matching receiver + denom", () => {
+    const DENOM = "ibc/USDC";
+    const events = [
+      {
+        type: "coin_received",
+        attributes: [
+          { key: "receiver", value: "bb1persona" },
+          { key: "amount", value: `5000000${DENOM}` },
+        ],
+      },
+      {
+        type: "coin_received",
+        attributes: [
+          { key: "receiver", value: "bb1someoneelse" },
+          { key: "amount", value: `9000000${DENOM}` },
+        ],
+      },
+      {
+        type: "coin_received",
+        attributes: [
+          { key: "receiver", value: "bb1persona" },
+          { key: "amount", value: `1000000${DENOM},42ubadge` },
+        ],
+      },
+    ];
+    // Only the two credits to bb1persona in the right denom count (5 + 1 USDC).
+    expect(creditedAmount(events, "bb1persona", DENOM)).toBe(6_000_000n);
+    expect(creditedAmount(events, "bb1persona", "ubadge")).toBe(42n);
+    expect(creditedAmount(events, "bb1nobody", DENOM)).toBe(0n);
   });
 
   test("dismiss deletes a pending request (no funding recorded)", async () => {
