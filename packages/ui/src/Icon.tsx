@@ -1,7 +1,7 @@
 // Minimal stroke icon set (1.6 weight), ported + curated from the Dusk kit.
 import type { CSSProperties } from "react";
 
-const PATHS: Record<string, string[]> = {
+const PATHS = {
   chat: [
     "M21 11.5a8.4 8.4 0 0 1-1 4 8.5 8.5 0 0 1-7.5 4.5 8.4 8.4 0 0 1-4-1L3 21l2-5a8.4 8.4 0 0 1-1-4 8.5 8.5 0 0 1 4.5-7.5 8.4 8.4 0 0 1 4-1A8.5 8.5 0 0 1 21 11.5z",
   ],
@@ -62,7 +62,7 @@ const PATHS: Record<string, string[]> = {
   refresh: [
     "M21 12a9 9 0 0 0-15-6.7L3 8M3 3v5h5M3 12a9 9 0 0 0 15 6.7L21 16M21 21v-5h-5",
   ],
-};
+} satisfies Record<string, readonly string[]>;
 
 export type IconName = keyof typeof PATHS;
 
