@@ -1,13 +1,13 @@
 ---
 id: 11
 title: "Cost + trust ledger (proof-of-action)"
-status: open
+status: in-progress
 priority: high
 type: feature
 source: planning
 created: 2026-05-26
-updated: 2026-05-26
-prs: []
+updated: 2026-05-27
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/10"]
 refs: ["ARCHITECTURE.md"]
 ---
 

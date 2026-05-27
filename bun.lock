@@ -23,8 +23,17 @@
       "name": "@vellum/chain",
       "version": "0.0.0",
       "dependencies": {
+        "@cosmjs/crypto": "0.32.4",
         "@cosmjs/proto-signing": "0.32.4",
         "@cosmjs/stargate": "0.32.4",
+        "@vellum/shared": "workspace:*",
+      },
+    },
+    "packages/ledger": {
+      "name": "@vellum/ledger",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vellum/llm": "workspace:*",
         "@vellum/shared": "workspace:*",
       },
     },
@@ -78,6 +87,14 @@
       },
       "peerDependencies": {
         "react": "^18 || ^19",
+      },
+    },
+    "packages/wallet": {
+      "name": "@vellum/wallet",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vellum/chain": "workspace:*",
+        "@vellum/shared": "workspace:*",
       },
     },
     "packages/web": {
@@ -160,6 +177,8 @@
 
     "@vellum/chain": ["@vellum/chain@workspace:packages/chain"],
 
+    "@vellum/ledger": ["@vellum/ledger@workspace:packages/ledger"],
+
     "@vellum/llm": ["@vellum/llm@workspace:packages/llm"],
 
     "@vellum/orchestrator": ["@vellum/orchestrator@workspace:packages/orchestrator"],
@@ -171,6 +190,8 @@
     "@vellum/telegram": ["@vellum/telegram@workspace:packages/telegram"],
 
     "@vellum/ui": ["@vellum/ui@workspace:packages/ui"],
+
+    "@vellum/wallet": ["@vellum/wallet@workspace:packages/wallet"],
 
     "@vellum/web": ["@vellum/web@workspace:packages/web"],
 

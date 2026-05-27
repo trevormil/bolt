@@ -1,0 +1,22 @@
+/* @vellum/ui — structural design tokens (theme-INDEPENDENT).
+ * These never change between themes: shape (radii) and type (font stacks).
+ * Color/elevation tokens live per-theme under themes/<name>.css. */
+
+:root {
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 18px;
+  --r-xl: 24px;
+
+  --font-sans: "Geist", system-ui, -apple-system, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, monospace;
+  --font-serif: "Instrument Serif", Georgia, serif;
+}
+
+/* Root surface contract: opt an app subtree into the design system. Colors
+ * resolve from whichever theme is active (data-theme; defaults to Dusk). */
+.vellum-ui {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+}

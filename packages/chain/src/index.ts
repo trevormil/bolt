@@ -1,7 +1,9 @@
 // Public surface of @vellum/chain.
 export {
   walletFromMnemonic,
+  walletAtIndex,
   addressOf,
+  addressAt,
   generateWallet,
   getBalances,
   sendCoins,
