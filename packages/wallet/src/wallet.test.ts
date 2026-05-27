@@ -86,6 +86,30 @@ describe("PersonaWallets", () => {
     w.close();
   });
 
+  test("concurrent first-use for the SAME persona resolves to one wallet", async () => {
+    const w = fresh();
+    const [a, b] = await Promise.all([
+      w.ensureWallet("atlas"),
+      w.ensureWallet("atlas"),
+    ]);
+    expect(a).toEqual(b);
+    expect(w.list()).toHaveLength(1);
+    w.close();
+  });
+
+  test("concurrent first-use for DIFFERENT personas gets distinct indices, no error", async () => {
+    const w = fresh();
+    const recs = await Promise.all([
+      w.ensureWallet("a"),
+      w.ensureWallet("b"),
+      w.ensureWallet("c"),
+    ]);
+    const indices = recs.map((r) => r.hdIndex).sort((x, y) => x - y);
+    expect(indices).toEqual([0, 1, 2]);
+    expect(new Set(recs.map((r) => r.address)).size).toBe(3);
+    w.close();
+  });
+
   test("refuses to derive without a master mnemonic", async () => {
     // Empty string = not configured (the env fallback is bypassed explicitly).
     const w = new PersonaWallets({ mnemonic: "" });
