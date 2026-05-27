@@ -116,7 +116,9 @@ export function App() {
               </div>
             </header>
 
-            <div className="flex min-h-0 flex-1">
+            {/* key={selected.id} remounts these on persona switch so no local
+                state (e.g. Chat's message list) bleeds across compartments. */}
+            <div key={selected.id} className="flex min-h-0 flex-1">
               <div className="min-w-0 flex-1">
                 {tab === "chat" ? (
                   <Chat persona={selected} />
