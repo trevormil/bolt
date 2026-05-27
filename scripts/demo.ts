@@ -68,10 +68,18 @@ beat(
   "Scenario A — the agent creates a USDC vault (the vault-creation moment)",
 );
 console.log('Intent: "Earmark my rent into a vault with a 5 USDC/day limit."');
+// The human principal is the vault manager. Use the configured principal if set,
+// else derive a stand-in address so the demo is self-contained — either way it's
+// a DIFFERENT address than the agent's, which is the whole point.
+const principal =
+  env.VELLUM_PRINCIPAL_ADDRESS ??
+  (await engine.wallets.ensureWallet("demo-principal")).address;
+console.log(`Human manager: ${principal}`);
 const vault = await engine.vaults.create(PERSONA, {
   name: "Rent",
   symbol: "vRENT",
   dailyWithdrawLimit: 5,
+  managerAddress: principal,
 });
 console.log(
   `Vault ${vault.symbol} · collection ${vault.collectionId} · backing ${vault.backingAddress}`,

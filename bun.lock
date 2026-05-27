@@ -6,6 +6,10 @@
       "name": "vellum",
       "devDependencies": {
         "@types/bun": "1.1.14",
+        "@vellum/chain": "workspace:*",
+        "@vellum/engine": "workspace:*",
+        "@vellum/shared": "workspace:*",
+        "@vellum/tokenization": "workspace:*",
         "prettier": "3.3.3",
         "typescript": "5.5.4",
       },
