@@ -1,13 +1,13 @@
 ---
 id: 9
 title: "Per-persona token budgets via the approval engine"
-status: open
+status: in-progress
 priority: high
 type: feature
 source: planning
 created: 2026-05-26
-updated: 2026-05-26
-prs: []
+updated: 2026-05-27
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/15"]
 refs: ["ARCHITECTURE.md"]
 ---
 

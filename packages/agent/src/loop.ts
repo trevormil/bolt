@@ -4,6 +4,7 @@ import {
   type Meter,
   type ToolsResult,
 } from "@vellum/llm";
+import { NOOP_SPAN, type TraceSpan } from "@vellum/trace";
 import { createLogger } from "@vellum/shared";
 import type { ToolSpec } from "./tools.ts";
 
@@ -27,6 +28,7 @@ export interface RunAgentInput {
   invoke: ToolInvoker;
   chat?: AgentChat; // defaults to the real OpenRouter tool-call path
   maxSteps?: number; // hard cap on round-trips (default 6)
+  trace?: TraceSpan; // optional tracing parent (no-op by default)
 }
 export interface AgentRun {
   text: string; // final assistant answer
@@ -48,17 +50,29 @@ export async function runAgent({
   invoke,
   chat = (m, t) => completeWithTools(m, t),
   maxSteps = 6,
+  trace = NOOP_SPAN,
 }: RunAgentInput): Promise<AgentRun> {
   const history: ChatMessage[] = [...messages];
   const meters: Meter[] = [];
   const toolCalls: AgentRun["toolCalls"] = [];
 
   for (let step = 1; step <= maxSteps; step++) {
+    const stepSpan = trace.child(`step ${step}`);
     const res = await chat(history, tools);
     meters.push(res.meter);
     history.push(res.assistantMessage);
+    // Generation span carries model + token + $ cost (metadata only, no content).
+    stepSpan.generation("llm", {
+      model: res.meter.model,
+      tier: res.meter.tier,
+      promptTokens: res.meter.promptTokens,
+      completionTokens: res.meter.completionTokens,
+      totalTokens: res.meter.totalTokens,
+      costUsd: res.meter.costUsd,
+    });
 
     if (res.toolCalls.length === 0) {
+      stepSpan.end();
       return {
         text: res.text,
         steps: step,
@@ -77,6 +91,7 @@ export async function runAgent({
       }
       toolCalls.push({ name: call.name, args });
       log.info(`tool ${call.name}`); // metadata only — never log args/results
+      const toolSpan = stepSpan.child(`tool:${call.name}`);
 
       let output: string;
       try {
@@ -84,6 +99,7 @@ export async function runAgent({
       } catch (err) {
         output = `tool error: ${err instanceof Error ? err.message : String(err)}`;
       }
+      toolSpan.end();
       history.push({
         role: "tool",
         tool_call_id: call.id,
@@ -91,6 +107,7 @@ export async function runAgent({
         content: output,
       });
     }
+    stepSpan.end();
   }
 
   // Exhausted the step budget without a final answer.

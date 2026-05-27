@@ -10,6 +10,20 @@ yet.
 
 ---
 
+## Quickstart
+
+Zero to a running agent in one command (assumes [bun](https://bun.sh)):
+
+```bash
+bun run setup   # installs, seeds .env from the example, builds + serves the web app
+```
+
+Then open the printed URL. Add your `OPENROUTER_API_KEY` (and, for the Telegram
+surface, `TELEGRAM_BOT_TOKEN` + `AGENT_SIGNER_MNEMONIC`) to `.env` to enable the
+LLM, chain, and bot. To run the Telegram bot: `bun run --filter @vellum/telegram dev`.
+
+---
+
 ## Project Spec
 
 > Source: Vellum PRD — _"OpenClaw Competitor"_. Tier: Silver. Version 1.

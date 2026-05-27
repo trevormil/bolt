@@ -12,3 +12,11 @@ coverage/
 
 # ticketing lock (transient)
 backlog/.next-id.lock
+
+# web app build + local db
+packages/web/dist
+vellum.db
+vellum.db-*
+*.db
+*.db-shm
+*.db-wal

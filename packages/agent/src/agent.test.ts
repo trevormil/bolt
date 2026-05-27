@@ -6,7 +6,28 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { ChatMessage, Meter, ToolsResult } from "@vellum/llm";
+import type { GenerationData, TraceSpan } from "@vellum/trace";
 import { McpClient, runAgent, selectTools, type ToolSpec } from "./index.ts";
+
+// Recording TraceSpan — captures the nested span tree the loop builds.
+interface SpanRec {
+  name: string;
+  children: SpanRec[];
+  gens: ({ name: string } & GenerationData)[];
+}
+function recSpan(rec: SpanRec): TraceSpan {
+  return {
+    child(name) {
+      const c: SpanRec = { name, children: [], gens: [] };
+      rec.children.push(c);
+      return recSpan(c);
+    },
+    generation(name, d) {
+      rec.gens.push({ name, ...d });
+    },
+    end() {},
+  };
+}
 
 const METER: Meter = {
   model: "test",
@@ -176,6 +197,30 @@ describe("runAgent", () => {
     expect(run.steps).toBe(3);
     expect(run.stopReason).toBe("max_steps");
     expect(run.meters).toHaveLength(3);
+  });
+
+  test("emits nested trace spans: per-step generation (token+cost) + tool child", async () => {
+    const root: SpanRec = { name: "root", children: [], gens: [] };
+    await runAgent({
+      messages: [{ role: "user", content: "echo hi" }],
+      tools: [spec("echo", "echo")],
+      invoke: async () => "echo:hi",
+      chat: scriptedChat([
+        callsTool("c1", "echo", { msg: "hi" }),
+        answer("done"),
+      ]),
+      trace: recSpan(root),
+    });
+    // Two steps → two step spans.
+    expect(root.children).toHaveLength(2);
+    const [step1, step2] = root.children;
+    // Each step records an LLM generation carrying token + $ cost.
+    expect(step1!.gens[0]!.name).toBe("llm");
+    expect(step1!.gens[0]!.totalTokens).toBe(METER.totalTokens);
+    expect(step1!.gens[0]!.costUsd).toBe(METER.costUsd);
+    // Step 1 ran the tool → a tool child span; step 2 answered → none.
+    expect(step1!.children.some((c) => c.name === "tool:echo")).toBe(true);
+    expect(step2!.children).toHaveLength(0);
   });
 });
 

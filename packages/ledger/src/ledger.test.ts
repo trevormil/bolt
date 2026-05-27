@@ -33,6 +33,25 @@ describe("Ledger", () => {
     l.close();
   });
 
+  test("recordOnchain is idempotent on txHash (crash-retry safe)", () => {
+    const l = new Ledger();
+    const input = {
+      personaId: "atlas",
+      kind: "spend" as const,
+      summary: "sent 1 USDC",
+      authority: "agent",
+      txHash: "ONCHAIN-HASH-1",
+      meta: { height: 42 },
+    };
+    const first = l.recordOnchain(input);
+    expect(first.created).toBe(true);
+    const second = l.recordOnchain(input); // simulated reconcile after a crash
+    expect(second.created).toBe(false);
+    expect(second.entry.id).toBe(first.entry.id); // same row, no double-write
+    expect(l.list({ personaId: "atlas" })).toHaveLength(1);
+    l.close();
+  });
+
   test("exposes no mutation API (append-only)", () => {
     const l = new Ledger();
     expect((l as unknown as Record<string, unknown>).update).toBeUndefined();
