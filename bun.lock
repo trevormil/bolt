@@ -84,8 +84,7 @@
       "name": "@vellum/tokenization",
       "version": "0.0.0",
       "dependencies": {
-        "@cosmjs/crypto": "0.32.4",
-        "@cosmjs/encoding": "0.32.4",
+        "@vellum/chain": "workspace:*",
         "@vellum/shared": "workspace:*",
         "bitbadges": "0.41.0",
       },

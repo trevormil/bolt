@@ -8,9 +8,8 @@
     "dev": "bun run src/index.ts"
   },
   "dependencies": {
+    "@vellum/chain": "workspace:*",
     "@vellum/shared": "workspace:*",
-    "bitbadges": "0.41.0",
-    "@cosmjs/crypto": "0.32.4",
-    "@cosmjs/encoding": "0.32.4"
+    "bitbadges": "0.41.0"
   }
 }
