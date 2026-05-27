@@ -23,11 +23,15 @@ const log = createLogger("tx");
 //  - a per-persona mutex blocks a 2nd tx from a wallet until the 1st settles,
 //  - on restart, all PENDING rows are reconciled against the chain.
 
-export type TxStatus = "pending" | "confirmed" | "failed";
+// "submitting" = a durable intent persisted BEFORE broadcast (hash not yet known);
+// it transitions to "pending" once the hash is recorded. A row stuck "submitting"
+// after a crash is discoverable (never a silent on-chain spend with no record).
+export type TxStatus = "submitting" | "pending" | "confirmed" | "failed";
 export type TxKind = Extract<LedgerKind, "spend" | "funding" | "vault_op">;
 
 export interface PendingTx {
-  hash: string;
+  id: string; // durable op id (PK) — stable across the submit→confirm lifecycle
+  hash: string | null; // null until broadcast records it
   personaId: string;
   kind: TxKind;
   to: string;
@@ -72,7 +76,8 @@ export interface TxManagerOptions {
 }
 
 interface TxRow {
-  hash: string;
+  id: string;
+  hash: string | null;
   persona_id: string;
   kind: string;
   to_addr: string;
@@ -86,6 +91,7 @@ interface TxRow {
   updated: number;
 }
 const toTx = (r: TxRow): PendingTx => ({
+  id: r.id,
   hash: r.hash,
   personaId: r.persona_id,
   kind: r.kind as TxKind,
@@ -119,7 +125,8 @@ export class TxManager {
     this.chain = opts.chain ?? DEFAULT_CHAIN;
     this.db = new Database(opts.dbPath ?? ":memory:");
     this.db.run(`CREATE TABLE IF NOT EXISTS tx (
-      hash TEXT PRIMARY KEY,
+      id TEXT PRIMARY KEY,
+      hash TEXT,
       persona_id TEXT NOT NULL,
       kind TEXT NOT NULL,
       to_addr TEXT NOT NULL,
@@ -131,6 +138,9 @@ export class TxManager {
       error TEXT,
       created INTEGER NOT NULL,
       updated INTEGER NOT NULL)`);
+    this.db.run(
+      "CREATE INDEX IF NOT EXISTS idx_tx_persona_status ON tx(persona_id, status)",
+    );
   }
 
   // Per-persona async mutex. Held from spend start THROUGH confirmation so no
@@ -175,52 +185,71 @@ export class TxManager {
       }
     };
 
+    // Persist a durable INTENT before broadcast. If the process dies after the
+    // chain accepts the tx but before we record the hash, this "submitting" row
+    // is still discoverable — never a silent on-chain spend with no record.
+    const id = crypto.randomUUID();
+    const now = Date.now();
     try {
       // Durable per-persona guard (§13.4): no new tx while ANY row for this
-      // persona is still pending — covers confirmation timeouts (row stays
-      // pending) and crash+restart (reconcile settles first). The in-memory lock
-      // just serializes the guard+broadcast window so two calls can't both pass.
+      // persona is unsettled (submitting/pending) — covers confirmation timeouts
+      // and crash+restart. The in-memory lock just serializes the guard+insert
+      // window so two calls can't both pass.
       if (this.pending(personaId).length > 0) {
         throw new Error(
           `persona ${personaId} has a pending tx — wait for it to settle`,
         );
       }
-
-      const chainSpan = (input.trace ?? NOOP_SPAN).child(`chain:${kind}`, {
-        to,
-        amount,
-      });
-      const adapter = await this.wallets.signerFor(personaId);
-      // CheckTx rejects pre-flight failures (bad sig, insufficient funds,
-      // over-cap) before inclusion. Returns the hash; confirmation is async.
-      const hash = await this.chain.signAndBroadcast(adapter, msgs, {
-        memo: input.memo ?? `vellum ${kind}`,
-      });
-      chainSpan.end({ hash });
-
-      const now = Date.now();
-      const pending: PendingTx = {
-        hash,
+      this.insert({
+        id,
+        hash: null,
         personaId,
         kind,
         to,
         denom: this.denom,
         amount,
         authority,
-        status: "pending",
+        status: "submitting",
         height: null,
         error: null,
         created: now,
         updated: now,
-      };
-      this.insert(pending);
+      });
+
+      const chainSpan = (input.trace ?? NOOP_SPAN).child(`chain:${kind}`, {
+        to,
+        amount,
+      });
+      const adapter = await this.wallets.signerFor(personaId);
+      let hash: string;
+      try {
+        // CheckTx rejects pre-flight failures (bad sig, insufficient funds,
+        // over-cap) before inclusion. Returns the hash; confirmation is async.
+        hash = await this.chain.signAndBroadcast(adapter, msgs, {
+          memo: input.memo ?? `vellum ${kind}`,
+        });
+      } catch (e) {
+        const error = e instanceof Error ? e.message : String(e);
+        if (/rejected/.test(error)) {
+          // Definitive CheckTx rejection — nothing landed; safe to fail the row.
+          this.setStatus(id, "failed", { error });
+        } else {
+          // Ambiguous (network) — the tx MAY have reached the node. Leave the
+          // intent "submitting" (discoverable, never auto-rebroadcast).
+          this.setStatus(id, "submitting", { error });
+        }
+        releaseOnce();
+        throw e;
+      }
+      chainSpan.end({ hash });
+      this.setHash(id, hash); // → status "pending", hash recorded
       log.info(
         `pending ${kind} · ${personaId} · ${usdc(amount)} → ${to} · ${hash.slice(0, 10)}`,
       );
 
       // Confirm out of band; the lock is held until this settles.
-      void this.confirmPending(hash).finally(releaseOnce);
-      return pending;
+      void this.confirmPending(id).finally(releaseOnce);
+      return this.get(id)!;
     } catch (e) {
       releaseOnce();
       throw e;
@@ -264,12 +293,15 @@ export class TxManager {
    * PENDING (error recorded) so reconcile() retries it — a tx that commits after
    * the poll window must never be lost. Idempotent — only acts on pending rows.
    */
-  async confirmPending(hash: string): Promise<void> {
-    const row = this.get(hash);
-    if (!row || row.status !== "pending") return;
+  async confirmPending(id: string): Promise<void> {
+    const row = this.get(id);
+    // Only rows with a recorded hash ("pending") are confirmable; "submitting"
+    // rows have no hash (crash window) and need manual reconciliation.
+    if (!row || row.status !== "pending" || !row.hash) return;
+    const hash = row.hash;
     try {
       const { height } = await this.chain.confirmTx(hash);
-      this.setStatus(hash, "confirmed", { height });
+      this.setStatus(id, "confirmed", { height });
       this.ledger.record({
         personaId: row.personaId,
         kind: row.kind,
@@ -282,38 +314,39 @@ export class TxManager {
     } catch (e) {
       const error = e instanceof Error ? e.message : String(e);
       if (e instanceof TxRevertedError) {
-        this.setStatus(hash, "failed", { error });
+        this.setStatus(id, "failed", { error });
         log.warn(`failed ${hash.slice(0, 10)}: ${error}`);
       } else {
         // Unknown (timeout/network) — keep PENDING so reconcile retries.
-        this.setStatus(hash, "pending", { error });
+        this.setStatus(id, "pending", { error });
         log.warn(`unconfirmed ${hash.slice(0, 10)}: ${error} — left pending`);
       }
     }
   }
 
-  /** On startup: drive every still-PENDING row to a terminal state. */
+  /** On startup: drive every unsettled row toward terminal state. Rows with a
+   *  hash are confirmed; "submitting" rows (no hash) are left for manual review. */
   async reconcile(): Promise<number> {
     const pendings = this.pending();
-    for (const p of pendings) await this.confirmPending(p.hash);
-    if (pendings.length) log.info(`reconciled ${pendings.length} pending tx`);
+    for (const p of pendings) await this.confirmPending(p.id);
+    if (pendings.length) log.info(`reconciled ${pendings.length} unsettled tx`);
     return pendings.length;
   }
 
-  get(hash: string): PendingTx | null {
+  get(id: string): PendingTx | null {
     const row = this.db
-      .query("SELECT * FROM tx WHERE hash = ?")
-      .get(hash) as TxRow | null;
+      .query("SELECT * FROM tx WHERE id = ?")
+      .get(id) as TxRow | null;
     return row ? toTx(row) : null;
   }
+  // Unsettled = submitting OR pending (the per-persona guard blocks new tx while any exists).
   pending(personaId?: string): PendingTx[] {
+    const where = "status IN ('submitting','pending')";
     const q = personaId
       ? this.db.query(
-          "SELECT * FROM tx WHERE status = 'pending' AND persona_id = ? ORDER BY created",
+          `SELECT * FROM tx WHERE ${where} AND persona_id = ? ORDER BY created`,
         )
-      : this.db.query(
-          "SELECT * FROM tx WHERE status = 'pending' ORDER BY created",
-        );
+      : this.db.query(`SELECT * FROM tx WHERE ${where} ORDER BY created`);
     return (personaId ? q.all(personaId) : q.all()).map((r) =>
       toTx(r as TxRow),
     );
@@ -329,10 +362,11 @@ export class TxManager {
   private insert(t: PendingTx): void {
     this.db
       .query(
-        `INSERT INTO tx (hash, persona_id, kind, to_addr, denom, amount, authority, status, height, error, created, updated)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO tx (id, hash, persona_id, kind, to_addr, denom, amount, authority, status, height, error, created, updated)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
+        t.id,
         t.hash,
         t.personaId,
         t.kind,
@@ -347,16 +381,24 @@ export class TxManager {
         t.updated,
       );
   }
+  // Record the broadcast hash on the intent → transition submitting → pending.
+  private setHash(id: string, hash: string): void {
+    this.db
+      .query(
+        "UPDATE tx SET hash = ?, status = 'pending', updated = ? WHERE id = ?",
+      )
+      .run(hash, Date.now(), id);
+  }
   private setStatus(
-    hash: string,
+    id: string,
     status: TxStatus,
     extra: { height?: number; error?: string },
   ): void {
     this.db
       .query(
-        "UPDATE tx SET status = ?, height = ?, error = ?, updated = ? WHERE hash = ?",
+        "UPDATE tx SET status = ?, height = ?, error = ?, updated = ? WHERE id = ?",
       )
-      .run(status, extra.height ?? null, extra.error ?? null, Date.now(), hash);
+      .run(status, extra.height ?? null, extra.error ?? null, Date.now(), id);
   }
 
   close(): void {

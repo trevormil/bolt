@@ -59,17 +59,41 @@ describe("TxManager — reconciliation invariant", () => {
       amount: "1000000",
     });
     expect(p.status).toBe("pending");
-    expect(tm.get(p.hash)!.status).toBe("pending");
+    expect(tm.get(p.id)!.status).toBe("pending");
     expect(ledger.list({ personaId: "a" })).toHaveLength(0); // NOT yet — unconfirmed
 
     gate.resolve();
-    await waitFor(() => tm.get(p.hash)!.status === "confirmed");
-    expect(tm.get(p.hash)!.height).toBe(9);
+    await waitFor(() => tm.get(p.id)!.status === "confirmed");
+    expect(tm.get(p.id)!.height).toBe(9);
     const entries = ledger.list({ personaId: "a" });
     expect(entries).toHaveLength(1);
     expect(entries[0]!.kind).toBe("spend");
     expect(entries[0]!.txHash).toBe(p.hash);
     expect(entries[0]!.meta.height).toBe(9);
+    tm.close();
+  });
+
+  test("persists a durable INTENT before broadcast (no silent-loss window)", async () => {
+    const gate = deferred<void>();
+    const tm = mgr(
+      baseChain({
+        signAndBroadcast: async () => (await gate.promise, "HASH-X"),
+      }),
+    );
+    const p = tm.spend({ personaId: "a", to: "to", amount: "1000000" }); // not awaited
+    // While the broadcast is in flight, the intent is ALREADY durable as
+    // "submitting" with no hash — discoverable even if the process dies here.
+    await waitFor(() => tm.pending("a").length === 1);
+    const intent = tm.pending("a")[0]!;
+    expect(intent.status).toBe("submitting");
+    expect(intent.hash).toBeNull();
+
+    gate.resolve();
+    const settled = await p;
+    expect(settled.status).toBe("pending");
+    expect(settled.hash).toBe("HASH-X");
+    await waitFor(() => tm.get(settled.id)!.status === "confirmed");
+    expect(ledger.list({ personaId: "a" })).toHaveLength(1);
     tm.close();
   });
 
@@ -86,9 +110,9 @@ describe("TxManager — reconciliation invariant", () => {
       to: "bb1dest",
       amount: "1000000",
     });
-    await waitFor(() => tm.get(p.hash)!.status !== "pending");
-    expect(tm.get(p.hash)!.status).toBe("failed");
-    expect(tm.get(p.hash)!.error).toContain("reverted");
+    await waitFor(() => tm.get(p.id)!.status !== "pending");
+    expect(tm.get(p.id)!.status).toBe("failed");
+    expect(tm.get(p.id)!.error).toContain("reverted");
     expect(ledger.list({ personaId: "a" })).toHaveLength(0);
     tm.close();
   });
@@ -110,15 +134,15 @@ describe("TxManager — reconciliation invariant", () => {
       amount: "1000000",
     });
     // The timed-out confirm records an error but must NOT fail the row.
-    await waitFor(() => tm.get(p.hash)!.error !== null);
-    expect(tm.get(p.hash)!.status).toBe("pending");
+    await waitFor(() => tm.get(p.id)!.error !== null);
+    expect(tm.get(p.id)!.status).toBe("pending");
     expect(ledger.list({ personaId: "a" })).toHaveLength(0);
 
     // The tx is observed on chain later; reconcile confirms it exactly once.
     mode = "ok";
     expect(await tm.reconcile()).toBe(1);
-    expect(tm.get(p.hash)!.status).toBe("confirmed");
-    expect(tm.get(p.hash)!.height).toBe(50);
+    expect(tm.get(p.id)!.status).toBe("confirmed");
+    expect(tm.get(p.id)!.height).toBe(50);
     expect(ledger.list({ personaId: "a" })).toHaveLength(1);
     tm.close();
   });
@@ -142,8 +166,8 @@ describe("TxManager — reconciliation invariant", () => {
       to: "to1",
       amount: "1000000",
     });
-    await waitFor(() => tm.get(first.hash)!.error !== null); // timed out → still pending
-    expect(tm.get(first.hash)!.status).toBe("pending");
+    await waitFor(() => tm.get(first.id)!.error !== null); // timed out → still pending
+    expect(tm.get(first.id)!.status).toBe("pending");
     expect(broadcasts).toBe(1);
 
     // Second spend must NOT broadcast while the first is pending.
@@ -155,7 +179,7 @@ describe("TxManager — reconciliation invariant", () => {
     // Settle the first; only then may the next spend proceed.
     mode = "ok";
     await tm.reconcile();
-    expect(tm.get(first.hash)!.status).toBe("confirmed");
+    expect(tm.get(first.id)!.status).toBe("confirmed");
     const third = await tm.spend({
       personaId: "a",
       to: "to3",
@@ -250,7 +274,7 @@ describe("TxManager — reconciliation invariant", () => {
         to: "bb1dest",
         amount: "1000000",
       });
-      expect(tm1.get(p.hash)!.status).toBe("pending");
+      expect(tm1.get(p.id)!.status).toBe("pending");
       expect(l1.list({ personaId: "a" })).toHaveLength(0);
       tm1.close();
 
@@ -264,7 +288,7 @@ describe("TxManager — reconciliation invariant", () => {
         chain: baseChain({ confirmTx: async () => ({ height: 12, code: 0 }) }),
       });
       expect(await tm2.reconcile()).toBe(1);
-      expect(tm2.get(p.hash)!.status).toBe("confirmed");
+      expect(tm2.get(p.id)!.status).toBe("confirmed");
       expect(l2.list({ personaId: "a" })).toHaveLength(1);
 
       // Idempotent: a second reconcile does nothing (no pendings, no double-ledger).

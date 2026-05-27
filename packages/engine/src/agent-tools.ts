@@ -78,7 +78,7 @@ export function vaultTools(
         String(args.collectionId),
         micro,
       );
-      return `Withdrawal of ${args.amountUsdc} USDC submitted (tx ${p.hash.slice(0, 10)}); confirming on-chain.`;
+      return `Withdrawal of ${args.amountUsdc} USDC submitted (tx ${(p.hash ?? p.id).slice(0, 10)}); confirming on-chain.`;
     }
     return `unknown tool: ${name}`;
   };

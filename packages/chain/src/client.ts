@@ -8,6 +8,10 @@ import {
 } from "@cosmjs/stargate";
 import { env, createLogger } from "@vellum/shared";
 
+// Accepted advisory: `bun audit` reports a LOW `elliptic <=6.6.1` (GHSA-848j-6mx2-7j84)
+// via @cosmjs/crypto. 6.6.1 is the latest release — no patched version exists yet —
+// and this is a devnet-only path, so it's accepted until cosmjs ships a fixed dep.
+//
 // BitBadges is a Cosmos SDK chain → standard cosmjs works for x/bank + queries.
 // Tokenization-module messages (vaults, approvals) layer on via the bitbadges
 // SDK / bb CLI in later tickets. This module is the signing/broadcast/confirm
