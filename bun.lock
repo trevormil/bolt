@@ -1,0 +1,67 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "vellum",
+      "devDependencies": {
+        "@types/bun": "1.1.14",
+        "prettier": "3.3.3",
+        "typescript": "5.5.4",
+      },
+    },
+    "packages/agent": {
+      "name": "@vellum/agent",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vellum/shared": "workspace:*",
+      },
+    },
+    "packages/shared": {
+      "name": "@vellum/shared",
+      "version": "0.0.0",
+      "dependencies": {
+        "zod": "3.23.8",
+      },
+    },
+    "packages/telegram": {
+      "name": "@vellum/telegram",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vellum/shared": "workspace:*",
+      },
+    },
+    "packages/web": {
+      "name": "@vellum/web",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vellum/shared": "workspace:*",
+      },
+    },
+  },
+  "packages": {
+    "@types/bun": ["@types/bun@1.1.14", "", { "dependencies": { "bun-types": "1.1.37" } }, "sha512-opVYiFGtO2af0dnWBdZWlioLBoxSdDO5qokaazLhq8XQtGZbY4pY3/JxY8Zdf/hEwGubbp7ErZXoN1+h2yesxA=="],
+
+    "@types/node": ["@types/node@20.12.14", "", { "dependencies": { "undici-types": "~5.26.4" } }, "sha512-scnD59RpYD91xngrQQLGkE+6UrHUPzeKZWhhjBSa3HSkwjbQc38+q3RoIVEwxQGRw3M+j5hpNAM+lgV3cVormg=="],
+
+    "@types/ws": ["@types/ws@8.5.14", "", { "dependencies": { "@types/node": "*" } }, "sha512-bd/YFLW+URhBzMXurx7lWByOu+xzU9+kb3RboOteXYDfW+tr+JZa99OyNmPINEGB/ahzKrEuc8rcv4gnpJmxTw=="],
+
+    "@vellum/agent": ["@vellum/agent@workspace:packages/agent"],
+
+    "@vellum/shared": ["@vellum/shared@workspace:packages/shared"],
+
+    "@vellum/telegram": ["@vellum/telegram@workspace:packages/telegram"],
+
+    "@vellum/web": ["@vellum/web@workspace:packages/web"],
+
+    "bun-types": ["bun-types@1.1.37", "", { "dependencies": { "@types/node": "~20.12.8", "@types/ws": "~8.5.10" } }, "sha512-C65lv6eBr3LPJWFZ2gswyrGZ82ljnH8flVE03xeXxKhi2ZGtFiO4isRKTKnitbSqtRAcaqYSR6djt1whI66AbA=="],
+
+    "prettier": ["prettier@3.3.3", "", { "bin": { "prettier": "bin/prettier.cjs" } }, "sha512-i2tDNA0O5IrMO757lfrdQZCc2jPNDVntV0m/+4whiDfWaTKfMNgR7Qz0NAeGz/nRqF4m5/6CLzbP4/liHt12Ew=="],
+
+    "typescript": ["typescript@5.5.4", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-Mtq29sKDAEYP7aljRgtPOpTvOfbwRWlS6dPRzwjdE+C0R4brX/GUyhHSecbHMFLNBLcJIPt9nl9yG5TZ1weH+Q=="],
+
+    "undici-types": ["undici-types@5.26.5", "", {}, "sha512-JlCMO+ehdEIKqlFxk6IfVoAUVmgz7cU7zD/h9XZ0qzeosSHmUJVOzSQvvYSYWXkFXC+IfLKSIffhv0sVZup6pA=="],
+
+    "zod": ["zod@3.23.8", "", {}, "sha512-XBx9AXhXktjUqnepgTiE5flcKIYWi/rme0Eaj+5Y0lftuGBq+jyRu/md4WnuxqgP1ubdpNCsYEYPxrzVHD8d6g=="],
+  }
+}

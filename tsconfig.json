@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@vellum/shared": ["packages/shared/src/index.ts"]
+    }
+  },
+  "include": ["packages/*/src/**/*.ts"]
+}

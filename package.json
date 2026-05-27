@@ -1,0 +1,19 @@
+{
+  "name": "vellum",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun run --filter '@vellum/*' dev",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@types/bun": "1.1.14",
+    "prettier": "3.3.3",
+    "typescript": "5.5.4"
+  }
+}

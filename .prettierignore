@@ -1,0 +1,8 @@
+node_modules/
+bun.lock
+# Content/docs — managed by hand, not auto-formatted (avoid churning prose/tables)
+research/
+backlog/
+docs/
+*.md
+index.html
