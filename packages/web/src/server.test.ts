@@ -470,3 +470,40 @@ describe("payment requests (0014)", () => {
     expect(led.entries.some((e) => e.kind === "funding")).toBe(false);
   });
 });
+
+describe("API auth", () => {
+  const withAuth = (auth: { token?: string; host?: string }) =>
+    buildApp(makeEngine(), new PaymentRequests(":memory:"), auth);
+
+  test("public routes need no token (even when one is set)", async () => {
+    const a = withAuth({ token: "secret", host: "127.0.0.1" });
+    expect((await a.request("/api/health")).status).toBe(200);
+    expect((await a.request("/api/config")).status).toBe(200);
+    // share-link pay endpoints reach their handler (404 = not auth-blocked)
+    expect((await a.request("/api/payment-requests/nope")).status).toBe(404);
+  });
+
+  test("protected routes require the bearer token when set", async () => {
+    const a = withAuth({ token: "secret", host: "127.0.0.1" });
+    expect((await a.request("/api/personas")).status).toBe(401);
+    const ok = await a.request("/api/personas", {
+      headers: { authorization: "Bearer secret" },
+    });
+    expect(ok.status).toBe(200);
+    const bad = await a.request("/api/personas", {
+      headers: { authorization: "Bearer wrong" },
+    });
+    expect(bad.status).toBe(401);
+  });
+
+  test("no token + non-loopback bind → protected routes fail closed (401)", async () => {
+    const a = withAuth({ token: undefined, host: "0.0.0.0" });
+    expect((await a.request("/api/personas")).status).toBe(401);
+    expect((await a.request("/api/health")).status).toBe(200); // public still open
+  });
+
+  test("no token + loopback → open for local dev", async () => {
+    const a = withAuth({ token: undefined, host: "127.0.0.1" });
+    expect((await a.request("/api/personas")).status).toBe(200);
+  });
+});

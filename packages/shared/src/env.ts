@@ -27,11 +27,16 @@ export const envSchema = z.object({
   LANGFUSE_HOST: z.string().url().optional(),
 
   // Web app: persistent sqlite path (personas/memory/wallets/routing/ledger) +
-  // the API/static server bind. Defaults to loopback — the API is unauthenticated,
-  // so exposing it beyond localhost is an explicit opt-in (WEB_HOST=0.0.0.0).
+  // the API/static server bind. Defaults to loopback. State-changing routes
+  // require a bearer token (VELLUM_API_TOKEN); on loopback with no token set the
+  // API is open for local dev, but binding beyond loopback (WEB_HOST=0.0.0.0)
+  // REQUIRES a token or protected routes 401 (fail closed).
   VELLUM_DB_PATH: z.string().default("./vellum.db"),
   WEB_PORT: z.coerce.number().default(8787),
   WEB_HOST: z.string().default("127.0.0.1"),
+  // Bearer token guarding state-changing API routes. Optional on loopback;
+  // required to expose the API beyond localhost.
+  VELLUM_API_TOKEN: z.string().optional(),
 
   // Vellum is single-asset: the IBC USDC denom on the BitBadges devnet (6 dp,
   // displayed "USDC"). Balances, payment requests, and vaults use only this.

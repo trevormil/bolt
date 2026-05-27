@@ -70,6 +70,24 @@ async function verifyCredit(
   );
 }
 
+const isLoopback = (host: string): boolean =>
+  host === "127.0.0.1" || host === "localhost" || host === "::1";
+
+// Routes safe to serve without auth: liveness, public chain config, and the
+// share-link pay endpoints (a PaymentRequest link is opened by anyone the human
+// shares it with; the confirm is safe because it verifies the on-chain credit).
+export function isPublicRoute(method: string, path: string): boolean {
+  if (path === "/api/health" || path === "/api/config") return true;
+  if (method === "GET" && /^\/api\/payment-requests\/[^/]+$/.test(path))
+    return true;
+  if (
+    method === "POST" &&
+    /^\/api\/payment-requests\/[^/]+\/confirm$/.test(path)
+  )
+    return true;
+  return false;
+}
+
 function slug(name: string): string {
   return (
     name
@@ -89,8 +107,39 @@ export function buildApp(
   // Injectable so tests get an isolated store; prod shares the engine's sqlite
   // file (own table). Defaults to the configured DB path.
   paymentRequests = new PaymentRequests(env.VELLUM_DB_PATH),
+  // Auth config (injectable for tests). Defaults to env.
+  auth: { token?: string; host?: string } = {
+    token: env.VELLUM_API_TOKEN,
+    host: env.WEB_HOST,
+  },
 ) {
   const app = new Hono();
+
+  // Auth boundary: protect every state-changing/private route. Public routes
+  // (health, config, share-link pay endpoints) pass through. With a token set,
+  // protected routes require `Authorization: Bearer <token>`. With NO token,
+  // protected routes are open on loopback (local dev) but fail closed (401)
+  // when bound beyond loopback — so an exposed server is never unauthenticated.
+  const loopback = isLoopback(auth.host ?? "127.0.0.1");
+  app.use("/api/*", async (c, next) => {
+    if (isPublicRoute(c.req.method, c.req.path)) return next();
+    if (auth.token) {
+      if (c.req.header("authorization") !== `Bearer ${auth.token}`) {
+        return c.json({ error: "unauthorized" }, 401);
+      }
+      return next();
+    }
+    if (!loopback) {
+      return c.json(
+        {
+          error:
+            "API auth required — set VELLUM_API_TOKEN to expose beyond loopback",
+        },
+        401,
+      );
+    }
+    return next();
+  });
 
   app.get("/api/health", (c) => c.json({ ok: true }));
 
@@ -410,8 +459,9 @@ export function buildApp(
   return app;
 }
 
-// Bun.serve options. Binds loopback by default (the API is unauthenticated);
-// set WEB_HOST=0.0.0.0 to expose beyond localhost. Exported for testability.
+// Bun.serve options. Binds loopback by default; exposing beyond localhost
+// (WEB_HOST=0.0.0.0) requires VELLUM_API_TOKEN (enforced at startup). Exported
+// for testability.
 export function webServeOptions(app: ReturnType<typeof buildApp>) {
   return { port: env.WEB_PORT, hostname: env.WEB_HOST, fetch: app.fetch };
 }
@@ -424,6 +474,13 @@ if (import.meta.main) {
     .catch((e) => log.warn(`reconcile failed: ${e}`));
   const app = buildApp(engine);
   const opts = webServeOptions(app);
+  if (!isLoopback(env.WEB_HOST) && !env.VELLUM_API_TOKEN) {
+    // Fail closed: don't serve privileged routes unauthenticated on a public bind.
+    log.error(
+      `refusing to bind ${env.WEB_HOST} without VELLUM_API_TOKEN — set a token to expose the API`,
+    );
+    process.exit(1);
+  }
   log.info(`Vellum web · http://${opts.hostname}:${opts.port}`);
   Bun.serve(opts);
 }
