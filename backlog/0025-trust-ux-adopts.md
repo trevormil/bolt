@@ -7,7 +7,7 @@ type: ux
 source: audit
 created: 2026-05-26
 updated: 2026-05-27
-prs: []
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/16"]
 refs: ["ARCHITECTURE.md", "research/audit/00-summary.md"]
 ---
 
