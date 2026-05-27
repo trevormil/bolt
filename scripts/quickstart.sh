@@ -19,4 +19,8 @@ if [ ! -f .env ]; then
 fi
 
 echo "→ starting Vellum web (build + serve)…"
-exec bun run --filter @vellum/web serve
+# Build via the package, but run the server from the repo root so it loads the
+# root .env (secrets) + ./vellum.db — `bun run --filter` sets cwd to packages/web
+# and would miss both.
+bun run --filter @vellum/web build
+exec bun packages/web/src/server.ts

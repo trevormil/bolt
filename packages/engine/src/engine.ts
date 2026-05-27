@@ -1,6 +1,6 @@
 import { claimFaucet as chainClaimFaucet, type Coin } from "@vellum/chain";
 import { Ledger } from "@vellum/ledger";
-import { PersonaStore, openAiEmbedder, type Embedder } from "@vellum/persona";
+import { PersonaStore, hashEmbedder, type Embedder } from "@vellum/persona";
 import { Orchestrator, type RunLoop } from "@vellum/orchestrator";
 import { TxManager, type TxChain } from "@vellum/tx";
 import { PersonaWallets } from "@vellum/wallet";
@@ -30,7 +30,7 @@ export interface Engine {
 
 export interface EngineOptions {
   dbPath?: string;
-  embedder?: Embedder | null; // default: OpenAI embeddings (BM25-only if no key)
+  embedder?: Embedder | null; // default: local hash embedder (no API key)
   runLoop?: RunLoop; // injectable for tests (skip the live LLM)
   getBalances?: (address: string) => Promise<readonly Coin[]>; // test seam
   txChain?: TxChain; // test seam for the tx lifecycle
@@ -44,8 +44,11 @@ export interface EngineOptions {
 
 export function createEngine(opts: EngineOptions = {}): Engine {
   const dbPath = opts.dbPath ?? env.VELLUM_DB_PATH;
-  const embedder =
-    opts.embedder === undefined ? openAiEmbedder() : opts.embedder;
+  // OpenRouter is the sole remote LLM provider; OpenRouter has no embeddings
+  // endpoint, so dense retrieval uses the built-in network-free hash embedder
+  // (no OpenAI key needed). Pass `embedder` explicitly to opt into a semantic
+  // one (e.g. openAiEmbedder) where a key is available.
+  const embedder = opts.embedder === undefined ? hashEmbedder() : opts.embedder;
   const store = new PersonaStore(dbPath, embedder);
   const wallets = new PersonaWallets({
     dbPath,
