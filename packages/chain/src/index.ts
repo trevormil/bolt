@@ -14,6 +14,12 @@ export {
   TxRevertedError,
   type Coin,
 } from "./client.ts";
+export {
+  deriveAdapter,
+  signAndBroadcast,
+  bankSendMsg,
+  type MsgJson,
+} from "./sdk.ts";
 
 if (import.meta.main) {
   const { createLogger, env } = await import("@vellum/shared");
