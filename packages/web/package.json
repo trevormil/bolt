@@ -19,6 +19,7 @@
     "@vellum/orchestrator": "workspace:*",
     "@vellum/persona": "workspace:*",
     "@vellum/shared": "workspace:*",
+    "@vellum/tx": "workspace:*",
     "@vellum/ui": "workspace:*",
     "@vellum/wallet": "workspace:*",
     "hono": "4.12.22",

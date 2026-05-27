@@ -1,21 +1,29 @@
-import type { Coin } from "@vellum/chain";
+import { claimFaucet as chainClaimFaucet, type Coin } from "@vellum/chain";
 import { Ledger } from "@vellum/ledger";
 import { PersonaStore, openAiEmbedder, type Embedder } from "@vellum/persona";
 import { Orchestrator, type RunLoop } from "@vellum/orchestrator";
+import { TxManager, type TxChain } from "@vellum/tx";
 import { PersonaWallets } from "@vellum/wallet";
 import { env, createLogger } from "@vellum/shared";
 
 const log = createLogger("engine");
 
+type FaucetClaim = (
+  address: string,
+) => Promise<{ txHash?: string; amount?: string; denom?: string }>;
+
 // Wires the whole agent backend against one persistent store: personas + memory,
-// per-persona wallets, deterministic routing, and the cost/trust ledger. The web
-// API (server.ts) is a thin shell over this. All four components share the same
-// sqlite file (distinct table sets — no conflict) so state survives restarts.
+// per-persona wallets, deterministic routing, the cost/trust ledger, and the
+// tx-lifecycle manager (0023). The web API (server.ts) is a thin shell over this.
+// All components share one sqlite file (distinct table sets) so state survives
+// restarts — which is exactly what tx reconciliation relies on.
 export interface Engine {
   store: PersonaStore;
   wallets: PersonaWallets;
   ledger: Ledger;
   orchestrator: Orchestrator;
+  txManager: TxManager;
+  claimFaucet: FaucetClaim;
 }
 
 export interface EngineOptions {
@@ -23,6 +31,8 @@ export interface EngineOptions {
   embedder?: Embedder | null; // default: OpenAI embeddings (BM25-only if no key)
   runLoop?: RunLoop; // injectable for tests (skip the live LLM)
   getBalances?: (address: string) => Promise<readonly Coin[]>; // test seam
+  txChain?: TxChain; // test seam for the tx lifecycle
+  claimFaucet?: FaucetClaim; // test seam for the faucet
 }
 
 export function createEngine(opts: EngineOptions = {}): Engine {
@@ -37,6 +47,13 @@ export function createEngine(opts: EngineOptions = {}): Engine {
     { defaultPersonaId: "", dbPath },
     opts.runLoop,
   );
+  const txManager = new TxManager({
+    wallets,
+    ledger,
+    dbPath,
+    chain: opts.txChain,
+  });
+  const claimFaucet = opts.claimFaucet ?? chainClaimFaucet;
   log.info(`engine ready · db=${dbPath}`);
-  return { store, wallets, ledger, orchestrator };
+  return { store, wallets, ledger, orchestrator, txManager, claimFaucet };
 }

@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import type { Meter } from "@vellum/llm";
 import type { RunLoop } from "@vellum/orchestrator";
+import type { TxChain } from "@vellum/tx";
+import { env } from "@vellum/shared";
 import { createEngine } from "./engine.ts";
 import { buildApp, webServeOptions } from "./server.ts";
 
@@ -20,13 +22,27 @@ const fakeRunLoop: RunLoop = async ({ persona }) => ({
   meters: [METER],
 });
 
+// Fully offline tx chain: funded in USDC, sim ok, deterministic hash, confirms.
+const fakeTxChain: TxChain = {
+  getBalances: async () => [{ denom: env.VELLUM_DENOM, amount: "10000000" }],
+  simulateSend: async () => 120000,
+  broadcastSend: async () => "SPENDHASH",
+  confirmTx: async () => ({ height: 5, code: 0 }),
+};
+
 let app: ReturnType<typeof buildApp>;
 beforeEach(() => {
   const engine = createEngine({
     dbPath: ":memory:",
     embedder: null, // BM25-only; no embedding API in tests
     runLoop: fakeRunLoop,
-    getBalances: async () => [{ denom: "ubadge", amount: "500" }],
+    getBalances: async () => [{ denom: env.VELLUM_DENOM, amount: "500" }],
+    txChain: fakeTxChain,
+    claimFaucet: async () => ({
+      txHash: "FAUCET1",
+      amount: "10000000",
+      denom: env.VELLUM_DENOM,
+    }),
   });
   app = buildApp(engine);
 });
@@ -71,16 +87,56 @@ describe("web API", () => {
     expect(body.personas[0]!.address.startsWith("bb1")).toBe(true);
   });
 
-  test("wallet route returns address + balance", async () => {
+  test("wallet route returns address + USDC balance (base units)", async () => {
     await post("/api/personas", { name: "Atlas" });
     const body = (await (
       await app.request("/api/personas/atlas/wallet")
-    ).json()) as {
-      address: string;
-      balance: { denom: string; amount: string }[];
-    };
+    ).json()) as { address: string; usdc: string };
     expect(body.address.startsWith("bb1")).toBe(true);
-    expect(body.balance[0]).toEqual({ denom: "ubadge", amount: "500" });
+    expect(body.usdc).toBe("500");
+  });
+
+  test("faucet route funds the persona's wallet", async () => {
+    await post("/api/personas", { name: "Atlas" });
+    const res = await post("/api/personas/atlas/faucet", {});
+    const body = (await res.json()) as { txHash: string; amount: string };
+    expect(body.txHash).toBe("FAUCET1");
+    expect(body.amount).toBe("10000000");
+  });
+
+  test("spend route returns a PENDING tx; ledger fills from confirmed state", async () => {
+    await post("/api/personas", { name: "Atlas" });
+    const res = await post("/api/personas/atlas/spend", {
+      to: "bb1dest",
+      amount: "1000000",
+    });
+    expect(res.status).toBe(200);
+    const pending = (await res.json()) as { hash: string; status: string };
+    expect(pending.status).toBe("pending");
+    expect(pending.hash).toBe("SPENDHASH");
+
+    // Confirmation is async → the ledger spend entry appears shortly after.
+    await new Promise((r) => setTimeout(r, 50));
+    const led = (await (
+      await app.request("/api/personas/atlas/ledger")
+    ).json()) as {
+      entries: { kind: string; txHash: string | null }[];
+    };
+    expect(
+      led.entries.some((e) => e.kind === "spend" && e.txHash === "SPENDHASH"),
+    ).toBe(true);
+  });
+
+  test("spend route validates to-address + amount", async () => {
+    await post("/api/personas", { name: "Atlas" });
+    expect(
+      (await post("/api/personas/atlas/spend", { to: "bb1d", amount: "x" }))
+        .status,
+    ).toBe(400);
+    expect(
+      (await post("/api/personas/atlas/spend", { to: "nothex", amount: "100" }))
+        .status,
+    ).toBe(400);
   });
 
   test("chat routes to the persona, replies, and writes a ledger entry", async () => {

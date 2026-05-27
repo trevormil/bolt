@@ -13,10 +13,6 @@ export interface Persona {
   created: number;
   address: string | null;
 }
-export interface Coin {
-  denom: string;
-  amount: string;
-}
 export interface LedgerEntry {
   id: number;
   ts: number;
@@ -62,7 +58,12 @@ export const api = {
 
   wallet: (id: string) =>
     fetch(`/api/personas/${id}/wallet`).then((r) =>
-      json<{ address: string; balance: Coin[] }>(r),
+      json<{ address: string; usdc: string }>(r),
+    ),
+
+  faucet: (id: string) =>
+    fetch(`/api/personas/${id}/faucet`, { method: "POST" }).then((r) =>
+      json<{ txHash?: string; amount?: string; denom?: string }>(r),
     ),
 
   ledger: (id: string) =>

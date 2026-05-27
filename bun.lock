@@ -76,6 +76,16 @@
         "grammy": "1.43.0",
       },
     },
+    "packages/tx": {
+      "name": "@vellum/tx",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vellum/chain": "workspace:*",
+        "@vellum/ledger": "workspace:*",
+        "@vellum/shared": "workspace:*",
+        "@vellum/wallet": "workspace:*",
+      },
+    },
     "packages/ui": {
       "name": "@vellum/ui",
       "version": "0.0.0",
@@ -93,6 +103,7 @@
       "name": "@vellum/wallet",
       "version": "0.0.0",
       "dependencies": {
+        "@cosmjs/proto-signing": "0.32.4",
         "@vellum/chain": "workspace:*",
         "@vellum/shared": "workspace:*",
       },
@@ -108,6 +119,7 @@
         "@vellum/orchestrator": "workspace:*",
         "@vellum/persona": "workspace:*",
         "@vellum/shared": "workspace:*",
+        "@vellum/tx": "workspace:*",
         "@vellum/ui": "workspace:*",
         "@vellum/wallet": "workspace:*",
         "hono": "4.12.22",
@@ -378,6 +390,8 @@
     "@vellum/shared": ["@vellum/shared@workspace:packages/shared"],
 
     "@vellum/telegram": ["@vellum/telegram@workspace:packages/telegram"],
+
+    "@vellum/tx": ["@vellum/tx@workspace:packages/tx"],
 
     "@vellum/ui": ["@vellum/ui@workspace:packages/ui"],
 

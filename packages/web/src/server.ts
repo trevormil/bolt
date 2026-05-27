@@ -70,8 +70,41 @@ export function buildApp(engine: Engine) {
     if (!engine.store.getPersona(id))
       return c.json({ error: "unknown persona" }, 404);
     const wallet = await engine.wallets.ensureWallet(id);
-    const balance = await engine.wallets.balanceFor(id);
-    return c.json({ address: wallet.address, balance });
+    const balances = await engine.wallets.balanceFor(id);
+    // Single-asset: only the USDC denom, in base units (micro-USDC).
+    const usdc =
+      balances.find((b) => b.denom === env.VELLUM_DENOM)?.amount ?? "0";
+    return c.json({ address: wallet.address, usdc });
+  });
+
+  // Devnet USDC faucet — fund a persona's wallet (10 USDC/claim).
+  app.post("/api/personas/:id/faucet", async (c) => {
+    const id = c.req.param("id");
+    if (!engine.store.getPersona(id))
+      return c.json({ error: "unknown persona" }, 404);
+    const { address } = await engine.wallets.ensureWallet(id);
+    return c.json(await engine.claimFaucet(address));
+  });
+
+  // Spend from a persona's wallet, governed by the tx-lifecycle invariant (0023):
+  // returns the PENDING tx; confirmation + ledger happen out of band.
+  app.post("/api/personas/:id/spend", async (c) => {
+    const id = c.req.param("id");
+    if (!engine.store.getPersona(id))
+      return c.json({ error: "unknown persona" }, 404);
+    const body = (await c.req.json().catch(() => ({}))) as {
+      to?: string;
+      amount?: string;
+    };
+    const to = body.to?.trim();
+    const amount = body.amount?.trim();
+    if (!to?.startsWith("bb1") || !amount || !/^[0-9]+$/.test(amount)) {
+      return c.json(
+        { error: "to (bb1…) and amount (base-unit integer) are required" },
+        400,
+      );
+    }
+    return c.json(await engine.txManager.spend({ personaId: id, to, amount }));
   });
 
   app.get("/api/personas/:id/ledger", (c) => {
@@ -144,7 +177,12 @@ export function webServeOptions(app: ReturnType<typeof buildApp>) {
 }
 
 if (import.meta.main) {
-  const app = buildApp(createEngine());
+  const engine = createEngine();
+  // Reconcile any PENDING txs against the chain BEFORE serving new work (§13.5).
+  await engine.txManager
+    .reconcile()
+    .catch((e) => log.warn(`reconcile failed: ${e}`));
+  const app = buildApp(engine);
   const opts = webServeOptions(app);
   log.info(`Vellum web · http://${opts.hostname}:${opts.port}`);
   Bun.serve(opts);

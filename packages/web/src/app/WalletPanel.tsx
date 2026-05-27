@@ -1,21 +1,29 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button, Icon } from "@vellum/ui";
-import { api, type Coin } from "./api.ts";
+import { api } from "./api.ts";
 
-// Shows the persona's bb1 wallet + live balance. Funding on devnet is external
-// (send to this address); PaymentRequest-style funding is a later ticket (0014).
+const fmtUsdc = (base: string) =>
+  (Number(base) / 1e6).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+// Shows the persona's bb1 wallet + live USDC balance, with a devnet faucet tap.
+// Vellum is single-asset (USDC); agent-initiated funding (PaymentRequests) is 0014.
 export function WalletPanel({ personaId }: { personaId: string }) {
-  const [address, setAddress] = useState<string>("");
-  const [balance, setBalance] = useState<Coin[]>([]);
+  const [address, setAddress] = useState("");
+  const [usdc, setUsdc] = useState("0");
   const [loading, setLoading] = useState(true);
+  const [claiming, setClaiming] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
       const w = await api.wallet(personaId);
       setAddress(w.address);
-      setBalance(w.balance);
+      setUsdc(w.usdc);
     } finally {
       setLoading(false);
     }
@@ -24,6 +32,21 @@ export function WalletPanel({ personaId }: { personaId: string }) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  async function claim() {
+    setClaiming(true);
+    setError(null);
+    try {
+      await api.faucet(personaId);
+      // Faucet settles on-chain shortly; refresh after a beat.
+      await new Promise((r) => setTimeout(r, 1500));
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setClaiming(false);
+    }
+  }
 
   function copy() {
     navigator.clipboard?.writeText(address);
@@ -61,26 +84,26 @@ export function WalletPanel({ personaId }: { personaId: string }) {
       <div className="mt-4 text-xs uppercase tracking-wide text-soft">
         Balance
       </div>
-      <div className="mt-1">
-        {loading ? (
-          <div className="text-sm text-soft">loading…</div>
-        ) : balance.length === 0 ? (
-          <div className="text-sm text-soft">
-            empty — fund this address on devnet
-          </div>
-        ) : (
-          balance.map((c) => (
-            <div key={c.denom} className="font-mono text-sm text-fg">
-              {Number(c.amount).toLocaleString()}{" "}
-              <span className="text-muted">{c.denom}</span>
-            </div>
-          ))
-        )}
+      <div className="mt-1 font-mono text-2xl text-fg">
+        {loading ? "…" : fmtUsdc(usdc)}{" "}
+        <span className="text-sm text-muted">USDC</span>
       </div>
 
+      <Button
+        variant="secondary"
+        size="sm"
+        className="mt-3 w-full"
+        onClick={claim}
+        disabled={claiming}
+      >
+        <Icon name="plus" size={14} />{" "}
+        {claiming ? "Claiming…" : "Claim 10 USDC (devnet)"}
+      </Button>
+      {error && <p className="mt-2 text-xs text-danger">{error}</p>}
+
       <p className="mt-4 text-xs leading-relaxed text-soft">
-        Send {balance.length === 0 ? "" : "more "}ubadge to this address to fund{" "}
-        {personaId}. Agent-initiated funding links arrive with vaults (0014).
+        Devnet USDC only. Agent-initiated funding (PaymentRequests) and vault
+        spend arrive in 0014 / 0012-0013.
       </p>
     </div>
   );
