@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { buildVaultMsg, type CreateVaultInput } from "./index.ts";
+import {
+  buildVaultMsg,
+  vaultTransferMsg,
+  type CreateVaultInput,
+} from "./index.ts";
 
 const AGENT = "bb1agent0000000000000000000000000000000000";
 const HUMAN = "bb1human0000000000000000000000000000000000";
@@ -51,5 +55,42 @@ describe("buildVaultMsg — 0012 trust properties", () => {
     // toListId is the unwrap/backing target, not a curated recipient set.
     expect(typeof withdraw.toListId).toBe("string");
     expect(withdraw.toListId).not.toBe(HUMAN);
+  });
+});
+
+describe("vaultTransferMsg — 0013 back/unback (validated live)", () => {
+  const BACKING = "bb1backing000000000000000000000000000000000";
+
+  test("withdraw = vault tokens TO the backing address, prioritizing the withdraw approval", () => {
+    const msg = vaultTransferMsg({
+      agentAddress: AGENT,
+      collectionId: "138",
+      from: AGENT,
+      to: BACKING,
+      amount: "1000000",
+      approvalId: "vault-withdraw-abc",
+    });
+    expect(msg.typeUrl).toBe("/tokenization.MsgTransferTokens");
+    const t = (msg.value.transfers as any[])[0];
+    expect(t.from).toBe(AGENT);
+    expect(t.toAddresses).toEqual([BACKING]);
+    expect(t.balances[0].amount).toBe("1000000");
+    expect(t.prioritizedApprovals[0].approvalId).toBe("vault-withdraw-abc");
+    expect(t.onlyCheckPrioritizedCollectionApprovals).toBe(true);
+  });
+
+  test("deposit = FROM the backing address, prioritizing vault-deposit", () => {
+    const msg = vaultTransferMsg({
+      agentAddress: AGENT,
+      collectionId: "138",
+      from: BACKING,
+      to: AGENT,
+      amount: "2000000",
+      approvalId: "vault-deposit",
+    });
+    const t = (msg.value.transfers as any[])[0];
+    expect(t.from).toBe(BACKING);
+    expect(t.toAddresses).toEqual([AGENT]);
+    expect(t.prioritizedApprovals[0].approvalId).toBe("vault-deposit");
   });
 });

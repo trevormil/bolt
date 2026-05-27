@@ -67,3 +67,106 @@ export async function createVault(
   );
   return { txHash };
 }
+
+const FULL_RANGE = [{ start: "1", end: "18446744073709551615" }];
+
+/**
+ * A vault back/unback transfer (0013). Moving vault tokens TO the backing
+ * address unbacks (burn → release base USDC to the initiator); moving FROM it
+ * backs (mint → initiator provides USDC). 1 token = 1 µUSDC (1:1 conversion).
+ * Pure msg builder — createVault's withdrawal-tier approval enforces the agent
+ * guardrails (daily cap etc.) at execution. amount is in µUSDC.
+ */
+export function vaultTransferMsg(input: {
+  agentAddress: string;
+  collectionId: string;
+  from: string;
+  to: string;
+  amount: string; // µUSDC (= token amount, 1:1)
+  approvalId: string;
+}): MsgJson {
+  return {
+    typeUrl: "/tokenization.MsgTransferTokens",
+    value: {
+      creator: input.agentAddress,
+      collectionId: input.collectionId,
+      transfers: [
+        {
+          from: input.from,
+          toAddresses: [input.to],
+          balances: [
+            {
+              amount: input.amount,
+              tokenIds: [{ start: "1", end: "1" }],
+              ownershipTimes: FULL_RANGE,
+            },
+          ],
+          prioritizedApprovals: [
+            {
+              approvalId: input.approvalId,
+              approvalLevel: "collection",
+              approverAddress: "",
+              version: "0",
+            },
+          ],
+          onlyCheckPrioritizedCollectionApprovals: true,
+        },
+      ],
+    },
+  };
+}
+
+export interface VaultRef {
+  collectionId: string;
+  backingAddress: string;
+  withdrawApprovalId: string;
+}
+
+/** Agent withdraws (unbacks) `amount` µUSDC from a vault — within the vault's
+ *  on-chain guardrails (the withdrawal-tier approval rejects over-cap). The base
+ *  USDC lands in the agent's wallet; spending onward to a vendor is a bank send. */
+export async function vaultWithdraw(
+  agent: Adapter,
+  vault: VaultRef,
+  amount: string,
+): Promise<{ txHash: string }> {
+  const msg = vaultTransferMsg({
+    agentAddress: agent.address,
+    collectionId: vault.collectionId,
+    from: agent.address,
+    to: vault.backingAddress,
+    amount,
+    approvalId: vault.withdrawApprovalId,
+  });
+  const txHash = await signAndBroadcast(agent, [msg], {
+    memo: "vellum vault withdraw",
+  });
+  log.info(
+    `vault withdraw · ${vault.collectionId} · ${amount}µUSDC · ${txHash.slice(0, 10)}`,
+  );
+  return { txHash };
+}
+
+/** Back (deposit) `amount` µUSDC into a vault — the initiator provides USDC and
+ *  receives vault tokens. (For tests/funding; the human funds escrow in prod.) */
+export async function vaultDeposit(
+  agent: Adapter,
+  vault: { collectionId: string; backingAddress: string },
+  amount: string,
+): Promise<{ txHash: string }> {
+  const msg = vaultTransferMsg({
+    agentAddress: agent.address,
+    collectionId: vault.collectionId,
+    from: vault.backingAddress,
+    to: agent.address,
+    amount,
+    approvalId: "vault-deposit",
+  });
+  const txHash = await signAndBroadcast(agent, [msg], {
+    memo: "vellum vault deposit",
+  });
+  log.info(
+    `vault deposit · ${vault.collectionId} · ${amount}µUSDC · ${txHash.slice(0, 10)}`,
+  );
+  return { txHash };
+}
