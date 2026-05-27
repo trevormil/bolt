@@ -126,7 +126,6 @@
       "name": "@vellum/wallet",
       "version": "0.0.0",
       "dependencies": {
-        "@cosmjs/proto-signing": "0.32.4",
         "@vellum/chain": "workspace:*",
         "@vellum/shared": "workspace:*",
       },

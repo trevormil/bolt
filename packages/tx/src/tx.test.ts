@@ -20,13 +20,12 @@ async function waitFor(fn: () => boolean, ms = 2000) {
   if (!fn()) throw new Error("waitFor timed out");
 }
 
-// Baseline fake chain: funded, sim ok, deterministic hashes, immediate confirm.
+// Baseline fake chain: funded, deterministic hashes, immediate confirm.
 function baseChain(over: Partial<TxChain> = {}): TxChain {
   let n = 0;
   return {
     getBalances: async () => FUNDED,
-    simulateSend: async () => 120000,
-    broadcastSend: async () => `HASH${++n}`,
+    signAndBroadcast: async () => `HASH${++n}`,
     confirmTx: async () => ({ height: 7, code: 0 }),
     ...over,
   };
@@ -129,7 +128,7 @@ describe("TxManager — reconciliation invariant", () => {
     let broadcasts = 0;
     const tm = mgr(
       baseChain({
-        broadcastSend: async () => `H${++broadcasts}`,
+        signAndBroadcast: async () => `H${++broadcasts}`,
         confirmTx: async () => {
           if (mode === "timeout")
             throw new Error("tx HASH not committed within 20s");
@@ -172,7 +171,7 @@ describe("TxManager — reconciliation invariant", () => {
     const tm = mgr(
       baseChain({
         getBalances: async () => [{ denom: DENOM, amount: "500" }],
-        broadcastSend: async () => {
+        signAndBroadcast: async () => {
           broadcasts++;
           return "H";
         },
@@ -186,23 +185,18 @@ describe("TxManager — reconciliation invariant", () => {
     tm.close();
   });
 
-  test("simulation failure rejects before broadcast", async () => {
-    let broadcasts = 0;
+  test("a broadcast (CheckTx) rejection surfaces and leaves no pending row", async () => {
     const tm = mgr(
       baseChain({
-        simulateSend: async () => {
-          throw new Error("sim: account sequence mismatch");
-        },
-        broadcastSend: async () => {
-          broadcasts++;
-          return "H";
+        signAndBroadcast: async () => {
+          throw new Error("broadcast rejected (code 5): insufficient fee");
         },
       }),
     );
     await expect(
       tm.spend({ personaId: "a", to: "bb1dest", amount: "1000000" }),
-    ).rejects.toThrow("sim:");
-    expect(broadcasts).toBe(0);
+    ).rejects.toThrow("rejected");
+    expect(tm.pending()).toHaveLength(0);
     tm.close();
   });
 
@@ -211,7 +205,8 @@ describe("TxManager — reconciliation invariant", () => {
     const order: string[] = [];
     const tm = mgr(
       baseChain({
-        broadcastSend: async (_s, _f, to) => {
+        signAndBroadcast: async (_adapter, msgs) => {
+          const to = (msgs[0]!.value as { toAddress: string }).toAddress;
           order.push(to);
           return `H-${to}`;
         },

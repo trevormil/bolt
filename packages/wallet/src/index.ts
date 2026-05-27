@@ -4,6 +4,7 @@ export {
   PersonaWallets,
   type WalletRecord,
   type PersonaWalletsOptions,
+  type Signer,
 } from "./wallet.ts";
 
 if (import.meta.main) {

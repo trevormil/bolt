@@ -4,9 +4,13 @@
   "private": true,
   "type": "module",
   "main": "src/index.ts",
-  "scripts": { "dev": "bun run src/index.ts" },
+  "scripts": {
+    "dev": "bun run src/index.ts"
+  },
   "dependencies": {
     "@vellum/shared": "workspace:*",
-    "bitbadges": "0.41.0"
+    "bitbadges": "0.41.0",
+    "@cosmjs/crypto": "0.32.4",
+    "@cosmjs/encoding": "0.32.4"
   }
 }

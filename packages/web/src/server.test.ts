@@ -22,11 +22,10 @@ const fakeRunLoop: RunLoop = async ({ persona }) => ({
   meters: [METER],
 });
 
-// Fully offline tx chain: funded in USDC, sim ok, deterministic hash, confirms.
+// Fully offline tx chain: funded in USDC, deterministic hash, confirms.
 const fakeTxChain: TxChain = {
   getBalances: async () => [{ denom: env.VELLUM_DENOM, amount: "10000000" }],
-  simulateSend: async () => 120000,
-  broadcastSend: async () => "SPENDHASH",
+  signAndBroadcast: async () => "SPENDHASH",
   confirmTx: async () => ({ height: 5, code: 0 }),
 };
 

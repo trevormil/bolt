@@ -1,9 +1,9 @@
 import { Database } from "bun:sqlite";
 import {
-  broadcastSend,
+  bankSendMsg,
   confirmTx,
   getBalances,
-  simulateSend,
+  signAndBroadcast,
   TxRevertedError,
 } from "@vellum/chain";
 import type { Ledger, LedgerKind } from "@vellum/ledger";
@@ -43,14 +43,12 @@ export interface PendingTx {
 // Injected so the manager is unit-testable without the network. Defaults are the
 // real @vellum/chain functions (signatures reused via typeof — no type drift).
 export interface TxChain {
-  simulateSend: typeof simulateSend;
-  broadcastSend: typeof broadcastSend;
+  signAndBroadcast: typeof signAndBroadcast;
   confirmTx: typeof confirmTx;
   getBalances: typeof getBalances;
 }
 const DEFAULT_CHAIN: TxChain = {
-  simulateSend,
-  broadcastSend,
+  signAndBroadcast,
   confirmTx,
   getBalances,
 };
@@ -198,16 +196,14 @@ export class TxManager {
         to,
         amount,
       });
-      const signer = await this.wallets.signerFor(personaId);
-      // Pre-flight simulate — reject before broadcast on failure.
-      await this.chain.simulateSend(signer, from, to, amount, this.denom);
-      // Broadcast without waiting; get the hash to track.
-      const hash = await this.chain.broadcastSend(
-        signer,
-        from,
-        to,
-        amount,
-        this.denom,
+      const adapter = await this.wallets.signerFor(personaId);
+      // Sign + broadcast via the SDK; CheckTx rejects pre-flight failures (bad
+      // sig, insufficient funds) before inclusion. Returns the hash to track;
+      // confirmation runs out of band.
+      const hash = await this.chain.signAndBroadcast(
+        adapter,
+        [bankSendMsg(from, to, amount, this.denom)],
+        { memo: `vellum ${kind}` },
       );
       chainSpan.end({ hash });
 

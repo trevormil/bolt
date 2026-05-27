@@ -1,20 +1,23 @@
 import { Database } from "bun:sqlite";
 import {
-  addressAt,
-  walletAtIndex,
+  deriveAdapter,
   getBalances as chainGetBalances,
   type Coin,
 } from "@vellum/chain";
-import type { DirectSecp256k1HdWallet } from "@cosmjs/proto-signing";
 import { env, createLogger } from "@vellum/shared";
 
 const log = createLogger("wallet");
 
+// The persona's hot signer — the BitBadges SDK adapter (one tested identity for
+// bank + vaults + payment requests). Typed via deriveAdapter so @vellum/wallet
+// needn't import the SDK directly.
+export type Signer = Awaited<ReturnType<typeof deriveAdapter>>;
+
 // One bb1 wallet per persona, all derived from a SINGLE master mnemonic at
-// distinct BIP-44 account indices. The DB stores only derivation metadata
-// (hd_index + the public bb1 address) — never a private key or the mnemonic.
-// The mnemonic lives in env/.env (AGENT_SIGNER_MNEMONIC) and is committed
-// nowhere; deriving a signer (0013) re-derives at runtime from env.
+// distinct SDK HD indices (m/44'/60'/0'/0/index). The DB stores only derivation
+// metadata (hd_index + the public bb1 address) — never a private key or the
+// mnemonic. The mnemonic lives in env (AGENT_SIGNER_MNEMONIC), committed nowhere;
+// the signer is re-derived at runtime.
 export interface WalletRecord {
   personaId: string;
   address: string;
@@ -106,7 +109,8 @@ export class PersonaWallets {
             m: number;
           }
         ).m + 1;
-      const address = await addressAt(mnemonic, next);
+      const adapter = await deriveAdapter(mnemonic, next);
+      const address = adapter.address;
       const created = Date.now();
       this.db
         .query(
@@ -144,14 +148,14 @@ export class PersonaWallets {
   }
 
   /**
-   * Re-derive the persona's hot signer at runtime (from the env mnemonic + its
-   * HD index) for signing a tx. The key is never persisted — only the index is.
-   * Used by the tx layer (0023); callers must not log or store the result.
+   * Re-derive the persona's hot signer (SDK adapter) at runtime from the env
+   * mnemonic + its HD index. The key is never persisted — only the index is.
+   * Used by the tx layer; callers must not log or store the result.
    */
-  async signerFor(personaId: string): Promise<DirectSecp256k1HdWallet> {
+  async signerFor(personaId: string): Promise<Signer> {
     const w = this.walletFor(personaId);
     if (!w) throw new Error(`no wallet for persona: ${personaId}`);
-    return walletAtIndex(this.requireMnemonic(), w.hdIndex);
+    return deriveAdapter(this.requireMnemonic(), w.hdIndex);
   }
 
   list(): WalletRecord[] {

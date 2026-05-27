@@ -35,7 +35,10 @@ export async function deriveAdapter(
     seed,
     stringToPath(`m/44'/60'/0'/0/${index}`),
   );
-  return GenericCosmosAdapter.fromPrivateKey(toHex(privkey), env.BITBADGES_CHAIN_ID);
+  return GenericCosmosAdapter.fromPrivateKey(
+    toHex(privkey),
+    env.BITBADGES_CHAIN_ID,
+  );
 }
 
 // A tokenization/cosmos message as friendly JSON ({ typeUrl, value }). The
@@ -109,7 +112,9 @@ export async function signAndBroadcast(
     (sig as { signature: string }).signature,
   );
   const body =
-    typeof broadcastBody === "string" ? JSON.parse(broadcastBody) : broadcastBody;
+    typeof broadcastBody === "string"
+      ? JSON.parse(broadcastBody)
+      : broadcastBody;
   const res = await fetch(`${env.BITBADGES_LCD}/cosmos/tx/v1beta1/txs`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -120,11 +125,16 @@ export async function signAndBroadcast(
     tx_response?: { code?: number; txhash?: string; raw_log?: string };
   };
   const tr = json.tx_response;
-  if (!tr?.txhash) throw new Error(`broadcast returned no hash: ${JSON.stringify(json).slice(0, 200)}`);
+  if (!tr?.txhash)
+    throw new Error(
+      `broadcast returned no hash: ${JSON.stringify(json).slice(0, 200)}`,
+    );
   // code != 0 here = a CheckTx (pre-inclusion) rejection — fail fast.
   if (tr.code && tr.code !== 0) {
     throw new Error(`broadcast rejected (code ${tr.code}): ${tr.raw_log}`);
   }
-  log.info(`broadcast ${msgs.map((m) => m.typeUrl.split(".").pop()).join(",")} · ${tr.txhash.slice(0, 10)}`);
+  log.info(
+    `broadcast ${msgs.map((m) => m.typeUrl.split(".").pop()).join(",")} · ${tr.txhash.slice(0, 10)}`,
+  );
   return tr.txhash;
 }

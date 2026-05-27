@@ -9,7 +9,6 @@
   },
   "dependencies": {
     "@vellum/chain": "workspace:*",
-    "@vellum/shared": "workspace:*",
-    "@cosmjs/proto-signing": "0.32.4"
+    "@vellum/shared": "workspace:*"
   }
 }
