@@ -1,7 +1,7 @@
 ---
 id: 3
 title: "Telegram bot skeleton (grammY)"
-status: open
+status: in-progress
 priority: critical
 type: feature
 source: planning
