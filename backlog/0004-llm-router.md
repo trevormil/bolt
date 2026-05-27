@@ -1,7 +1,7 @@
 ---
 id: 4
 title: "LLM provider router (cheap-default → escalate) + metering"
-status: open
+status: in-progress
 priority: high
 type: feature
 source: planning
