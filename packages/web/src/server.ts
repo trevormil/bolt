@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { tracer } from "@vellum/trace";
 import { createLogger, env } from "@vellum/shared";
 import { createEngine, type Engine } from "./engine.ts";
 
@@ -104,7 +105,16 @@ export function buildApp(engine: Engine) {
         400,
       );
     }
-    return c.json(await engine.txManager.spend({ personaId: id, to, amount }));
+    const trace = tracer.trace("spend", { personaId: id });
+    const pending = await engine.txManager.spend({
+      personaId: id,
+      to,
+      amount,
+      trace,
+    });
+    trace.end();
+    void tracer.flush();
+    return c.json(pending);
   });
 
   app.get("/api/personas/:id/ledger", (c) => {
@@ -135,8 +145,13 @@ export function buildApp(engine: Engine) {
     }
     // Deterministically bind this conversation to the chosen persona, then
     // dispatch. The agent reasons only over that persona's own memory.
+    const trace = tracer.trace("chat", { personaId, conversationId });
     engine.orchestrator.resolve(conversationId, `/switch ${personaId}`);
-    const res = await engine.orchestrator.handle(conversationId, message);
+    const res = await engine.orchestrator.handle(conversationId, message, {
+      trace,
+    });
+    trace.end();
+    void tracer.flush();
     const costUsd = res.meters.reduce((n, m) => n + m.costUsd, 0);
     const tokens = res.meters.reduce((n, m) => n + m.totalTokens, 0);
     engine.ledger.recordAgentRun(

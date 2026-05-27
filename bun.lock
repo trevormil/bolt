@@ -17,6 +17,7 @@
         "@modelcontextprotocol/sdk": "1.29.0",
         "@vellum/llm": "workspace:*",
         "@vellum/shared": "workspace:*",
+        "@vellum/trace": "workspace:*",
       },
     },
     "packages/chain": {
@@ -52,6 +53,7 @@
         "@vellum/llm": "workspace:*",
         "@vellum/persona": "workspace:*",
         "@vellum/shared": "workspace:*",
+        "@vellum/trace": "workspace:*",
       },
     },
     "packages/persona": {
@@ -91,6 +93,7 @@
         "@vellum/chain": "workspace:*",
         "@vellum/ledger": "workspace:*",
         "@vellum/shared": "workspace:*",
+        "@vellum/trace": "workspace:*",
         "@vellum/wallet": "workspace:*",
       },
     },
@@ -127,6 +130,7 @@
         "@vellum/orchestrator": "workspace:*",
         "@vellum/persona": "workspace:*",
         "@vellum/shared": "workspace:*",
+        "@vellum/trace": "workspace:*",
         "@vellum/tx": "workspace:*",
         "@vellum/ui": "workspace:*",
         "@vellum/wallet": "workspace:*",

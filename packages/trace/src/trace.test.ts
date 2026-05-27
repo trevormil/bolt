@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { createTracer, NOOP_SPAN, type LfClient, type LfNode } from "./index.ts";
+import {
+  createTracer,
+  NOOP_SPAN,
+  type LfClient,
+  type LfNode,
+} from "./index.ts";
 
 interface Rec {
   type: "trace" | "span" | "generation";
@@ -11,7 +16,11 @@ interface Rec {
 }
 
 // Records the observation tree the tracer builds — no network.
-function recordingClient(): { client: LfClient; traces: Rec[]; flushed: () => number } {
+function recordingClient(): {
+  client: LfClient;
+  traces: Rec[];
+  flushed: () => number;
+} {
   const traces: Rec[] = [];
   let flushes = 0;
   const node = (rec: Rec): LfNode => ({
@@ -21,7 +30,14 @@ function recordingClient(): { client: LfClient; traces: Rec[]; flushed: () => nu
       return node(c);
     },
     generation: ({ name, model, usage, metadata }) => {
-      rec.children.push({ type: "generation", name, model, usage, metadata, children: [] });
+      rec.children.push({
+        type: "generation",
+        name,
+        model,
+        usage,
+        metadata,
+        children: [],
+      });
       return { end: () => {} };
     },
     end: () => {},
@@ -48,7 +64,9 @@ describe("tracer (no-op default)", () => {
     expect(t.enabled).toBe(false);
     const span = t.trace("chat");
     expect(span).toBe(NOOP_SPAN);
-    span.child("step").generation("llm", { model: "m", totalTokens: 5, costUsd: 0.1 });
+    span
+      .child("step")
+      .generation("llm", { model: "m", totalTokens: 5, costUsd: 0.1 });
     span.child("step").end();
     span.end();
     await t.flush(); // resolves
@@ -90,7 +108,9 @@ describe("tracer (Langfuse-backed)", () => {
     expect(gen.usage?.total).toBe(30);
     expect(gen.metadata?.costUsd).toBe(0.00015);
     expect(gen.metadata?.tier).toBe("cheap");
-    expect(stepRec.children.some((c) => c.type === "span" && c.name === "tool:echo")).toBe(true);
+    expect(
+      stepRec.children.some((c) => c.type === "span" && c.name === "tool:echo"),
+    ).toBe(true);
   });
 
   test("flush delegates to the client", async () => {

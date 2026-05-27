@@ -7,6 +7,7 @@ import {
   type PersonaStore,
   type RetrievalHit,
 } from "@vellum/persona";
+import { NOOP_SPAN, type TraceSpan } from "@vellum/trace";
 import { createLogger } from "@vellum/shared";
 
 const log = createLogger("router");
@@ -35,10 +36,11 @@ export type RunLoop = (input: {
   messages: ChatMessage[];
   tools: ToolSpec[];
   invoke: ToolInvoker;
+  trace: TraceSpan;
 }) => Promise<{ text: string; meters: Meter[] }>;
 
-const defaultRunLoop: RunLoop = async ({ messages, tools, invoke }) => {
-  const run = await runAgent({ messages, tools, invoke });
+const defaultRunLoop: RunLoop = async ({ messages, tools, invoke, trace }) => {
+  const run = await runAgent({ messages, tools, invoke, trace });
   return { text: run.text, meters: run.meters };
 };
 
@@ -137,7 +139,7 @@ export class Orchestrator {
   async handle(
     conversationId: string,
     message: string,
-    opts: { tools?: ToolSpec[]; invoke?: ToolInvoker } = {},
+    opts: { tools?: ToolSpec[]; invoke?: ToolInvoker; trace?: TraceSpan } = {},
     depth = 1,
   ): Promise<HandleResult> {
     if (depth > this.maxDepth) {
@@ -166,6 +168,7 @@ export class Orchestrator {
       messages,
       tools: opts.tools ?? [],
       invoke: opts.invoke ?? (async () => ""),
+      trace: opts.trace ?? NOOP_SPAN,
     });
     return { routed: "message", persona: dec.persona, reply: text, meters };
   }

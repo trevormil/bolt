@@ -11,6 +11,7 @@
     "@vellum/chain": "workspace:*",
     "@vellum/ledger": "workspace:*",
     "@vellum/shared": "workspace:*",
+    "@vellum/trace": "workspace:*",
     "@vellum/wallet": "workspace:*"
   }
 }

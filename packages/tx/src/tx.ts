@@ -8,6 +8,7 @@ import {
 } from "@vellum/chain";
 import type { Ledger, LedgerKind } from "@vellum/ledger";
 import type { PersonaWallets } from "@vellum/wallet";
+import { NOOP_SPAN, type TraceSpan } from "@vellum/trace";
 import { env, createLogger } from "@vellum/shared";
 
 const log = createLogger("tx");
@@ -60,6 +61,7 @@ export interface SpendInput {
   amount: string; // base units
   kind?: TxKind; // default "spend"
   authority?: string; // who authorized — default "agent"
+  trace?: TraceSpan; // optional tracing parent (no-op by default)
 }
 
 export interface TxManagerOptions {
@@ -191,6 +193,11 @@ export class TxManager {
         );
       }
 
+      const chainSpan = (input.trace ?? NOOP_SPAN).child("chain:spend", {
+        kind,
+        to,
+        amount,
+      });
       const signer = await this.wallets.signerFor(personaId);
       // Pre-flight simulate — reject before broadcast on failure.
       await this.chain.simulateSend(signer, from, to, amount, this.denom);
@@ -202,6 +209,7 @@ export class TxManager {
         amount,
         this.denom,
       );
+      chainSpan.end({ hash });
 
       const now = Date.now();
       const pending: PendingTx = {
