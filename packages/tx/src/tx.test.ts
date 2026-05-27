@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { unlinkSync } from "node:fs";
-import { generateWallet, type Coin } from "@vellum/chain";
+import { generateWallet, TxRevertedError, type Coin } from "@vellum/chain";
 import { Ledger } from "@vellum/ledger";
 import { PersonaWallets } from "@vellum/wallet";
 import { TxManager, type TxChain } from "./index.ts";
@@ -74,11 +74,11 @@ describe("TxManager — reconciliation invariant", () => {
     tm.close();
   });
 
-  test("a reverted/timed-out tx is marked FAILED with no ledger entry", async () => {
+  test("a definitively REVERTED tx is marked FAILED with no ledger entry", async () => {
     const tm = mgr(
       baseChain({
         confirmTx: async () => {
-          throw new Error("tx reverted: bad");
+          throw new TxRevertedError("tx reverted: bad", 5);
         },
       }),
     );
@@ -91,6 +91,36 @@ describe("TxManager — reconciliation invariant", () => {
     expect(tm.get(p.hash)!.status).toBe("failed");
     expect(tm.get(p.hash)!.error).toContain("reverted");
     expect(ledger.list({ personaId: "a" })).toHaveLength(0);
+    tm.close();
+  });
+
+  test("a confirmation TIMEOUT stays PENDING and is later reconciled (never lost)", async () => {
+    let mode: "timeout" | "ok" = "timeout";
+    const tm = mgr(
+      baseChain({
+        confirmTx: async () => {
+          if (mode === "timeout")
+            throw new Error("tx HASH not committed within 20s");
+          return { height: 50, code: 0 };
+        },
+      }),
+    );
+    const p = await tm.spend({
+      personaId: "a",
+      to: "bb1dest",
+      amount: "1000000",
+    });
+    // The timed-out confirm records an error but must NOT fail the row.
+    await waitFor(() => tm.get(p.hash)!.error !== null);
+    expect(tm.get(p.hash)!.status).toBe("pending");
+    expect(ledger.list({ personaId: "a" })).toHaveLength(0);
+
+    // The tx is observed on chain later; reconcile confirms it exactly once.
+    mode = "ok";
+    expect(await tm.reconcile()).toBe(1);
+    expect(tm.get(p.hash)!.status).toBe("confirmed");
+    expect(tm.get(p.hash)!.height).toBe(50);
+    expect(ledger.list({ personaId: "a" })).toHaveLength(1);
     tm.close();
   });
 

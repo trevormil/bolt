@@ -24,6 +24,21 @@ const log = createLogger("chain");
 
 export type { Coin };
 
+/**
+ * Thrown by confirmTx ONLY when the chain definitively rejected the tx (nonzero
+ * code). Distinct from timeout/network errors (plain Error) so callers can treat
+ * a not-yet-observed tx as still-pending/reconcilable rather than failed (0023).
+ */
+export class TxRevertedError extends Error {
+  constructor(
+    message: string,
+    readonly code: number,
+  ) {
+    super(message);
+    this.name = "TxRevertedError";
+  }
+}
+
 /** Derive a secp256k1 HD wallet (bb-prefixed) from a mnemonic. */
 export function walletFromMnemonic(
   mnemonic: string,
@@ -245,7 +260,10 @@ export async function confirmTx(
       const tx = body.tx_response;
       if (tx && tx.code !== undefined) {
         if (tx.code !== 0)
-          throw new Error(`tx ${hash.slice(0, 10)} reverted: ${tx.raw_log}`);
+          throw new TxRevertedError(
+            `tx ${hash.slice(0, 10)} reverted: ${tx.raw_log}`,
+            tx.code,
+          );
         return { height: Number(tx.height ?? 0), code: tx.code };
       }
     }

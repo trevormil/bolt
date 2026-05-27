@@ -4,6 +4,7 @@ import {
   confirmTx,
   getBalances,
   simulateSend,
+  TxRevertedError,
 } from "@vellum/chain";
 import type { Ledger, LedgerKind } from "@vellum/ledger";
 import type { PersonaWallets } from "@vellum/wallet";
@@ -221,9 +222,12 @@ export class TxManager {
   }
 
   /**
-   * Poll a pending tx to a terminal state. On CONFIRMED, write the ledger entry
-   * from chain-confirmed state (height + hash). On FAILED, mark it; no ledger
-   * value entry is written (no value moved). Idempotent — only acts on pending.
+   * Poll a pending tx toward a terminal state. On CONFIRMED, write the ledger
+   * entry from chain-confirmed state (height + hash). On a DEFINITIVE revert
+   * (TxRevertedError), mark FAILED — no ledger value entry (no value moved). A
+   * timeout / network / not-yet-observed result is NOT failure: the row stays
+   * PENDING (error recorded) so reconcile() retries it — a tx that commits after
+   * the poll window must never be lost. Idempotent — only acts on pending rows.
    */
   async confirmPending(hash: string): Promise<void> {
     const row = this.get(hash);
@@ -242,8 +246,14 @@ export class TxManager {
       log.info(`confirmed ${hash.slice(0, 10)} @ ${height}`);
     } catch (e) {
       const error = e instanceof Error ? e.message : String(e);
-      this.setStatus(hash, "failed", { error });
-      log.warn(`failed ${hash.slice(0, 10)}: ${error}`);
+      if (e instanceof TxRevertedError) {
+        this.setStatus(hash, "failed", { error });
+        log.warn(`failed ${hash.slice(0, 10)}: ${error}`);
+      } else {
+        // Unknown (timeout/network) — keep PENDING so reconcile retries.
+        this.setStatus(hash, "pending", { error });
+        log.warn(`unconfirmed ${hash.slice(0, 10)}: ${error} — left pending`);
+      }
     }
   }
 

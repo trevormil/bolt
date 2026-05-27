@@ -11,6 +11,7 @@ export {
   broadcastSend,
   confirmTx,
   claimFaucet,
+  TxRevertedError,
   type Coin,
 } from "./client.ts";
 
