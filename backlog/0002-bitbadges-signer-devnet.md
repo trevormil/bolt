@@ -1,13 +1,13 @@
 ---
 id: 2
 title: "BitBadges signer wired to the Meridian devnet"
-status: open
+status: in-progress
 priority: critical
 type: feature
 source: planning
 created: 2026-05-26
 updated: 2026-05-26
-prs: []
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/3"]
 refs: ["ARCHITECTURE.md"]
 ---
 

@@ -15,5 +15,8 @@
     "@types/bun": "1.1.14",
     "prettier": "3.3.3",
     "typescript": "5.5.4"
+  },
+  "overrides": {
+    "protobufjs": "7.6.1"
   }
 }
