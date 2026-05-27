@@ -1,13 +1,13 @@
 ---
 id: 1
 title: "Scaffold bun/TS monorepo (agent · telegram · web · shared)"
-status: in-progress
+status: closed
 priority: critical
 type: dx
 source: planning
 created: 2026-05-26
 updated: 2026-05-26
-prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/2"]
+prs: []
 refs: ["ARCHITECTURE.md"]
 ---
 
