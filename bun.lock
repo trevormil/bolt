@@ -49,6 +49,19 @@
         "@vellum/wallet": "workspace:*",
       },
     },
+    "packages/evals": {
+      "name": "@vellum/evals",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vellum/engine": "workspace:*",
+        "@vellum/llm": "workspace:*",
+        "@vellum/shared": "workspace:*",
+      },
+      "devDependencies": {
+        "@vellum/chain": "workspace:*",
+        "@vellum/orchestrator": "workspace:*",
+      },
+    },
     "packages/ledger": {
       "name": "@vellum/ledger",
       "version": "0.0.0",
@@ -439,6 +452,8 @@
     "@vellum/chain": ["@vellum/chain@workspace:packages/chain"],
 
     "@vellum/engine": ["@vellum/engine@workspace:packages/engine"],
+
+    "@vellum/evals": ["@vellum/evals@workspace:packages/evals"],
 
     "@vellum/ledger": ["@vellum/ledger@workspace:packages/ledger"],
 

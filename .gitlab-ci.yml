@@ -1,0 +1,33 @@
+# Vellum CI. The labs.gauntletai.com instance has no shared runners — only the
+# laptop runner (tag `laptop-eval`), a shell executor with bun on PATH.
+#
+# `quality` runs on every push/MR (fast, free). `evals` is MANUAL by design:
+# real-LLM eval runs cost money, so the full golden suite is never run on every
+# commit (0022 budget guardrail) — trigger it from the pipeline view when ready.
+stages:
+  - quality
+  - eval
+
+default:
+  tags:
+    - laptop-eval
+  before_script:
+    - bun install --frozen-lockfile
+
+quality:
+  stage: quality
+  script:
+    - bun run format:check
+    - bun run typecheck
+    - bun test
+    - bun run --filter @vellum/web build
+
+evals:
+  stage: eval
+  when: manual
+  allow_failure: true
+  script:
+    # Needs OPENROUTER_API_KEY and AGENT_SIGNER_MNEMONIC as masked CI/CD
+    # variables. Non-zero exit on any failing case fails the job; pass-rate
+    # is in the log.
+    - bun run --filter @vellum/evals dev --all
