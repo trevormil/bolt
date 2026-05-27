@@ -122,6 +122,48 @@ export interface VaultRef {
   withdrawApprovalId: string;
 }
 
+interface TxEvent {
+  type: string;
+  attributes: { key: string; value: string }[];
+}
+
+/**
+ * Parse a confirmed create-vault tx (LCD `tx_response`) into a VaultRef: the new
+ * collectionId (from the `message.collectionId` event attr) + the backing address
+ * & withdraw approvalId (from the create msg's approvals). The withdraw approval's
+ * toListId IS the backing address.
+ */
+export function vaultRefFromTx(txResponse: { events?: TxEvent[] }): VaultRef {
+  let collectionId = "";
+  let msg: {
+    collectionApprovals?: { approvalId?: string; toListId?: string }[];
+  } | null = null;
+  for (const e of txResponse.events ?? []) {
+    if (e.type !== "message") continue;
+    for (const a of e.attributes ?? []) {
+      if (a.key === "collectionId") collectionId = a.value;
+      if (a.key === "msg") {
+        try {
+          msg = JSON.parse(a.value);
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  }
+  const withdraw = (msg?.collectionApprovals ?? []).find((a) =>
+    a.approvalId?.startsWith("vault-withdraw"),
+  );
+  if (!collectionId || !withdraw?.approvalId || !withdraw.toListId) {
+    throw new Error("could not parse vault ref from create tx");
+  }
+  return {
+    collectionId,
+    backingAddress: withdraw.toListId,
+    withdrawApprovalId: withdraw.approvalId,
+  };
+}
+
 /** Agent withdraws (unbacks) `amount` µUSDC from a vault — within the vault's
  *  on-chain guardrails (the withdrawal-tier approval rejects over-cap). The base
  *  USDC lands in the agent's wallet; spending onward to a vendor is a bank send. */

@@ -45,6 +45,9 @@ export const envSchema = z.object({
     .string()
     .url()
     .default("https://api.meridian.trevormil.com"),
+  // The human principal's bb1 address — set as vault manager (agent has zero
+  // manager capability). Until Keplr (0027) supplies it dynamically, configure here.
+  VELLUM_PRINCIPAL_ADDRESS: z.string().optional(),
 
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 });

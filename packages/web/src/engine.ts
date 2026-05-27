@@ -5,6 +5,7 @@ import { Orchestrator, type RunLoop } from "@vellum/orchestrator";
 import { TxManager, type TxChain } from "@vellum/tx";
 import { PersonaWallets } from "@vellum/wallet";
 import { env, createLogger } from "@vellum/shared";
+import { VaultService, type VaultServiceDeps } from "./vaults.ts";
 
 const log = createLogger("engine");
 
@@ -23,6 +24,7 @@ export interface Engine {
   ledger: Ledger;
   orchestrator: Orchestrator;
   txManager: TxManager;
+  vaults: VaultService;
   claimFaucet: FaucetClaim;
 }
 
@@ -33,6 +35,10 @@ export interface EngineOptions {
   getBalances?: (address: string) => Promise<readonly Coin[]>; // test seam
   txChain?: TxChain; // test seam for the tx lifecycle
   claimFaucet?: FaucetClaim; // test seam for the faucet
+  vault?: Pick<
+    VaultServiceDeps,
+    "createVault" | "confirmTx" | "fetchTx" | "defaultManager"
+  >; // vault test seams
 }
 
 export function createEngine(opts: EngineOptions = {}): Engine {
@@ -53,7 +59,22 @@ export function createEngine(opts: EngineOptions = {}): Engine {
     dbPath,
     chain: opts.txChain,
   });
+  const vaults = new VaultService({
+    dbPath,
+    wallets,
+    ledger,
+    txManager,
+    ...opts.vault,
+  });
   const claimFaucet = opts.claimFaucet ?? chainClaimFaucet;
   log.info(`engine ready · db=${dbPath}`);
-  return { store, wallets, ledger, orchestrator, txManager, claimFaucet };
+  return {
+    store,
+    wallets,
+    ledger,
+    orchestrator,
+    txManager,
+    vaults,
+    claimFaucet,
+  };
 }

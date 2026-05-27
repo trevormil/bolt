@@ -3,9 +3,10 @@ import { Avatar, Button, Card, Icon, Input, cn } from "@vellum/ui";
 import { api, type Persona } from "./api.ts";
 import { Chat } from "./Chat.tsx";
 import { LedgerView } from "./Ledger.tsx";
+import { VaultsView } from "./Vaults.tsx";
 import { WalletPanel } from "./WalletPanel.tsx";
 
-type Tab = "chat" | "ledger";
+type Tab = "chat" | "vaults" | "ledger";
 
 export function App() {
   const [personas, setPersonas] = useState<Persona[]>([]);
@@ -99,7 +100,7 @@ export function App() {
                 </p>
               </div>
               <div className="flex gap-1 rounded-lg bg-surface p-1">
-                {(["chat", "ledger"] as Tab[]).map((t) => (
+                {(["chat", "vaults", "ledger"] as Tab[]).map((t) => (
                   <button
                     key={t}
                     onClick={() => setTab(t)}
@@ -122,6 +123,8 @@ export function App() {
               <div className="min-w-0 flex-1">
                 {tab === "chat" ? (
                   <Chat persona={selected} />
+                ) : tab === "vaults" ? (
+                  <VaultsView personaId={selected.id} />
                 ) : (
                   <LedgerView personaId={selected.id} />
                 )}

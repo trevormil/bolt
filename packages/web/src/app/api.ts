@@ -81,4 +81,36 @@ export const api = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(input),
     }).then((r) => json<ChatReply>(r)),
+
+  listVaults: (id: string) =>
+    fetch(`/api/personas/${id}/vaults`)
+      .then((r) => json<{ vaults: Vault[] }>(r))
+      .then((b) => b.vaults),
+
+  createVault: (
+    id: string,
+    input: { name: string; symbol: string; dailyWithdrawLimit?: number },
+  ) =>
+    fetch(`/api/personas/${id}/vaults`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    }).then((r) => json<Vault>(r)),
+
+  vaultWithdraw: (id: string, collectionId: string, amountMicro: string) =>
+    fetch(`/api/personas/${id}/vaults/${collectionId}/withdraw`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ amount: amountMicro }),
+    }).then((r) => json<{ hash: string; status: string }>(r)),
 };
+
+export interface Vault {
+  personaId: string;
+  collectionId: string;
+  backingAddress: string;
+  withdrawApprovalId: string;
+  symbol: string;
+  name: string;
+  created: number;
+}

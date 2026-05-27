@@ -29,6 +29,32 @@ const fakeTxChain: TxChain = {
   confirmTx: async () => ({ height: 5, code: 0 }),
 };
 
+const HUMAN = "bb1human0000000000000000000000000000000000";
+// A fake create-vault tx whose events parse to a VaultRef.
+const fakeCreateTxEvents = {
+  events: [
+    {
+      type: "message",
+      attributes: [
+        { key: "collectionId", value: "777" },
+        {
+          key: "msg",
+          value: JSON.stringify({
+            collectionApprovals: [
+              {
+                approvalId: "vault-deposit",
+                fromListId: "bb1backing",
+                toListId: "!bb1backing",
+              },
+              { approvalId: "vault-withdraw-xyz", toListId: "bb1backing" },
+            ],
+          }),
+        },
+      ],
+    },
+  ],
+};
+
 let app: ReturnType<typeof buildApp>;
 beforeEach(() => {
   const engine = createEngine({
@@ -42,6 +68,12 @@ beforeEach(() => {
       amount: "10000000",
       denom: env.VELLUM_DENOM,
     }),
+    vault: {
+      defaultManager: HUMAN,
+      createVault: async () => ({ txHash: "VAULTCREATE1" }),
+      confirmTx: async () => ({ height: 9, code: 0 }),
+      fetchTx: async () => fakeCreateTxEvents,
+    },
   });
   app = buildApp(engine);
 });
@@ -124,6 +156,44 @@ describe("web API", () => {
     expect(
       led.entries.some((e) => e.kind === "spend" && e.txHash === "SPENDHASH"),
     ).toBe(true);
+  });
+
+  test("vault lifecycle: create (agent) → list → withdraw (governed)", async () => {
+    await post("/api/personas", { name: "Atlas" });
+    const created = await post("/api/personas/atlas/vaults", {
+      name: "Groceries",
+      symbol: "vUSDC",
+      dailyWithdrawLimit: 5,
+    });
+    expect(created.status).toBe(201);
+    const vault = (await created.json()) as {
+      collectionId: string;
+      backingAddress: string;
+    };
+    expect(vault.collectionId).toBe("777");
+    expect(vault.backingAddress).toBe("bb1backing");
+
+    const list = (await (
+      await app.request("/api/personas/atlas/vaults")
+    ).json()) as {
+      vaults: { collectionId: string }[];
+    };
+    expect(list.vaults.map((v) => v.collectionId)).toEqual(["777"]);
+
+    const wd = await post("/api/personas/atlas/vaults/777/withdraw", {
+      amount: "1000000",
+    });
+    expect(wd.status).toBe(200);
+    const pending = (await wd.json()) as { kind: string; status: string };
+    expect(pending.kind).toBe("vault_op");
+    expect(pending.status).toBe("pending");
+  });
+
+  test("vault create validates name + symbol", async () => {
+    await post("/api/personas", { name: "Atlas" });
+    expect(
+      (await post("/api/personas/atlas/vaults", { name: "x" })).status,
+    ).toBe(400);
   });
 
   test("spend route validates to-address + amount", async () => {

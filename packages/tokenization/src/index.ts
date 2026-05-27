@@ -7,6 +7,7 @@ export {
   vaultWithdraw,
   vaultDeposit,
   vaultTransferMsg,
+  vaultRefFromTx,
   type CreateVaultInput,
   type VaultRef,
 } from "./vault.ts";

@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { tracer } from "@vellum/trace";
 import { createLogger, env } from "@vellum/shared";
 import { createEngine, type Engine } from "./engine.ts";
+import { vaultTools } from "./agent-tools.ts";
 
 // Built SPA dir, resolved from this file (cwd-independent) so the server can be
 // launched from the repo root (where .env loads) or from packages/web alike.
@@ -117,6 +118,53 @@ export function buildApp(engine: Engine) {
     return c.json(pending);
   });
 
+  // Vaults — agent creates (human is manager); list; agent withdraws within rules.
+  app.get("/api/personas/:id/vaults", (c) => {
+    const id = c.req.param("id");
+    if (!engine.store.getPersona(id))
+      return c.json({ error: "unknown persona" }, 404);
+    return c.json({ vaults: engine.vaults.list(id) });
+  });
+
+  app.post("/api/personas/:id/vaults", async (c) => {
+    const id = c.req.param("id");
+    if (!engine.store.getPersona(id))
+      return c.json({ error: "unknown persona" }, 404);
+    const body = (await c.req.json().catch(() => ({}))) as {
+      name?: string;
+      symbol?: string;
+      description?: string;
+      dailyWithdrawLimit?: number;
+    };
+    if (!body.name?.trim() || !body.symbol?.trim()) {
+      return c.json({ error: "name and symbol are required" }, 400);
+    }
+    const vault = await engine.vaults.create(id, {
+      name: body.name.trim(),
+      symbol: body.symbol.trim(),
+      description: body.description?.trim(),
+      dailyWithdrawLimit: body.dailyWithdrawLimit,
+    });
+    return c.json(vault, 201);
+  });
+
+  app.post("/api/personas/:id/vaults/:collectionId/withdraw", async (c) => {
+    const id = c.req.param("id");
+    if (!engine.store.getPersona(id))
+      return c.json({ error: "unknown persona" }, 404);
+    const body = (await c.req.json().catch(() => ({}))) as { amount?: string };
+    const amount = body.amount?.trim();
+    if (!amount || !/^[0-9]+$/.test(amount)) {
+      return c.json(
+        { error: "amount (base-unit µUSDC integer) is required" },
+        400,
+      );
+    }
+    return c.json(
+      await engine.vaults.withdraw(id, c.req.param("collectionId"), amount),
+    );
+  });
+
   app.get("/api/personas/:id/ledger", (c) => {
     const id = c.req.param("id");
     if (!engine.store.getPersona(id))
@@ -147,8 +195,12 @@ export function buildApp(engine: Engine) {
     // dispatch. The agent reasons only over that persona's own memory.
     const trace = tracer.trace("chat", { personaId, conversationId });
     engine.orchestrator.resolve(conversationId, `/switch ${personaId}`);
+    // Give the agent its persona-scoped vault tools (create/list/withdraw).
+    const { tools, invoke } = vaultTools(engine, personaId);
     const res = await engine.orchestrator.handle(conversationId, message, {
       trace,
+      tools,
+      invoke,
     });
     trace.end();
     void tracer.flush();

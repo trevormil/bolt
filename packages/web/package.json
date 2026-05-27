@@ -25,7 +25,8 @@
     "@vellum/wallet": "workspace:*",
     "hono": "4.12.22",
     "react": "18.3.1",
-    "react-dom": "18.3.1"
+    "react-dom": "18.3.1",
+    "@vellum/tokenization": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "18.3.12",
