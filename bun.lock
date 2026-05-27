@@ -95,6 +95,17 @@
         "@vellum/shared": "workspace:*",
       },
     },
+    "packages/scheduler": {
+      "name": "@vellum/scheduler",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vellum/engine": "workspace:*",
+        "@vellum/shared": "workspace:*",
+      },
+      "devDependencies": {
+        "@vellum/chain": "workspace:*",
+      },
+    },
     "packages/shared": {
       "name": "@vellum/shared",
       "version": "0.0.0",
@@ -107,6 +118,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@vellum/engine": "workspace:*",
+        "@vellum/scheduler": "workspace:*",
         "@vellum/shared": "workspace:*",
         "grammy": "1.43.0",
       },
@@ -462,6 +474,8 @@
     "@vellum/orchestrator": ["@vellum/orchestrator@workspace:packages/orchestrator"],
 
     "@vellum/persona": ["@vellum/persona@workspace:packages/persona"],
+
+    "@vellum/scheduler": ["@vellum/scheduler@workspace:packages/scheduler"],
 
     "@vellum/shared": ["@vellum/shared@workspace:packages/shared"],
 

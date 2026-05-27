@@ -53,6 +53,8 @@ export const envSchema = z.object({
   // x/bank tier ceiling per persona, enforced by never funding above it.
   VELLUM_LLM_BUDGET_USD: z.coerce.number().default(1),
   VELLUM_FREEFORM_CAP_USD: z.coerce.number().default(25),
+  // Per-persona check-in cadence (0018). Default 6h; lower it for demos.
+  VELLUM_CHECKIN_INTERVAL_MS: z.coerce.number().default(6 * 60 * 60 * 1000),
 
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 });
