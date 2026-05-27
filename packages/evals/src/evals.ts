@@ -139,8 +139,11 @@ export async function runCase(
   };
   const oracles = (c.oracles ?? []).map((o) => o(ctx));
   const judgeRes = c.judge ? await judge(r.reply, c.judge) : undefined;
-  const pass =
-    oracles.every((o) => o.ok) && (!judgeRes || judgeRes.score >= threshold);
+  // The judge passes only when BOTH its holistic verdict is "pass" AND its score
+  // clears the threshold — a "fail" verdict at a high score must not slip through.
+  const judgeOk =
+    !judgeRes || (judgeRes.verdict === "pass" && judgeRes.score >= threshold);
+  const pass = oracles.every((o) => o.ok) && judgeOk;
   log.info(
     `case ${c.id} · ${pass ? "PASS" : "FAIL"} · $${r.costUsd.toFixed(4)}`,
   );

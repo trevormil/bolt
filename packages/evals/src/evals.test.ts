@@ -38,6 +38,12 @@ const judgeFail: Judge = async () => ({
   verdict: "fail",
   reason: "no",
 });
+// A "fail" verdict at a high score must NOT pass — the verdict is authoritative.
+const judgeFailHighScore: Judge = async () => ({
+  score: 95,
+  verdict: "fail",
+  reason: "looks good but disqualified",
+});
 
 const PERSONA = {
   id: "p",
@@ -85,6 +91,16 @@ describe("runCase", () => {
     );
     expect(r.pass).toBe(false);
     expect(r.oracles[0]!.ok).toBe(false);
+  });
+
+  test("a judge 'fail' verdict fails the case even with a high score", async () => {
+    const r = await runCase(
+      engineWith("looks plausible", 0.001),
+      baseCase({ oracles: [oracle.budgetUnder(0.05)], judge: "in character" }),
+      { judge: judgeFailHighScore },
+    );
+    expect(r.pass).toBe(false);
+    expect(r.judge?.score).toBe(95);
   });
 
   test("a judge below threshold fails the case even when oracles pass", async () => {
