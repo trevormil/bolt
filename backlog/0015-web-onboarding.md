@@ -7,7 +7,7 @@ type: feature
 source: planning
 created: 2026-05-26
 updated: 2026-05-27
-prs: []
+prs: [""]
 refs: ["ARCHITECTURE.md"]
 ---
 
