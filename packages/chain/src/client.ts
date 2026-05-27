@@ -1,4 +1,5 @@
 import { DirectSecp256k1HdWallet } from "@cosmjs/proto-signing";
+import { stringToPath } from "@cosmjs/crypto";
 import {
   SigningStargateClient,
   StargateClient,
@@ -30,6 +31,31 @@ export function walletFromMnemonic(
 /** Resolve the `bb1...` address for a mnemonic. */
 export async function addressOf(mnemonic: string): Promise<string> {
   const [account] = await (await walletFromMnemonic(mnemonic)).getAccounts();
+  if (!account) throw new Error("wallet produced no account");
+  return account.address;
+}
+
+/**
+ * Derive a distinct bb-prefixed HD wallet at BIP-44 account `index` from one
+ * master mnemonic (path m/44'/118'/0'/0/index — Cosmos coin type 118). This is
+ * how each persona gets its own wallet from a single committed-nowhere secret.
+ */
+export function walletAtIndex(
+  mnemonic: string,
+  index: number,
+): Promise<DirectSecp256k1HdWallet> {
+  return DirectSecp256k1HdWallet.fromMnemonic(mnemonic, {
+    prefix: PREFIX,
+    hdPaths: [stringToPath(`m/44'/118'/0'/0/${index}`)],
+  });
+}
+
+/** Resolve the `bb1...` address for a master mnemonic at HD account `index`. */
+export async function addressAt(
+  mnemonic: string,
+  index: number,
+): Promise<string> {
+  const [account] = await (await walletAtIndex(mnemonic, index)).getAccounts();
   if (!account) throw new Error("wallet produced no account");
   return account.address;
 }

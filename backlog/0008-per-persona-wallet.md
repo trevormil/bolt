@@ -1,12 +1,12 @@
 ---
 id: 8
 title: "One bb1 wallet per persona"
-status: open
+status: in-progress
 priority: high
 type: feature
 source: planning
 created: 2026-05-26
-updated: 2026-05-26
+updated: 2026-05-27
 prs: []
 refs: ["ARCHITECTURE.md"]
 ---
