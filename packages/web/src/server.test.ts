@@ -506,4 +506,45 @@ describe("API auth", () => {
     const a = withAuth({ token: undefined, host: "127.0.0.1" });
     expect((await a.request("/api/personas")).status).toBe(200);
   });
+
+  test("/api/auth reports requirement + status", async () => {
+    const open = withAuth({ token: undefined, host: "127.0.0.1" });
+    expect(await (await open.request("/api/auth")).json()).toMatchObject({
+      authRequired: false,
+      authed: true,
+    });
+    const prot = withAuth({ token: "secret", host: "0.0.0.0" });
+    expect(await (await prot.request("/api/auth")).json()).toMatchObject({
+      authRequired: true,
+      authed: false,
+    });
+  });
+
+  test("login sets a session cookie that authorizes the browser SPA", async () => {
+    const a = withAuth({ token: "secret", host: "0.0.0.0" });
+    const login = await a.request("/api/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: "secret" }),
+    });
+    expect(login.status).toBe(200);
+    const setCookie = login.headers.get("set-cookie") ?? "";
+    expect(setCookie).toContain("vellum_session");
+    expect(setCookie.toLowerCase()).toContain("httponly");
+    // The cookie alone (no bearer header) authorizes a protected route.
+    const ok = await a.request("/api/personas", {
+      headers: { cookie: setCookie.split(";")[0]! },
+    });
+    expect(ok.status).toBe(200);
+  });
+
+  test("login rejects a wrong token", async () => {
+    const a = withAuth({ token: "secret", host: "0.0.0.0" });
+    const r = await a.request("/api/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: "nope" }),
+    });
+    expect(r.status).toBe(401);
+  });
 });

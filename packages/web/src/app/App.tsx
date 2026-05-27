@@ -15,6 +15,7 @@ export function App() {
   const [tab, setTab] = useState<Tab>("chat");
   const [loaded, setLoaded] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [authed, setAuthed] = useState<boolean | null>(null);
 
   async function reload(selectId?: string) {
     const list = await api.listPersonas();
@@ -25,12 +26,30 @@ export function App() {
       setSelectedId(list[0]!.id);
   }
 
+  // Auth gate (#27): open on loopback dev; a login is only needed when the API
+  // is token-protected (exposed deploy). Check before loading any data.
   useEffect(() => {
-    void reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    api
+      .authStatus()
+      .then((s) => setAuthed(s.authed))
+      .catch(() => setAuthed(true));
   }, []);
 
+  useEffect(() => {
+    if (authed) void reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authed]);
+
   const selected = personas.find((p) => p.id === selectedId) ?? null;
+
+  if (authed === null) {
+    return (
+      <div className="grid h-full place-items-center bg-base text-soft">…</div>
+    );
+  }
+  if (!authed) {
+    return <Login onLogin={() => setAuthed(true)} />;
+  }
 
   if (loaded && personas.length === 0 && !creating) {
     return <Welcome onStart={() => setCreating(true)} />;
@@ -174,6 +193,60 @@ function KeplrButton() {
       </span>
       <span className="text-muted">{(Number(usdc) / 1e6).toFixed(2)} USDC</span>
     </button>
+  );
+}
+
+// Shown only when the API is token-protected (exposed deploy) and not yet
+// authenticated. Exchanges the token for an httpOnly session cookie via /api/login.
+function Login({ onLogin }: { onLogin: () => void }) {
+  const [token, setToken] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit() {
+    if (!token.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.login(token.trim());
+      onLogin();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="grid h-full place-items-center bg-base text-fg font-sans">
+      <Card className="w-[24rem] p-6">
+        <div className="flex items-center gap-2">
+          <span className="grid h-8 w-8 place-items-center rounded-md bg-accent text-accent-fg">
+            <Icon name="wallet" size={16} />
+          </span>
+          <span className="font-serif text-xl">Vellum</span>
+        </div>
+        <p className="mt-4 text-sm text-muted">
+          This instance is access-protected. Enter the API token to continue.
+        </p>
+        <Input
+          type="password"
+          value={token}
+          onChange={(e) => setToken(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && submit()}
+          placeholder="API token"
+          className="mt-3"
+          autoFocus
+        />
+        {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+        <Button
+          className="mt-4 w-full"
+          onClick={submit}
+          disabled={busy || !token.trim()}
+        >
+          {busy ? "Signing in…" : "Sign in"}
+        </Button>
+      </Card>
+    </div>
   );
 }
 

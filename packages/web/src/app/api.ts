@@ -37,13 +37,44 @@ export interface ChatReply {
   tokens: number;
 }
 
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 async function json<T>(res: Response): Promise<T> {
   const body = (await res.json().catch(() => ({}))) as T & { error?: string };
-  if (!res.ok) throw new Error(body.error || `${res.status} ${res.statusText}`);
+  if (!res.ok)
+    throw new ApiError(
+      res.status,
+      body.error || `${res.status} ${res.statusText}`,
+    );
   return body;
 }
 
 export const api = {
+  // Auth (#27 boundary): authRequired=false on loopback dev (open). The session
+  // cookie is httpOnly, so login/logout go through the server, not page JS.
+  authStatus: () =>
+    fetch("/api/auth").then((r) =>
+      json<{ authRequired: boolean; authed: boolean }>(r),
+    ),
+  login: (token: string) =>
+    fetch("/api/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token }),
+    }).then((r) => json<{ ok: boolean }>(r)),
+  logout: () =>
+    fetch("/api/logout", { method: "POST" }).then((r) =>
+      json<{ ok: boolean }>(r),
+    ),
+
   listPersonas: () =>
     fetch("/api/personas")
       .then((r) => json<{ personas: Persona[] }>(r))

@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { confirmTx } from "@vellum/chain";
 import { tracer } from "@vellum/trace";
 import { createLogger, env } from "@vellum/shared";
@@ -78,6 +79,10 @@ const isLoopback = (host: string): boolean =>
 // shares it with; the confirm is safe because it verifies the on-chain credit).
 export function isPublicRoute(method: string, path: string): boolean {
   if (path === "/api/health" || path === "/api/config") return true;
+  // Auth status + login/logout must be reachable to authenticate in the first place.
+  if (method === "GET" && path === "/api/auth") return true;
+  if (method === "POST" && (path === "/api/login" || path === "/api/logout"))
+    return true;
   if (method === "GET" && /^\/api\/payment-requests\/[^/]+$/.test(path))
     return true;
   if (
@@ -87,6 +92,8 @@ export function isPublicRoute(method: string, path: string): boolean {
     return true;
   return false;
 }
+
+const SESSION_COOKIE = "vellum_session";
 
 function slug(name: string): string {
   return (
@@ -124,9 +131,11 @@ export function buildApp(
   app.use("/api/*", async (c, next) => {
     if (isPublicRoute(c.req.method, c.req.path)) return next();
     if (auth.token) {
-      if (c.req.header("authorization") !== `Bearer ${auth.token}`) {
-        return c.json({ error: "unauthorized" }, 401);
-      }
+      // Accept a bearer header (API clients) OR the session cookie (browser SPA,
+      // set by /api/login — httpOnly, so it's never exposed to page JS).
+      const bearer = c.req.header("authorization") === `Bearer ${auth.token}`;
+      const cookie = getCookie(c, SESSION_COOKIE) === auth.token;
+      if (!bearer && !cookie) return c.json({ error: "unauthorized" }, 401);
       return next();
     }
     if (!loopback) {
@@ -142,6 +151,40 @@ export function buildApp(
   });
 
   app.get("/api/health", (c) => c.json({ ok: true }));
+
+  // Session login for the browser SPA: exchange the API token for an httpOnly,
+  // SameSite=Strict session cookie (CSRF-safe; not readable by page JS). When no
+  // token is configured (loopback dev), auth is open so login is a no-op.
+  app.post("/api/login", async (c) => {
+    if (!auth.token) return c.json({ ok: true, authRequired: false });
+    const body = (await c.req.json().catch(() => ({}))) as { token?: string };
+    if (body.token !== auth.token)
+      return c.json({ error: "invalid token" }, 401);
+    setCookie(c, SESSION_COOKIE, auth.token, {
+      httpOnly: true,
+      sameSite: "Strict",
+      secure: !loopback,
+      path: "/",
+      maxAge: 60 * 60 * 24 * 30,
+    });
+    return c.json({ ok: true });
+  });
+
+  app.post("/api/logout", (c) => {
+    deleteCookie(c, SESSION_COOKIE, { path: "/" });
+    return c.json({ ok: true });
+  });
+
+  // Whether the API needs a login (so the SPA shows a prompt only when required).
+  app.get("/api/auth", (c) =>
+    c.json({
+      authRequired: !!auth.token,
+      authed:
+        !auth.token ||
+        getCookie(c, SESSION_COOKIE) === auth.token ||
+        c.req.header("authorization") === `Bearer ${auth.token}`,
+    }),
+  );
 
   // Public chain config so the client can configure Keplr (0027) without baking
   // env into the bundle. No secrets — just the devnet endpoints + USDC denom.
