@@ -16,6 +16,11 @@ export const envSchema = z.object({
 
   ANTHROPIC_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
+  OPENROUTER_API_KEY: z.string().optional(),
+
+  // LLM routing (OpenRouter model ids): cheap by default, escalate to frontier.
+  LLM_MODEL_CHEAP: z.string().default("anthropic/claude-haiku-4.5"),
+  LLM_MODEL_FRONTIER: z.string().default("anthropic/claude-sonnet-4.6"),
 
   LANGFUSE_PUBLIC_KEY: z.string().optional(),
   LANGFUSE_SECRET_KEY: z.string().optional(),

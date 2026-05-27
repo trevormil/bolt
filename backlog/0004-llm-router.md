@@ -1,13 +1,13 @@
 ---
 id: 4
 title: "LLM provider router (cheap-default → escalate) + metering"
-status: open
+status: in-progress
 priority: high
 type: feature
 source: planning
 created: 2026-05-26
 updated: 2026-05-26
-prs: []
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/5"]
 refs: ["ARCHITECTURE.md"]
 ---
 
