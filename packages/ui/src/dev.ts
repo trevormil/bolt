@@ -3,5 +3,5 @@
 import { iconNames } from "./Icon.tsx";
 
 console.log(
-  `[ui] Dusk design system ready · ${iconNames.length} icons · Button/Card/Input/Badge/Avatar`,
+  `[ui] @vellum/ui ready · Dusk theme (dark default) · ${iconNames.length} icons · Button/Card/Input/Badge/Avatar`,
 );
