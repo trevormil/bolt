@@ -124,6 +124,49 @@ describe("TxManager — reconciliation invariant", () => {
     tm.close();
   });
 
+  test("a pending tx (incl. after timeout) blocks the next spend until it settles", async () => {
+    let mode: "timeout" | "ok" = "timeout";
+    let broadcasts = 0;
+    const tm = mgr(
+      baseChain({
+        broadcastSend: async () => `H${++broadcasts}`,
+        confirmTx: async () => {
+          if (mode === "timeout")
+            throw new Error("tx HASH not committed within 20s");
+          return { height: 3, code: 0 };
+        },
+      }),
+    );
+
+    const first = await tm.spend({
+      personaId: "a",
+      to: "to1",
+      amount: "1000000",
+    });
+    await waitFor(() => tm.get(first.hash)!.error !== null); // timed out → still pending
+    expect(tm.get(first.hash)!.status).toBe("pending");
+    expect(broadcasts).toBe(1);
+
+    // Second spend must NOT broadcast while the first is pending.
+    await expect(
+      tm.spend({ personaId: "a", to: "to2", amount: "1000000" }),
+    ).rejects.toThrow("pending tx");
+    expect(broadcasts).toBe(1);
+
+    // Settle the first; only then may the next spend proceed.
+    mode = "ok";
+    await tm.reconcile();
+    expect(tm.get(first.hash)!.status).toBe("confirmed");
+    const third = await tm.spend({
+      personaId: "a",
+      to: "to3",
+      amount: "1000000",
+    });
+    expect(third.status).toBe("pending");
+    expect(broadcasts).toBe(2);
+    tm.close();
+  });
+
   test("insufficient balance rejects pre-flight — no broadcast, no pending", async () => {
     let broadcasts = 0;
     const tm = mgr(
