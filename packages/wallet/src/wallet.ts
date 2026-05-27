@@ -155,7 +155,21 @@ export class PersonaWallets {
   async signerFor(personaId: string): Promise<Signer> {
     const w = this.walletFor(personaId);
     if (!w) throw new Error(`no wallet for persona: ${personaId}`);
-    return deriveAdapter(this.requireMnemonic(), w.hdIndex);
+    const adapter = await deriveAdapter(this.requireMnemonic(), w.hdIndex);
+    // The persisted address must match what the current derivation path + master
+    // mnemonic produce for this HD index. A mismatch means the row predates a
+    // derivation change (or the mnemonic differs): addressFor() would report one
+    // identity while this signer is another, so the tx layer would build a send
+    // FROM the stored address but sign AS a different key. Fail loudly before any
+    // broadcast rather than silently producing a wrong-key tx.
+    if (adapter.address !== w.address) {
+      throw new Error(
+        `wallet ${personaId} address mismatch: stored ${w.address} but the current ` +
+          `derivation yields ${adapter.address} — this row predates the current ` +
+          `signing path; re-provision (migrate) the wallet before signing`,
+      );
+    }
+    return adapter;
   }
 
   list(): WalletRecord[] {
