@@ -1,0 +1,16 @@
+{
+  "name": "@vellum/orchestrator",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "bun run src/index.ts"
+  },
+  "dependencies": {
+    "@vellum/agent": "workspace:*",
+    "@vellum/llm": "workspace:*",
+    "@vellum/persona": "workspace:*",
+    "@vellum/shared": "workspace:*"
+  }
+}

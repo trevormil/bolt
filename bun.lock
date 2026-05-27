@@ -35,6 +35,16 @@
         "@vellum/shared": "workspace:*",
       },
     },
+    "packages/orchestrator": {
+      "name": "@vellum/orchestrator",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vellum/agent": "workspace:*",
+        "@vellum/llm": "workspace:*",
+        "@vellum/persona": "workspace:*",
+        "@vellum/shared": "workspace:*",
+      },
+    },
     "packages/persona": {
       "name": "@vellum/persona",
       "version": "0.0.0",
@@ -151,6 +161,8 @@
     "@vellum/chain": ["@vellum/chain@workspace:packages/chain"],
 
     "@vellum/llm": ["@vellum/llm@workspace:packages/llm"],
+
+    "@vellum/orchestrator": ["@vellum/orchestrator@workspace:packages/orchestrator"],
 
     "@vellum/persona": ["@vellum/persona@workspace:packages/persona"],
 
