@@ -347,4 +347,70 @@ describe("web API", () => {
       ).status,
     ).toBe(404);
   });
+
+  test("config exposes public chain settings (no secrets)", async () => {
+    const body = (await (await app.request("/api/config")).json()) as {
+      chainId: string;
+      lcd: string;
+      denom: string;
+    };
+    expect(body.chainId).toBeTruthy();
+    expect(body.lcd.startsWith("http")).toBe(true);
+    expect(body.denom).toBe(env.VELLUM_DENOM);
+  });
+});
+
+describe("payment requests (0014)", () => {
+  test("create → get → list a request for a persona", async () => {
+    await post("/api/personas", { name: "Atlas" });
+    const created = await post("/api/personas/atlas/payment-requests", {
+      amountUsdc: 12.5,
+      memo: "lunch",
+    });
+    expect(created.status).toBe(201);
+    const req = (await created.json()) as {
+      id: string;
+      amount: string;
+      status: string;
+      toAddress: string;
+      memo: string;
+    };
+    expect(req.amount).toBe("12500000"); // µUSDC
+    expect(req.status).toBe("pending");
+    expect(req.toAddress.startsWith("bb1")).toBe(true);
+    expect(req.memo).toBe("lunch");
+
+    // Public fetch by id (no persona context) → request + persona name.
+    const got = (await (
+      await app.request(`/api/payment-requests/${req.id}`)
+    ).json()) as { request: { id: string }; personaName: string };
+    expect(got.request.id).toBe(req.id);
+    expect(got.personaName).toBe("Atlas");
+
+    const list = (await (
+      await app.request("/api/personas/atlas/payment-requests")
+    ).json()) as { requests: { id: string }[] };
+    expect(list.requests.map((r) => r.id)).toContain(req.id);
+  });
+
+  test("validates amount + persona; confirm requires a txHash", async () => {
+    await post("/api/personas", { name: "Atlas" });
+    expect(
+      (await post("/api/personas/atlas/payment-requests", { amountUsdc: 0 }))
+        .status,
+    ).toBe(400);
+    expect(
+      (await post("/api/personas/ghost/payment-requests", { amountUsdc: 5 }))
+        .status,
+    ).toBe(404);
+    expect((await app.request("/api/payment-requests/nope")).status).toBe(404);
+
+    const req = (await (
+      await post("/api/personas/atlas/payment-requests", { amountUsdc: 5 })
+    ).json()) as { id: string };
+    // Confirm without a txHash is rejected before any chain call.
+    expect(
+      (await post(`/api/payment-requests/${req.id}/confirm`, {})).status,
+    ).toBe(400);
+  });
 });

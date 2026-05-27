@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { Button, Icon } from "@vellum/ui";
+import { Button, Icon, Input } from "@vellum/ui";
 import { api } from "./api.ts";
+import { bankSendMsg, loadConfig, signAndBroadcast } from "./keplr.ts";
+import { useWallet } from "./wallet-context.tsx";
 
 const fmtUsdc = (base: string) =>
   (Number(base) / 1e6).toLocaleString(undefined, {
@@ -101,9 +103,121 @@ export function WalletPanel({ personaId }: { personaId: string }) {
       </Button>
       {error && <p className="mt-2 text-xs text-danger">{error}</p>}
 
-      <p className="mt-4 text-xs leading-relaxed text-soft">
-        Devnet USDC only. Agent-initiated funding (PaymentRequests) and vault
-        spend arrive in 0014 / 0012-0013.
+      {address && (
+        <FundActions
+          personaId={personaId}
+          personaAddress={address}
+          onFunded={refresh}
+        />
+      )}
+    </div>
+  );
+}
+
+// Human-signed funding (0027 + 0014): fund this persona directly from the
+// connected Keplr wallet, or raise a one-time PaymentRequest link the human (or
+// someone else) opens and pays.
+function FundActions({
+  personaId,
+  personaAddress,
+  onFunded,
+}: {
+  personaId: string;
+  personaAddress: string;
+  onFunded: () => void;
+}) {
+  const { wallet } = useWallet();
+  const [amount, setAmount] = useState("");
+  const [busy, setBusy] = useState<"fund" | "request" | null>(null);
+  const [link, setLink] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function fundFromKeplr() {
+    const usd = Number(amount);
+    if (!usd || !wallet) return;
+    setBusy("fund");
+    setError(null);
+    setNote(null);
+    try {
+      const { denom } = await loadConfig();
+      const micro = String(Math.round(usd * 1e6));
+      const txHash = await signAndBroadcast(
+        [bankSendMsg(wallet.address, personaAddress, micro, denom)],
+        `fund ${personaId}`,
+      );
+      setNote(`Sent ${usd} USDC (${txHash.slice(0, 10)}…)`);
+      setAmount("");
+      onFunded();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function requestFunds() {
+    const usd = Number(amount);
+    if (!usd) return;
+    setBusy("request");
+    setError(null);
+    setNote(null);
+    try {
+      const req = await api.createPaymentRequest(personaId, {
+        amountUsdc: usd,
+      });
+      setLink(`${window.location.origin}/pay/${req.id}`);
+      setAmount("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="mt-4 border-t border-border pt-4">
+      <div className="text-xs uppercase tracking-wide text-soft">Fund</div>
+      <Input
+        value={amount}
+        onChange={(e) => setAmount(e.target.value)}
+        placeholder="Amount (USDC)"
+        className="mt-1"
+      />
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={fundFromKeplr}
+          disabled={!wallet || !amount || busy !== null}
+          title={wallet ? "Send from your Keplr wallet" : "Connect Keplr first"}
+        >
+          {busy === "fund" ? "Signing…" : "From my wallet"}
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={requestFunds}
+          disabled={!amount || busy !== null}
+        >
+          <Icon name="link" size={13} /> {busy === "request" ? "…" : "Request"}
+        </Button>
+      </div>
+      {note && <p className="mt-2 text-xs text-muted">{note}</p>}
+      {error && <p className="mt-2 text-xs text-danger">{error}</p>}
+      {link && (
+        <button
+          onClick={() => navigator.clipboard?.writeText(link)}
+          className="mt-2 flex w-full items-center gap-2 rounded-md border border-border bg-surface-3 px-2.5 py-2 text-left font-mono text-[11px] text-muted hover:text-fg"
+          title="Copy payment link"
+        >
+          <span className="truncate">{link}</span>
+          <Icon name="copy" size={12} />
+        </button>
+      )}
+      <p className="mt-3 text-xs leading-relaxed text-soft">
+        “From my wallet” signs with Keplr (your address). “Request” makes a
+        one-time link anyone can open and pay — the agent never pulls funds.
       </p>
     </div>
   );

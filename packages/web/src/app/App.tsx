@@ -5,6 +5,7 @@ import { Chat } from "./Chat.tsx";
 import { LedgerView } from "./Ledger.tsx";
 import { VaultsView } from "./Vaults.tsx";
 import { WalletPanel } from "./WalletPanel.tsx";
+import { useWallet } from "./wallet-context.tsx";
 
 type Tab = "chat" | "vaults" | "ledger";
 
@@ -99,21 +100,24 @@ export function App() {
                   {selected.soul.role}
                 </p>
               </div>
-              <div className="flex gap-1 rounded-lg bg-surface p-1">
-                {(["chat", "vaults", "ledger"] as Tab[]).map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => setTab(t)}
-                    className={cn(
-                      "rounded-md px-3 py-1.5 text-sm capitalize",
-                      tab === t
-                        ? "bg-accent text-accent-fg"
-                        : "text-muted hover:text-fg",
-                    )}
-                  >
-                    {t}
-                  </button>
-                ))}
+              <div className="flex items-center gap-3">
+                <KeplrButton />
+                <div className="flex gap-1 rounded-lg bg-surface p-1">
+                  {(["chat", "vaults", "ledger"] as Tab[]).map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => setTab(t)}
+                      className={cn(
+                        "rounded-md px-3 py-1.5 text-sm capitalize",
+                        tab === t
+                          ? "bg-accent text-accent-fg"
+                          : "text-muted hover:text-fg",
+                      )}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
               </div>
             </header>
 
@@ -135,6 +139,41 @@ export function App() {
         )}
       </main>
     </div>
+  );
+}
+
+// The human's own Keplr wallet (0027) — distinct from the per-persona agent
+// keys. Underpins every human-signed flow (fund a persona, pay a request, fund
+// a vault). Connect/disconnect + a compact address·balance chip.
+function KeplrButton() {
+  const { wallet, usdc, available, connecting, connect, disconnect } =
+    useWallet();
+  if (!available)
+    return <span className="text-xs text-soft">Keplr not detected</span>;
+  if (!wallet)
+    return (
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={connect}
+        disabled={connecting}
+      >
+        <Icon name="wallet" size={14} />{" "}
+        {connecting ? "Connecting…" : "Connect Keplr"}
+      </Button>
+    );
+  return (
+    <button
+      onClick={disconnect}
+      title="Disconnect Keplr"
+      className="flex items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs hover:border-soft"
+    >
+      <Icon name="wallet" size={14} />
+      <span className="font-mono">
+        {wallet.address.slice(0, 8)}…{wallet.address.slice(-4)}
+      </span>
+      <span className="text-muted">{(Number(usdc) / 1e6).toFixed(2)} USDC</span>
+    </button>
   );
 }
 

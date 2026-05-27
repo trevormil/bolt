@@ -121,7 +121,47 @@ export const api = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ amount: amountMicro }),
     }).then((r) => json<{ hash: string; status: string }>(r)),
+
+  createPaymentRequest: (
+    id: string,
+    input: { amountUsdc: number; memo?: string },
+  ) =>
+    fetch(`/api/personas/${id}/payment-requests`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    }).then((r) => json<PaymentRequest>(r)),
+
+  listPaymentRequests: (id: string) =>
+    fetch(`/api/personas/${id}/payment-requests`)
+      .then((r) => json<{ requests: PaymentRequest[] }>(r))
+      .then((b) => b.requests),
+
+  getPaymentRequest: (reqId: string) =>
+    fetch(`/api/payment-requests/${reqId}`).then((r) =>
+      json<{ request: PaymentRequest; personaName: string }>(r),
+    ),
+
+  confirmPaymentRequest: (reqId: string, txHash: string) =>
+    fetch(`/api/payment-requests/${reqId}/confirm`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ txHash }),
+    }).then((r) => json<PaymentRequest>(r)),
 };
+
+export interface PaymentRequest {
+  id: string;
+  personaId: string;
+  toAddress: string;
+  denom: string;
+  amount: string; // base µUSDC
+  memo: string;
+  status: "pending" | "paid";
+  txHash: string | null;
+  created: number;
+  paidAt: number | null;
+}
 
 export interface Vault {
   personaId: string;

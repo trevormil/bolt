@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { confirmTx } from "@vellum/chain";
 import { tracer } from "@vellum/trace";
 import { createLogger, env } from "@vellum/shared";
 import {
@@ -8,6 +9,7 @@ import {
   llmBudget,
   type Engine,
 } from "@vellum/engine";
+import { PaymentRequests } from "./payment-requests.ts";
 
 // Built SPA dir, resolved from this file (cwd-independent) so the server can be
 // launched from the repo root (where .env loads) or from packages/web alike.
@@ -35,8 +37,20 @@ function slug(name: string): string {
 // determinism live in the engine packages; this layer just exposes them.
 export function buildApp(engine: Engine) {
   const app = new Hono();
+  const paymentRequests = new PaymentRequests(env.VELLUM_DB_PATH);
 
   app.get("/api/health", (c) => c.json({ ok: true }));
+
+  // Public chain config so the client can configure Keplr (0027) without baking
+  // env into the bundle. No secrets — just the devnet endpoints + USDC denom.
+  app.get("/api/config", (c) =>
+    c.json({
+      chainId: env.BITBADGES_CHAIN_ID,
+      rpc: env.BITBADGES_RPC,
+      lcd: env.BITBADGES_LCD,
+      denom: env.VELLUM_DENOM,
+    }),
+  );
 
   app.get("/api/personas", (c) => {
     const personas = engine.store.listPersonas().map((p) => ({
@@ -202,6 +216,79 @@ export function buildApp(engine: Engine) {
     return c.json(
       await engine.vaults.withdraw(id, c.req.param("collectionId"), amount),
     );
+  });
+
+  // Payment requests (0014) — the agent/user raises a one-time funding request;
+  // the human opens the link and signs a USDC transfer to the persona from their
+  // own Keplr wallet. The agent never pulls funds.
+  app.post("/api/personas/:id/payment-requests", async (c) => {
+    const id = c.req.param("id");
+    if (!engine.store.getPersona(id))
+      return c.json({ error: "unknown persona" }, 404);
+    const addr = engine.wallets.addressFor(id);
+    if (!addr) return c.json({ error: "persona has no wallet" }, 400);
+    const body = (await c.req.json().catch(() => ({}))) as {
+      amountUsdc?: number;
+      memo?: string;
+    };
+    const usd = Number(body.amountUsdc);
+    if (!Number.isFinite(usd) || usd <= 0)
+      return c.json({ error: "amountUsdc must be a number > 0" }, 400);
+    const req = paymentRequests.create({
+      personaId: id,
+      toAddress: addr,
+      denom: env.VELLUM_DENOM,
+      amount: String(Math.round(usd * 1e6)),
+      memo: body.memo?.trim() || `Fund ${id}`,
+    });
+    return c.json(req, 201);
+  });
+
+  app.get("/api/personas/:id/payment-requests", (c) => {
+    const id = c.req.param("id");
+    if (!engine.store.getPersona(id))
+      return c.json({ error: "unknown persona" }, 404);
+    return c.json({ requests: paymentRequests.listForPersona(id) });
+  });
+
+  // Public — the pay page fetches this without persona context.
+  app.get("/api/payment-requests/:reqId", (c) => {
+    const r = paymentRequests.get(c.req.param("reqId"));
+    if (!r) return c.json({ error: "unknown payment request" }, 404);
+    const persona = engine.store.getPersona(r.personaId);
+    return c.json({
+      request: r,
+      personaName: persona?.soul.name ?? r.personaId,
+    });
+  });
+
+  // The human signed + broadcast client-side; this verifies the tx committed on
+  // chain (truth from chain, not the client's word) and records the funding —
+  // idempotent on txHash, so a double-confirm is a no-op.
+  app.post("/api/payment-requests/:reqId/confirm", async (c) => {
+    const r = paymentRequests.get(c.req.param("reqId"));
+    if (!r) return c.json({ error: "unknown payment request" }, 404);
+    if (r.status === "paid") return c.json(r); // already recorded — idempotent
+    const body = (await c.req.json().catch(() => ({}))) as { txHash?: string };
+    const txHash = body.txHash?.trim();
+    if (!txHash) return c.json({ error: "txHash is required" }, 400);
+    try {
+      await confirmTx(txHash); // throws on revert / not-yet-committed
+    } catch (e) {
+      return c.json(
+        { error: e instanceof Error ? e.message : "tx not confirmed" },
+        400,
+      );
+    }
+    engine.ledger.recordOnchain({
+      personaId: r.personaId,
+      kind: "funding",
+      summary: `funded ${(Number(r.amount) / 1e6).toFixed(2)} USDC via payment request`,
+      authority: "human",
+      txHash,
+      meta: { paymentRequestId: r.id, amount: r.amount, denom: r.denom },
+    });
+    return c.json(paymentRequests.markPaid(r.id, txHash));
   });
 
   app.get("/api/personas/:id/ledger", (c) => {

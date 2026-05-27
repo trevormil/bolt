@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Badge, Button, Card, Icon, Input } from "@vellum/ui";
 import { api, type Vault } from "./api.ts";
+import { signAndBroadcast, vaultDepositMsg } from "./keplr.ts";
+import { useWallet } from "./wallet-context.tsx";
 
 // Per-persona vaults: 1:1 USDC-backed, siloed for a purpose. The agent creates +
 // withdraws within rules; the human is the manager + funds escrow.
@@ -105,14 +107,16 @@ export function VaultsView({ personaId }: { personaId: string }) {
 }
 
 function VaultRow({ personaId, vault }: { personaId: string; vault: Vault }) {
+  const { wallet } = useWallet();
   const [amount, setAmount] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"withdraw" | "deposit" | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
+  // Agent withdraws within the vault's on-chain rule (server-signed).
   async function withdraw() {
     const usdc = Number(amount);
     if (!usdc) return;
-    setBusy(true);
+    setBusy("withdraw");
     setNote(null);
     try {
       const r = await api.vaultWithdraw(
@@ -125,7 +129,35 @@ function VaultRow({ personaId, vault }: { personaId: string; vault: Vault }) {
     } catch (e) {
       setNote(e instanceof Error ? e.message : String(e));
     } finally {
-      setBusy(false);
+      setBusy(null);
+    }
+  }
+
+  // The human funds the escrow from their OWN Keplr wallet (0016) — a
+  // human-signed vault action, distinct from the agent's withdrawals.
+  async function deposit() {
+    const usdc = Number(amount);
+    if (!usdc || !wallet) return;
+    setBusy("deposit");
+    setNote(null);
+    try {
+      const txHash = await signAndBroadcast(
+        [
+          vaultDepositMsg({
+            human: wallet.address,
+            collectionId: vault.collectionId,
+            backingAddress: vault.backingAddress,
+            amountMicro: String(Math.round(usdc * 1e6)),
+          }),
+        ],
+        `fund vault ${vault.symbol}`,
+      );
+      setNote(`Escrow funded (${txHash.slice(0, 10)}…)`);
+      setAmount("");
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -138,7 +170,8 @@ function VaultRow({ personaId, vault }: { personaId: string; vault: Vault }) {
             <span className="truncate text-sm">{vault.name}</span>
           </div>
           <div className="mt-1 font-mono text-xs text-soft">
-            collection {vault.collectionId}
+            collection {vault.collectionId} · backing{" "}
+            {vault.backingAddress.slice(0, 10)}…
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -151,10 +184,23 @@ function VaultRow({ personaId, vault }: { personaId: string; vault: Vault }) {
           <Button
             variant="secondary"
             size="sm"
-            onClick={withdraw}
-            disabled={busy || !amount}
+            onClick={deposit}
+            disabled={busy !== null || !amount || !wallet}
+            title={
+              wallet
+                ? "Fund escrow from your Keplr wallet (human-signed)"
+                : "Connect Keplr to fund escrow"
+            }
           >
-            Withdraw
+            {busy === "deposit" ? "Signing…" : "Fund"}
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={withdraw}
+            disabled={busy !== null || !amount}
+          >
+            {busy === "withdraw" ? "…" : "Withdraw"}
           </Button>
         </div>
       </div>
