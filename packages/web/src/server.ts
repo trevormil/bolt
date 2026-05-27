@@ -1,9 +1,13 @@
 import { Hono } from "hono";
 import { tracer } from "@vellum/trace";
 import { createLogger, env } from "@vellum/shared";
-import { createEngine, type Engine } from "./engine.ts";
-import { vaultTools } from "./agent-tools.ts";
-import { freeformCap, llmBudget } from "./budgets.ts";
+import {
+  createEngine,
+  chat,
+  freeformCap,
+  llmBudget,
+  type Engine,
+} from "@vellum/engine";
 
 // Built SPA dir, resolved from this file (cwd-independent) so the server can be
 // launched from the repo root (where .env loads) or from packages/web alike.
@@ -219,43 +223,19 @@ export function buildApp(engine: Engine) {
     if (!engine.store.getPersona(personaId)) {
       return c.json({ error: `unknown persona: ${personaId}` }, 404);
     }
-    // Per-persona LLM-spend budget (0009): refuse BEFORE the model call when the
-    // rolling-window cap is reached — bounds a runaway agent's spend.
-    const budget = llmBudget(engine.ledger, personaId);
-    if (!budget.ok) {
-      return c.json({
-        reply: `Daily LLM budget of $${budget.capUsd.toFixed(2)} reached (spent $${budget.spentUsd.toFixed(4)}). It resets on a rolling 24h window.`,
-        personaId,
-        costUsd: 0,
-        tokens: 0,
-        budgetExceeded: true,
-      });
-    }
-    // Deterministically bind this conversation to the chosen persona, then
-    // dispatch. The agent reasons only over that persona's own memory.
+    // Shared chat flow (budget gate → routing → agent loop + vault tools →
+    // ledger + memory). Identical on web + Telegram.
     const trace = tracer.trace("chat", { personaId, conversationId });
-    engine.orchestrator.resolve(conversationId, `/switch ${personaId}`);
-    // Give the agent its persona-scoped vault tools (create/list/withdraw).
-    const { tools, invoke } = vaultTools(engine, personaId);
-    const res = await engine.orchestrator.handle(conversationId, message, {
-      trace,
-      tools,
-      invoke,
-    });
+    const r = await chat(engine, { conversationId, personaId, message, trace });
     trace.end();
     void tracer.flush();
-    const costUsd = res.meters.reduce((n, m) => n + m.costUsd, 0);
-    const tokens = res.meters.reduce((n, m) => n + m.totalTokens, 0);
-    engine.ledger.recordAgentRun(
+    return c.json({
+      reply: r.reply,
       personaId,
-      `chat · ${message.slice(0, 60)}`,
-      res.meters,
-    );
-    // Accrue memory (persona-scoped) so recall improves over the conversation.
-    await engine.store.remember(personaId, `User said: ${message}`, {
-      source: "chat",
+      costUsd: r.costUsd,
+      tokens: r.tokens,
+      budgetExceeded: r.budgetExceeded,
     });
-    return c.json({ reply: res.reply, personaId, costUsd, tokens });
   });
 
   // Unknown API paths return JSON (not the SPA), so clients get a real error.

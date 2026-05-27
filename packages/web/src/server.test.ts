@@ -3,7 +3,7 @@ import type { Meter } from "@vellum/llm";
 import type { RunLoop } from "@vellum/orchestrator";
 import type { TxChain } from "@vellum/tx";
 import { env } from "@vellum/shared";
-import { createEngine } from "./engine.ts";
+import { createEngine } from "@vellum/engine";
 import { buildApp, webServeOptions } from "./server.ts";
 
 const METER: Meter = {

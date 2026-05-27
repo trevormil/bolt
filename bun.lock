@@ -32,6 +32,23 @@
         "bitbadges": "0.41.0",
       },
     },
+    "packages/engine": {
+      "name": "@vellum/engine",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vellum/agent": "workspace:*",
+        "@vellum/chain": "workspace:*",
+        "@vellum/ledger": "workspace:*",
+        "@vellum/llm": "workspace:*",
+        "@vellum/orchestrator": "workspace:*",
+        "@vellum/persona": "workspace:*",
+        "@vellum/shared": "workspace:*",
+        "@vellum/tokenization": "workspace:*",
+        "@vellum/trace": "workspace:*",
+        "@vellum/tx": "workspace:*",
+        "@vellum/wallet": "workspace:*",
+      },
+    },
     "packages/ledger": {
       "name": "@vellum/ledger",
       "version": "0.0.0",
@@ -76,6 +93,7 @@
       "name": "@vellum/telegram",
       "version": "0.0.0",
       "dependencies": {
+        "@vellum/engine": "workspace:*",
         "@vellum/shared": "workspace:*",
         "grammy": "1.43.0",
       },
@@ -135,6 +153,7 @@
       "dependencies": {
         "@vellum/agent": "workspace:*",
         "@vellum/chain": "workspace:*",
+        "@vellum/engine": "workspace:*",
         "@vellum/ledger": "workspace:*",
         "@vellum/llm": "workspace:*",
         "@vellum/orchestrator": "workspace:*",
@@ -418,6 +437,8 @@
     "@vellum/agent": ["@vellum/agent@workspace:packages/agent"],
 
     "@vellum/chain": ["@vellum/chain@workspace:packages/chain"],
+
+    "@vellum/engine": ["@vellum/engine@workspace:packages/engine"],
 
     "@vellum/ledger": ["@vellum/ledger@workspace:packages/ledger"],
 

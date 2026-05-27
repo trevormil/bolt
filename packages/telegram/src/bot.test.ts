@@ -1,21 +1,33 @@
-import { describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { createEngine } from "@vellum/engine";
+import { buildBot } from "./bot.ts";
 
-// Capture everything the bot logs.
-const logged: string[] = [];
-mock.module("@vellum/shared", () => ({
-  createLogger: () => ({
-    info: (m: string) => logged.push(m),
-    debug: () => {},
-    warn: () => {},
-    error: () => {},
-  }),
-}));
-
-const { buildBot } = await import("./bot.ts");
+const TEST_MNEMONIC =
+  "test test test test test test test test test test test junk";
 
 function fakeBot() {
-  const bot = buildBot("123456:FAKE_TOKEN_FOR_TESTS");
-  // Avoid getMe() on handleUpdate, and no-op the API so ctx.reply never hits the network.
+  const engine = createEngine({
+    dbPath: ":memory:",
+    embedder: null,
+    mnemonic: TEST_MNEMONIC,
+    runLoop: async () => ({
+      text: "ok",
+      meters: [
+        {
+          model: "m",
+          tier: "cheap",
+          promptTokens: 0,
+          completionTokens: 0,
+          totalTokens: 1,
+          costUsd: 0,
+          ms: 0,
+        },
+      ],
+    }),
+    getBalances: async () => [],
+  });
+  const bot = buildBot("123456:FAKE_TOKEN_FOR_TESTS", engine);
+  // Avoid getMe() on handleUpdate; no-op the API so ctx.reply never hits network.
   bot.botInfo = {
     id: 1,
     is_bot: true,
@@ -30,8 +42,20 @@ function fakeBot() {
 }
 
 describe("buildBot logging boundary", () => {
-  test("never logs raw user message text", async () => {
-    logged.length = 0;
+  let logs: string[];
+  const origLog = console.log;
+  const origErr = console.error;
+  beforeEach(() => {
+    logs = [];
+    console.log = (...a: unknown[]) => logs.push(a.join(" "));
+    console.error = (...a: unknown[]) => logs.push(a.join(" "));
+  });
+  afterEach(() => {
+    console.log = origLog;
+    console.error = origErr;
+  });
+
+  test("never logs raw user message text (metadata only)", async () => {
     const SECRET = "my recovery phrase is correct horse battery staple";
     await fakeBot().handleUpdate({
       update_id: 1,
@@ -43,8 +67,7 @@ describe("buildBot logging boundary", () => {
         text: SECRET,
       },
     } as never);
-    expect(logged.some((l) => l.includes(SECRET))).toBe(false);
-    // …but it still records the event (metadata only).
-    expect(logged.some((l) => l.includes("message:text"))).toBe(true);
+    expect(logs.some((l) => l.includes(SECRET))).toBe(false);
+    expect(logs.some((l) => l.includes("message:text"))).toBe(true);
   });
 });

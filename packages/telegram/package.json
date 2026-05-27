@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@vellum/shared": "workspace:*",
-    "grammy": "1.43.0"
+    "grammy": "1.43.0",
+    "@vellum/engine": "workspace:*"
   }
 }

@@ -35,6 +35,7 @@ export interface EngineOptions {
   getBalances?: (address: string) => Promise<readonly Coin[]>; // test seam
   txChain?: TxChain; // test seam for the tx lifecycle
   claimFaucet?: FaucetClaim; // test seam for the faucet
+  mnemonic?: string; // test seam — wallet derivation (else env.AGENT_SIGNER_MNEMONIC)
   vault?: Pick<
     VaultServiceDeps,
     "createVault" | "confirmTx" | "fetchTx" | "defaultManager"
@@ -46,7 +47,11 @@ export function createEngine(opts: EngineOptions = {}): Engine {
   const embedder =
     opts.embedder === undefined ? openAiEmbedder() : opts.embedder;
   const store = new PersonaStore(dbPath, embedder);
-  const wallets = new PersonaWallets({ dbPath, getBalances: opts.getBalances });
+  const wallets = new PersonaWallets({
+    dbPath,
+    mnemonic: opts.mnemonic,
+    getBalances: opts.getBalances,
+  });
   const ledger = new Ledger(dbPath);
   const orchestrator = new Orchestrator(
     store,

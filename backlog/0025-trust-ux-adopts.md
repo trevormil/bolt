@@ -1,12 +1,12 @@
 ---
 id: 25
 title: "Trust-UX adopts (breadcrumb, receipt, /ledger, plain-English, framing)"
-status: open
+status: in-progress
 priority: medium
 type: ux
 source: audit
 created: 2026-05-26
-updated: 2026-05-26
+updated: 2026-05-27
 prs: []
 refs: ["ARCHITECTURE.md", "research/audit/00-summary.md"]
 ---
