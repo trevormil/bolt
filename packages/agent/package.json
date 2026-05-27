@@ -8,6 +8,8 @@
     "dev": "bun run src/index.ts"
   },
   "dependencies": {
-    "@vellum/shared": "workspace:*"
+    "@vellum/llm": "workspace:*",
+    "@vellum/shared": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.29.0"
   }
 }

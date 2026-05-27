@@ -1,9 +1,15 @@
-import { env, createLogger } from "@vellum/shared";
+// Public surface of @vellum/agent: the thin tool-using loop + MCP client.
+export {
+  runAgent,
+  type ToolInvoker,
+  type AgentChat,
+  type RunAgentInput,
+  type AgentRun,
+} from "./loop.ts";
+export { selectTools, type ToolSpec } from "./tools.ts";
+export { McpClient } from "./mcp.ts";
 
-const log = createLogger("agent");
-
-// Scaffold entrypoint. The orchestrator + per-persona sub-agents land in later
-// tickets (0005 loop+MCP, 0006 compartments, 0007 routing). For now: boot clean.
-log.info(
-  `scaffold ready · chain=${env.BITBADGES_CHAIN_ID} · rpc=${env.BITBADGES_RPC}`,
-);
+if (import.meta.main) {
+  const { createLogger } = await import("@vellum/shared");
+  createLogger("agent").info("ready · loop + MCP client + selective tools");
+}
