@@ -1,8 +1,4 @@
-import {
-  DirectSecp256k1HdWallet,
-  type OfflineDirectSigner,
-} from "@cosmjs/proto-signing";
-import { stringToPath } from "@cosmjs/crypto";
+import { DirectSecp256k1HdWallet } from "@cosmjs/proto-signing";
 import {
   SigningStargateClient,
   StargateClient,
@@ -49,31 +45,6 @@ export function walletFromMnemonic(
 /** Resolve the `bb1...` address for a mnemonic. */
 export async function addressOf(mnemonic: string): Promise<string> {
   const [account] = await (await walletFromMnemonic(mnemonic)).getAccounts();
-  if (!account) throw new Error("wallet produced no account");
-  return account.address;
-}
-
-/**
- * Derive a distinct bb-prefixed HD wallet at BIP-44 account `index` from one
- * master mnemonic (path m/44'/118'/0'/0/index — Cosmos coin type 118). This is
- * how each persona gets its own wallet from a single committed-nowhere secret.
- */
-export function walletAtIndex(
-  mnemonic: string,
-  index: number,
-): Promise<DirectSecp256k1HdWallet> {
-  return DirectSecp256k1HdWallet.fromMnemonic(mnemonic, {
-    prefix: PREFIX,
-    hdPaths: [stringToPath(`m/44'/118'/0'/0/${index}`)],
-  });
-}
-
-/** Resolve the `bb1...` address for a master mnemonic at HD account `index`. */
-export async function addressAt(
-  mnemonic: string,
-  index: number,
-): Promise<string> {
-  const [account] = await (await walletAtIndex(mnemonic, index)).getAccounts();
   if (!account) throw new Error("wallet produced no account");
   return account.address;
 }
@@ -154,79 +125,6 @@ export async function claimFaucet(
     amount?: string;
     denom?: string;
   };
-}
-
-const SEND_TYPE_URL = "/cosmos.bank.v1beta1.MsgSend";
-
-function sendMsg(
-  fromAddress: string,
-  recipient: string,
-  amount: string,
-  denom: string,
-) {
-  return {
-    typeUrl: SEND_TYPE_URL,
-    value: { fromAddress, toAddress: recipient, amount: [{ denom, amount }] },
-  };
-}
-
-/**
- * Pre-flight: simulate a bank send against current chain state. Throws if the
- * tx would fail (e.g. insufficient funds) — the reject-before-broadcast half of
- * the reconciliation invariant (0023). Returns the estimated gas.
- */
-export async function simulateSend(
-  signer: OfflineDirectSigner,
-  fromAddress: string,
-  recipient: string,
-  amount: string,
-  denom = env.VELLUM_DENOM,
-): Promise<number> {
-  const client = await SigningStargateClient.connectWithSigner(
-    env.BITBADGES_RPC,
-    signer,
-  );
-  try {
-    return await client.simulate(
-      fromAddress,
-      [sendMsg(fromAddress, recipient, amount, denom)],
-      "vellum spend",
-    );
-  } finally {
-    client.disconnect();
-  }
-}
-
-/**
- * Broadcast a bank send WITHOUT waiting for inclusion — returns the tx hash
- * immediately so the caller can persist a PENDING record before confirmation
- * runs out of band (0023). Use confirmTx(hash) to learn the on-chain outcome.
- */
-export async function broadcastSend(
-  signer: OfflineDirectSigner,
-  fromAddress: string,
-  recipient: string,
-  amount: string,
-  denom = env.VELLUM_DENOM,
-): Promise<string> {
-  const client = await SigningStargateClient.connectWithSigner(
-    env.BITBADGES_RPC,
-    signer,
-  );
-  try {
-    const hash = await client.signAndBroadcastSync(
-      fromAddress,
-      [sendMsg(fromAddress, recipient, amount, denom)],
-      DEFAULT_FEE,
-      "vellum spend",
-    );
-    log.info(
-      `broadcast ${amount}${denom} → ${recipient} · ${hash.slice(0, 10)}`,
-    );
-    return hash;
-  } finally {
-    client.disconnect();
-  }
 }
 
 /**

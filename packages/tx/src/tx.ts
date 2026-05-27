@@ -5,6 +5,7 @@ import {
   getBalances,
   signAndBroadcast,
   TxRevertedError,
+  type MsgJson,
 } from "@vellum/chain";
 import type { Ledger, LedgerKind } from "@vellum/ledger";
 import type { PersonaWallets } from "@vellum/wallet";
@@ -147,15 +148,24 @@ export class TxManager {
   }
 
   /**
-   * Move value from a persona's wallet. Simulates, broadcasts, and persists a
-   * PENDING row before returning; confirmation + the ledger entry happen async
-   * (and only from chain-confirmed state). Returns the PENDING tx immediately.
+   * Submit pre-built msgs through the governed lifecycle: durable per-persona
+   * guard + in-memory mutex → sign + broadcast → persist PENDING before
+   * returning → confirm out of band (ledger written only from chain-confirmed
+   * state). The single chokepoint for ALL on-chain actions (spend, vault_op,
+   * funding). Returns the PENDING tx immediately.
    */
-  async spend(input: SpendInput): Promise<PendingTx> {
-    const { personaId, to, amount } = input;
-    const kind = input.kind ?? "spend";
+  async submit(input: {
+    personaId: string;
+    kind: TxKind;
+    msgs: MsgJson[];
+    to: string; // ledger/summary context (recipient, vault backing, …)
+    amount: string; // µUSDC for the summary
+    authority?: string;
+    memo?: string;
+    trace?: TraceSpan;
+  }): Promise<PendingTx> {
+    const { personaId, kind, msgs, to, amount } = input;
     const authority = input.authority ?? "agent";
-
     const release = await this.acquire(personaId);
     let released = false;
     const releaseOnce = () => {
@@ -167,44 +177,25 @@ export class TxManager {
 
     try {
       // Durable per-persona guard (§13.4): no new tx while ANY row for this
-      // persona is still pending — including after a confirmation timeout (row
-      // stays pending) or a crash+restart (reconcile() settles it first). This
-      // is the authoritative guard; the in-memory lock just serializes the
-      // check+broadcast window so two concurrent spends can't both pass it.
+      // persona is still pending — covers confirmation timeouts (row stays
+      // pending) and crash+restart (reconcile settles first). The in-memory lock
+      // just serializes the guard+broadcast window so two calls can't both pass.
       if (this.pending(personaId).length > 0) {
         throw new Error(
           `persona ${personaId} has a pending tx — wait for it to settle`,
         );
       }
 
-      const from = this.wallets.addressFor(personaId);
-      if (!from) throw new Error(`no wallet for persona: ${personaId}`);
-
-      // Re-query balance fresh from chain (never cached) before spending.
-      const balances = await this.chain.getBalances(from);
-      const have = BigInt(
-        balances.find((c) => c.denom === this.denom)?.amount ?? "0",
-      );
-      if (have < BigInt(amount)) {
-        throw new Error(
-          `insufficient USDC: have ${usdc(have.toString())}, need ${usdc(amount)}`,
-        );
-      }
-
-      const chainSpan = (input.trace ?? NOOP_SPAN).child("chain:spend", {
-        kind,
+      const chainSpan = (input.trace ?? NOOP_SPAN).child(`chain:${kind}`, {
         to,
         amount,
       });
       const adapter = await this.wallets.signerFor(personaId);
-      // Sign + broadcast via the SDK; CheckTx rejects pre-flight failures (bad
-      // sig, insufficient funds) before inclusion. Returns the hash to track;
-      // confirmation runs out of band.
-      const hash = await this.chain.signAndBroadcast(
-        adapter,
-        [bankSendMsg(from, to, amount, this.denom)],
-        { memo: `vellum ${kind}` },
-      );
+      // CheckTx rejects pre-flight failures (bad sig, insufficient funds,
+      // over-cap) before inclusion. Returns the hash; confirmation is async.
+      const hash = await this.chain.signAndBroadcast(adapter, msgs, {
+        memo: input.memo ?? `vellum ${kind}`,
+      });
       chainSpan.end({ hash });
 
       const now = Date.now();
@@ -234,6 +225,35 @@ export class TxManager {
       releaseOnce();
       throw e;
     }
+  }
+
+  /**
+   * Move value from a persona's wallet (bank send). Friendly balance pre-check,
+   * then through submit() — the governed lifecycle.
+   */
+  async spend(input: SpendInput): Promise<PendingTx> {
+    const { personaId, to, amount } = input;
+    const from = this.wallets.addressFor(personaId);
+    if (!from) throw new Error(`no wallet for persona: ${personaId}`);
+    // Friendly pre-check (CheckTx is authoritative, but this reads better).
+    const have = BigInt(
+      (await this.chain.getBalances(from)).find((c) => c.denom === this.denom)
+        ?.amount ?? "0",
+    );
+    if (have < BigInt(amount)) {
+      throw new Error(
+        `insufficient USDC: have ${usdc(have.toString())}, need ${usdc(amount)}`,
+      );
+    }
+    return this.submit({
+      personaId,
+      kind: input.kind ?? "spend",
+      msgs: [bankSendMsg(from, to, amount, this.denom)],
+      to,
+      amount,
+      authority: input.authority,
+      trace: input.trace,
+    });
   }
 
   /**
