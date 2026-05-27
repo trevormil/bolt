@@ -1,13 +1,13 @@
 ---
 id: 5
 title: "Thin agent loop + MCP client (connect >=1 app)"
-status: open
+status: in-progress
 priority: critical
 type: feature
 source: planning
 created: 2026-05-26
-updated: 2026-05-26
-prs: []
+updated: 2026-05-27
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/7"]
 refs: ["ARCHITECTURE.md"]
 ---
 

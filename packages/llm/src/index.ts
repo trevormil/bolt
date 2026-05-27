@@ -1,12 +1,17 @@
 // Public surface of @vellum/llm.
 export {
   complete,
+  completeWithTools,
   routeTier,
   type Tier,
   type Role,
   type ChatMessage,
+  type ToolDef,
+  type ToolCall,
+  type ToolCallPart,
   type CompleteOptions,
   type CompleteResult,
+  type ToolsResult,
   type Meter,
 } from "./router.ts";
 

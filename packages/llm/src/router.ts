@@ -8,11 +8,35 @@ const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 const log = createLogger("llm");
 
 export type Tier = "cheap" | "frontier";
-export type Role = "system" | "user" | "assistant";
+export type Role = "system" | "user" | "assistant" | "tool";
+
+// OpenAI-shaped tool-call as it appears on an assistant message.
+export interface ToolCallPart {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+}
 export interface ChatMessage {
   role: Role;
   content: string;
+  tool_calls?: ToolCallPart[]; // assistant turns that request tools
+  tool_call_id?: string; // role:"tool" — which call this answers
+  name?: string; // role:"tool" — tool name (optional, aids debugging)
 }
+
+// A tool the model may call. `parameters` is a JSON Schema object.
+export interface ToolDef {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+}
+// A tool call the model decided to make, normalized for the agent loop.
+export interface ToolCall {
+  id: string;
+  name: string;
+  arguments: string; // raw JSON string as emitted by the model
+}
+
 export interface CompleteOptions {
   tier?: Tier; // explicit override
   model?: string; // explicit model override (bypasses routing)
@@ -31,6 +55,12 @@ export interface Meter {
 }
 export interface CompleteResult {
   text: string;
+  meter: Meter;
+}
+export interface ToolsResult {
+  text: string;
+  toolCalls: ToolCall[];
+  assistantMessage: ChatMessage; // append verbatim to history before tool results
   meter: Meter;
 }
 
@@ -52,16 +82,29 @@ function modelFor(tier: Tier, opts: CompleteOptions): string {
   return tier === "frontier" ? env.LLM_MODEL_FRONTIER : env.LLM_MODEL_CHEAP;
 }
 
-/** Route + call OpenRouter; returns the text and a metering record. */
-export async function complete(
-  messages: ChatMessage[],
-  opts: CompleteOptions = {},
-): Promise<CompleteResult> {
-  if (!env.OPENROUTER_API_KEY) throw new Error("OPENROUTER_API_KEY not set");
-  const tier = routeTier(messages, opts);
-  const model = modelFor(tier, opts);
-  const start = Date.now();
+interface ChatChoiceMessage {
+  content?: string | null;
+  tool_calls?: ToolCallPart[];
+}
+interface ChatResponse {
+  choices?: { message?: ChatChoiceMessage }[];
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+    cost?: number;
+  };
+}
 
+/** POST one chat-completions request, returning the raw message + metering. */
+async function callOpenRouter(
+  body: Record<string, unknown>,
+  tier: Tier,
+  model: string,
+  opts: CompleteOptions,
+): Promise<{ message: ChatChoiceMessage; meter: Meter }> {
+  if (!env.OPENROUTER_API_KEY) throw new Error("OPENROUTER_API_KEY not set");
+  const start = Date.now();
   const res = await fetch(ENDPOINT, {
     method: "POST",
     headers: {
@@ -70,9 +113,9 @@ export async function complete(
     },
     body: JSON.stringify({
       model,
-      messages,
       max_tokens: opts.maxTokens ?? 1024,
       usage: { include: true }, // ask OpenRouter to report actual $ cost
+      ...body,
     }),
     signal: opts.signal ?? AbortSignal.timeout(60_000),
   });
@@ -81,16 +124,7 @@ export async function complete(
       `OpenRouter ${res.status}: ${(await res.text()).slice(0, 300)}`,
     );
   }
-  const json = (await res.json()) as {
-    choices?: { message?: { content?: string } }[];
-    usage?: {
-      prompt_tokens?: number;
-      completion_tokens?: number;
-      total_tokens?: number;
-      cost?: number;
-    };
-  };
-  const text = json.choices?.[0]?.message?.content ?? "";
+  const json = (await res.json()) as ChatResponse;
   const u = json.usage ?? {};
   const meter: Meter = {
     model,
@@ -105,5 +139,68 @@ export async function complete(
   log.info(
     `${tier} · ${model} · ${meter.totalTokens} tok · $${meter.costUsd.toFixed(6)} · ${meter.ms}ms`,
   );
-  return { text, meter };
+  return { message: json.choices?.[0]?.message ?? {}, meter };
+}
+
+/** Route + call OpenRouter; returns the text and a metering record. */
+export async function complete(
+  messages: ChatMessage[],
+  opts: CompleteOptions = {},
+): Promise<CompleteResult> {
+  const tier = routeTier(messages, opts);
+  const model = modelFor(tier, opts);
+  const { message, meter } = await callOpenRouter(
+    { messages },
+    tier,
+    model,
+    opts,
+  );
+  return { text: message.content ?? "", meter };
+}
+
+/**
+ * Tool-aware completion. Exposes `tools` to the model and returns any tool
+ * calls it requested alongside the assistant message (to append to history
+ * before feeding tool results back). The agent loop drives the round-trips.
+ */
+export async function completeWithTools(
+  messages: ChatMessage[],
+  tools: ToolDef[],
+  opts: CompleteOptions = {},
+): Promise<ToolsResult> {
+  const tier = routeTier(messages, opts);
+  const model = modelFor(tier, opts);
+  const { message, meter } = await callOpenRouter(
+    {
+      messages,
+      tools: tools.map((t) => ({
+        type: "function",
+        function: {
+          name: t.name,
+          description: t.description,
+          parameters: t.parameters,
+        },
+      })),
+      tool_choice: "auto",
+    },
+    tier,
+    model,
+    opts,
+  );
+  const text = message.content ?? "";
+  const calls = message.tool_calls ?? [];
+  return {
+    text,
+    toolCalls: calls.map((c) => ({
+      id: c.id,
+      name: c.function.name,
+      arguments: c.function.arguments,
+    })),
+    assistantMessage: {
+      role: "assistant",
+      content: text,
+      ...(calls.length ? { tool_calls: calls } : {}),
+    },
+    meter,
+  };
 }
