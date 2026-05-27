@@ -1,12 +1,12 @@
 ---
 id: 17
 title: "Web: budgets/ledger views + streamlined sign pages"
-status: open
+status: in-progress
 priority: high
 type: feature
 source: planning
 created: 2026-05-26
-updated: 2026-05-26
+updated: 2026-05-27
 prs: []
 refs: ["ARCHITECTURE.md"]
 ---

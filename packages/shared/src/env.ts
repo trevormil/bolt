@@ -26,6 +26,11 @@ export const envSchema = z.object({
   LANGFUSE_SECRET_KEY: z.string().optional(),
   LANGFUSE_HOST: z.string().url().optional(),
 
+  // Web app: persistent sqlite path (personas/memory/wallets/routing/ledger) +
+  // the API/static server port.
+  VELLUM_DB_PATH: z.string().default("./vellum.db"),
+  WEB_PORT: z.coerce.number().default(8787),
+
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 });
 
