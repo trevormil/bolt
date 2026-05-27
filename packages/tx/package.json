@@ -1,5 +1,5 @@
 {
-  "name": "@vellum/wallet",
+  "name": "@vellum/tx",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -9,7 +9,8 @@
   },
   "dependencies": {
     "@vellum/chain": "workspace:*",
+    "@vellum/ledger": "workspace:*",
     "@vellum/shared": "workspace:*",
-    "@cosmjs/proto-signing": "0.32.4"
+    "@vellum/wallet": "workspace:*"
   }
 }

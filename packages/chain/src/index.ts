@@ -7,7 +7,10 @@ export {
   generateWallet,
   getBalances,
   sendCoins,
+  simulateSend,
+  broadcastSend,
   confirmTx,
+  claimFaucet,
   type Coin,
 } from "./client.ts";
 

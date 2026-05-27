@@ -33,6 +33,19 @@ export const envSchema = z.object({
   WEB_PORT: z.coerce.number().default(8787),
   WEB_HOST: z.string().default("127.0.0.1"),
 
+  // Vellum is single-asset: the IBC USDC denom on the BitBadges devnet (6 dp,
+  // displayed "USDC"). Balances, payment requests, and vaults use only this.
+  VELLUM_DENOM: z
+    .string()
+    .default(
+      "ibc/F082B65C88E4B6D5EF1DB243CDA1D331D002759E938A0F5CD3FFDC5D53B3E349",
+    ),
+  // Devnet USDC faucet (Meridian aggregator) — 10 USDC per claim to a bb1 address.
+  VELLUM_FAUCET_URL: z
+    .string()
+    .url()
+    .default("https://api.meridian.trevormil.com"),
+
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 });
 

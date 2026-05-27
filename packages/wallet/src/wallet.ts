@@ -1,9 +1,11 @@
 import { Database } from "bun:sqlite";
 import {
   addressAt,
+  walletAtIndex,
   getBalances as chainGetBalances,
   type Coin,
 } from "@vellum/chain";
+import type { DirectSecp256k1HdWallet } from "@cosmjs/proto-signing";
 import { env, createLogger } from "@vellum/shared";
 
 const log = createLogger("wallet");
@@ -139,6 +141,17 @@ export class PersonaWallets {
     const w = this.walletFor(personaId);
     if (!w) throw new Error(`no wallet for persona: ${personaId}`);
     return this.getBalances(w.address);
+  }
+
+  /**
+   * Re-derive the persona's hot signer at runtime (from the env mnemonic + its
+   * HD index) for signing a tx. The key is never persisted — only the index is.
+   * Used by the tx layer (0023); callers must not log or store the result.
+   */
+  async signerFor(personaId: string): Promise<DirectSecp256k1HdWallet> {
+    const w = this.walletFor(personaId);
+    if (!w) throw new Error(`no wallet for persona: ${personaId}`);
+    return walletAtIndex(this.requireMnemonic(), w.hdIndex);
   }
 
   list(): WalletRecord[] {

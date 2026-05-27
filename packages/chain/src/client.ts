@@ -1,4 +1,7 @@
-import { DirectSecp256k1HdWallet } from "@cosmjs/proto-signing";
+import {
+  DirectSecp256k1HdWallet,
+  type OfflineDirectSigner,
+} from "@cosmjs/proto-signing";
 import { stringToPath } from "@cosmjs/crypto";
 import {
   SigningStargateClient,
@@ -108,6 +111,104 @@ export async function sendCoins(
     // failed tx never reaches caller code (or the ledger) as a success.
     assertIsDeliverTxSuccess(result);
     return result;
+  } finally {
+    client.disconnect();
+  }
+}
+
+/**
+ * Claim devnet USDC from the Meridian faucet (10 USDC/request) to a bb1 address.
+ * Dev convenience for funding persona wallets — devnet only.
+ */
+export async function claimFaucet(
+  address: string,
+): Promise<{ txHash?: string; amount?: string; denom?: string }> {
+  const res = await fetch(`${env.VELLUM_FAUCET_URL}/api/v0/faucet/claim`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ address }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!res.ok) {
+    throw new Error(
+      `faucet ${res.status}: ${(await res.text()).slice(0, 200)}`,
+    );
+  }
+  return (await res.json()) as {
+    txHash?: string;
+    amount?: string;
+    denom?: string;
+  };
+}
+
+const SEND_TYPE_URL = "/cosmos.bank.v1beta1.MsgSend";
+
+function sendMsg(
+  fromAddress: string,
+  recipient: string,
+  amount: string,
+  denom: string,
+) {
+  return {
+    typeUrl: SEND_TYPE_URL,
+    value: { fromAddress, toAddress: recipient, amount: [{ denom, amount }] },
+  };
+}
+
+/**
+ * Pre-flight: simulate a bank send against current chain state. Throws if the
+ * tx would fail (e.g. insufficient funds) — the reject-before-broadcast half of
+ * the reconciliation invariant (0023). Returns the estimated gas.
+ */
+export async function simulateSend(
+  signer: OfflineDirectSigner,
+  fromAddress: string,
+  recipient: string,
+  amount: string,
+  denom = env.VELLUM_DENOM,
+): Promise<number> {
+  const client = await SigningStargateClient.connectWithSigner(
+    env.BITBADGES_RPC,
+    signer,
+  );
+  try {
+    return await client.simulate(
+      fromAddress,
+      [sendMsg(fromAddress, recipient, amount, denom)],
+      "vellum spend",
+    );
+  } finally {
+    client.disconnect();
+  }
+}
+
+/**
+ * Broadcast a bank send WITHOUT waiting for inclusion — returns the tx hash
+ * immediately so the caller can persist a PENDING record before confirmation
+ * runs out of band (0023). Use confirmTx(hash) to learn the on-chain outcome.
+ */
+export async function broadcastSend(
+  signer: OfflineDirectSigner,
+  fromAddress: string,
+  recipient: string,
+  amount: string,
+  denom = env.VELLUM_DENOM,
+): Promise<string> {
+  const client = await SigningStargateClient.connectWithSigner(
+    env.BITBADGES_RPC,
+    signer,
+  );
+  try {
+    const hash = await client.signAndBroadcastSync(
+      fromAddress,
+      [sendMsg(fromAddress, recipient, amount, denom)],
+      DEFAULT_FEE,
+      "vellum spend",
+    );
+    log.info(
+      `broadcast ${amount}${denom} → ${recipient} · ${hash.slice(0, 10)}`,
+    );
+    return hash;
   } finally {
     client.disconnect();
   }
