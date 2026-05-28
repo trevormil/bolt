@@ -34,9 +34,23 @@ export interface AuthLedger {
   }): unknown;
 }
 
+// Minimal observability hook — surfaces inject an emitter so capability
+// decisions land on the per-persona event timeline (#42) without coupling
+// @vellum/capabilities to @vellum/observability.
+export interface AuthEventSink {
+  emit(event: {
+    personaId: string;
+    kind: "capability";
+    summary: string;
+    ok: boolean;
+    meta?: Record<string, unknown>;
+  }): unknown;
+}
+
 export interface AuthorizerOptions {
   approve?: Approver; // prompt for "ask" decisions; default fail-closed (deny)
   ledger?: AuthLedger; // record every decision for the proof-of-action trail
+  events?: AuthEventSink; // user-facing telemetry (#42); optional, no-op if absent
 }
 
 export class Authorizer {
@@ -75,6 +89,18 @@ export class Authorizer {
       meta: {
         capability: action.capability,
         target: action.target,
+        decision,
+      },
+    });
+    this.opts.events?.emit({
+      personaId,
+      kind: "capability",
+      summary: `${allowed ? "allowed" : "blocked"}: ${action.summary}`,
+      ok: allowed,
+      meta: {
+        capability: action.capability,
+        target: action.target,
+        authority,
         decision,
       },
     });

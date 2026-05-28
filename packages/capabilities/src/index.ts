@@ -14,6 +14,7 @@ export {
   type AuthAction,
   type Approver,
   type AuthLedger,
+  type AuthEventSink,
   type AuthorizerOptions,
 } from "./authorizer.ts";
 export { grantDefaultCapabilities } from "./defaults.ts";

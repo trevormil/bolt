@@ -63,6 +63,7 @@
         "@vellum/chain": "workspace:*",
         "@vellum/ledger": "workspace:*",
         "@vellum/llm": "workspace:*",
+        "@vellum/observability": "workspace:*",
         "@vellum/orchestrator": "workspace:*",
         "@vellum/persona": "workspace:*",
         "@vellum/settings": "workspace:*",
@@ -97,6 +98,13 @@
     },
     "packages/llm": {
       "name": "@vellum/llm",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vellum/shared": "workspace:*",
+      },
+    },
+    "packages/observability": {
+      "name": "@vellum/observability",
       "version": "0.0.0",
       "dependencies": {
         "@vellum/shared": "workspace:*",
@@ -512,6 +520,8 @@
     "@vellum/ledger": ["@vellum/ledger@workspace:packages/ledger"],
 
     "@vellum/llm": ["@vellum/llm@workspace:packages/llm"],
+
+    "@vellum/observability": ["@vellum/observability@workspace:packages/observability"],
 
     "@vellum/orchestrator": ["@vellum/orchestrator@workspace:packages/orchestrator"],
 

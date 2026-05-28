@@ -21,6 +21,7 @@
     "@vellum/tx": "workspace:*",
     "@vellum/wallet": "workspace:*",
     "@vellum/trace": "workspace:*",
+    "@vellum/observability": "workspace:*",
     "zod": "3.23.8"
   }
 }

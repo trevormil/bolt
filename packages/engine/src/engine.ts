@@ -12,6 +12,7 @@ import { Orchestrator, type RunLoop } from "@vellum/orchestrator";
 import { TxManager, type TxChain } from "@vellum/tx";
 import { PersonaWallets } from "@vellum/wallet";
 import { SettingsStore } from "@vellum/settings";
+import { EventStore } from "@vellum/observability";
 import { env, createLogger } from "@vellum/shared";
 import { VaultService, type VaultServiceDeps } from "./vaults.ts";
 import { TaskStore } from "./tasks.ts";
@@ -39,6 +40,7 @@ export interface Engine {
   authorizer: Authorizer; // the single gate for filesystem/cron/mcp/spend (#37)
   tasks: TaskStore; // agent-settable scheduled tasks (#36)
   settings: SettingsStore; // global + per-persona settings (#40)
+  events: EventStore; // per-persona product telemetry (#42)
   claimFaucet: FaucetClaim;
 }
 
@@ -88,11 +90,15 @@ export function createEngine(opts: EngineOptions = {}): Engine {
     },
     opts.runLoop,
   );
-  // Capabilities first so the vault chokepoint can gate (#37).
+  // Capabilities first so the vault chokepoint can gate (#37). Observability
+  // is built early too so the Authorizer can emit capability decisions onto
+  // the per-persona event timeline (#42).
+  const events = new EventStore(dbPath);
   const capabilities = new CapabilityStore(dbPath);
   const authorizer = new Authorizer(capabilities, {
     ledger,
     approve: opts.approve,
+    events,
   });
   const txManager = new TxManager({
     wallets,
@@ -124,6 +130,7 @@ export function createEngine(opts: EngineOptions = {}): Engine {
     authorizer,
     tasks,
     settings,
+    events,
     ledger,
     orchestrator,
     txManager,

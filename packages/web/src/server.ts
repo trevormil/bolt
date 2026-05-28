@@ -277,6 +277,22 @@ export function buildApp(
 
   // LLM-spend budget for a persona (0009 — OpenRouter-tracked cost guardrail).
   // There is no free-form USDC cap; USDC spending limits live only in vaults.
+  // Per-persona observability (#42): structured event timeline + window
+  // aggregates for the dashboard. Distinct from the dev-side trace layer.
+  app.get("/api/personas/:id/events", (c) => {
+    const id = c.req.param("id");
+    if (!engine.store.getPersona(id))
+      return c.json({ error: "unknown persona" }, 404);
+    const limit = Math.min(
+      500,
+      Math.max(1, Number(c.req.query("limit")) || 100),
+    );
+    return c.json({
+      summary: engine.events.summary(id),
+      events: engine.events.recent(id, limit),
+    });
+  });
+
   app.get("/api/personas/:id/budget", (c) => {
     const id = c.req.param("id");
     if (!engine.store.getPersona(id))

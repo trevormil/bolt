@@ -29,6 +29,15 @@ export async function chat(
   input: ChatInput,
 ): Promise<ChatResult> {
   const { conversationId, personaId, message, trace } = input;
+  const t0 = Date.now();
+  // chat_in (#42): one event per user turn; summary is truncated, never the
+  // raw body — that stays in persona memory only.
+  engine.events.emit({
+    personaId,
+    kind: "chat_in",
+    summary: message.length > 80 ? message.slice(0, 77) + "…" : message,
+    meta: { conversationId },
+  });
 
   const budget = evaluateBudget(engine, personaId);
   if (!budget.ok && budget.breached) {
@@ -66,6 +75,19 @@ export async function chat(
   // Accrue persona-scoped memory so recall improves over the conversation.
   await engine.store.remember(personaId, `User said: ${message}`, {
     source: "chat",
+  });
+
+  // chat_out (#42): one event per agent turn with wall latency + LLM cost
+  // rolled up across however many steps the agent loop took.
+  engine.events.emit({
+    personaId,
+    kind: "chat_out",
+    summary: res.reply.length > 80 ? res.reply.slice(0, 77) + "…" : res.reply,
+    latencyMs: Date.now() - t0,
+    costUsd,
+    tokens,
+    ok: true,
+    meta: { conversationId, steps: res.meters.length },
   });
 
   return { reply: res.reply, costUsd, tokens, budgetExceeded: false };
