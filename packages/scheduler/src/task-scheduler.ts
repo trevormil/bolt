@@ -35,12 +35,27 @@ export class TaskScheduler {
           // unattended schedule can't move money without explicit opt-in.
           readOnly: !t.armed,
         });
+        // task_run telemetry (#42): a scheduled run fired (ok).
+        this.deps.engine.events.emit({
+          personaId: t.personaId,
+          kind: "task_run",
+          summary: `scheduled: ${t.prompt.slice(0, 60)}`,
+          ok: true,
+          meta: { taskId: t.id, armed: t.armed },
+        });
         await this.deps.deliver(
           t.personaId,
           `⏰ ${t.prompt.slice(0, 60)}\n${r.reply}`,
         );
       } catch (e) {
         log.warn(`task ${t.id.slice(0, 8)} failed: ${e}`);
+        this.deps.engine.events.emit({
+          personaId: t.personaId,
+          kind: "task_run",
+          summary: `scheduled (failed): ${t.prompt.slice(0, 60)}`,
+          ok: false,
+          meta: { taskId: t.id, armed: t.armed },
+        });
       }
       this.deps.engine.tasks.markRan(t.id, now);
     }

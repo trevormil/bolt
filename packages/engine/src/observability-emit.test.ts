@@ -85,4 +85,30 @@ describe("observability wiring (#42)", () => {
     expect(oks).toContain(true);
     expect(oks).toContain(false);
   });
+
+  test("filesystem tools emit fs_op events (#42 emit sites)", async () => {
+    const { mkdtempSync, rmSync, realpathSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const e = await eng();
+    e.store.createPersona("p", "Pat", { name: "Pat", role: "t", voice: "v" });
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "vellum-fsobs-")));
+    try {
+      e.capabilities.grant({
+        personaId: "p",
+        capability: "fs.write",
+        scope: root,
+        mode: "allow",
+      });
+      const { filesystemTools } = await import("./index.ts");
+      const { invoke } = filesystemTools(e, "p");
+      await invoke("fs_write", { path: join(root, "a.txt"), content: "hi" });
+      const fsOps = e.events.recent("p").filter((x) => x.kind === "fs_op");
+      expect(fsOps.length).toBe(1);
+      expect(fsOps[0]?.ok).toBe(true);
+      expect(fsOps[0]?.meta.op).toBe("write");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
