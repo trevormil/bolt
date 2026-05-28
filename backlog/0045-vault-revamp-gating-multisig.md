@@ -71,3 +71,19 @@ proposal/sign-off page are natural seams). Audit `@vellum/tokenization` and the
 BitBadges approval engine / DynamicStore FIRST (see learning
 "audit_xtokenization_first") — much of time + multisig gating may already be
 expressible as approval criteria rather than new modules.
+
+## Live-test finding (2026-05-28) — escrow slice-1 is per-denom, not per-vault
+
+Running the on-chain demo surfaced that `VaultService.escrow()` (slice 1, !37)
+reads the **backing address USDC balance**, but `buildVault` derives the backing
+address from `generateAliasAddressForIBCBackedDenom(coin.denom)` — i.e. it's
+**per-denom and SHARED across every USDC vault**, not per-collection. So escrow
+for vault 187 returned 7 USDC (the aggregate USDC reserve), not that vault's
+3 USDC slice.
+
+**Correction for the escrow slice:** per-vault escrow must read the
+**collection's token supply** (collection N's minted vault tokens, 1:1 USDC),
+not the shared backing balance. Either re-point `escrow()` at the collection
+supply, or relabel the current value as "denom reserve (shared)" and add a
+separate per-vault supply read. Belongs with the gating/escrow design in
+ADR-0003. Caught by `bun scripts/demo.ts` + the running web app's escrow route.

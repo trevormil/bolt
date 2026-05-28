@@ -627,7 +627,11 @@ export function buildApp(
   app.all("/api/*", (c) => c.json({ error: "not found" }, 404));
 
   // Serve the built SPA; unknown non-API paths fall back to index.html (SPA
-  // routing). Bun infers Content-Type from the file.
+  // routing). Content-Type MUST be set explicitly: Bun.file's auto-inferred
+  // type is dropped once the response passes through Hono + the security-headers
+  // middleware, and with `X-Content-Type-Options: nosniff` (#24/T-11) the
+  // browser then refuses to execute the typeless module script — a blank page.
+  // Setting it from the file's inferred MIME keeps assets executable + nosniff-safe.
   app.get("/*", async (c) => {
     const rel =
       c.req.path === "/" ? "index.html" : c.req.path.replace(/^\/+/, "");
@@ -636,7 +640,8 @@ export function buildApp(
     if (!(await file.exists())) {
       return c.text("build the SPA first: bun run build", 404);
     }
-    return new Response(file);
+    const type = file.type || "application/octet-stream";
+    return new Response(file, { headers: { "content-type": type } });
   });
 
   return app;

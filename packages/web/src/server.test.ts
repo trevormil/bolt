@@ -377,6 +377,16 @@ describe("security headers (#24 / T-11)", () => {
       "frame-ancestors 'none'",
     );
   });
+
+  // Regression: with nosniff set, the static SPA handler MUST set an explicit
+  // Content-Type or the browser refuses to execute module scripts (blank page).
+  test("static SPA responses carry an explicit Content-Type (nosniff-safe)", async () => {
+    const res = await app.request("/");
+    // dist/index.html exists after `bun run build`; only assert when served.
+    if (res.status === 200) {
+      expect(res.headers.get("content-type") ?? "").toContain("text/html");
+    }
+  });
 });
 
 describe("per-persona spend budgets (#44)", () => {
