@@ -272,7 +272,7 @@ export interface PaymentRequest {
 export type GatingPeriod = "daily" | "weekly" | "monthly";
 export interface VaultGating {
   amount?: { limitUsd: number; period: GatingPeriod };
-  time?: { unlockAt?: number }; // epoch ms
+  time?: { unlockAt?: number; expiresAt?: number }; // epoch ms; start / end
   multisig?: {
     signers: { address: string; weight?: number }[];
     threshold: number;

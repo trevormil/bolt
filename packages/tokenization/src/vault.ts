@@ -13,7 +13,10 @@ type Adapter = Parameters<typeof signAndBroadcast>[0];
 export type GatingPeriod = "daily" | "weekly" | "monthly";
 export interface VaultGating {
   amount?: { limitUsd: number; period: GatingPeriod };
-  time?: { unlockAt?: number }; // epoch ms; withdrawals invalid before this
+  // Withdrawal window (epoch ms). unlockAt = start (invalid before); expiresAt =
+  // end (invalid after). Either/both optional → one transferTimes range on the
+  // withdrawal approval.
+  time?: { unlockAt?: number; expiresAt?: number };
   // Multi-sig (#45 slice 3) via BitBadges votingChallenges: a withdrawal needs
   // N-of-M signer yes-weight (quorumThreshold) before it executes; each signer's
   // MsgCastVote IS a signature. resetAfterExecution → fresh quorum per withdrawal.
@@ -57,7 +60,7 @@ export interface CreateVaultInput {
  * Compile a gating policy onto a built vault msg by editing the withdrawal-tier
  * approvalCriteria (#45 slice 2). Pure — mutates + returns the msg. The
  * withdrawal approval is the one whose approvalId starts with "vault-withdraw".
- * amount → rolling per-period approvalAmounts; time.unlockAt → transferTimes.
+ * amount → rolling per-period approvalAmounts; time → a transferTimes window.
  */
 export function applyGating(
   msg: MsgJson,
@@ -90,9 +93,17 @@ export function applyGating(
       },
     };
   }
-  if (gating.time?.unlockAt != null) {
+  if (gating.time?.unlockAt != null || gating.time?.expiresAt != null) {
+    // One window: [unlockAt ?? epoch-start, expiresAt ?? forever]. The chain's
+    // transferTimes is already a range — start gates "not before", end "not after".
     wd.transferTimes = [
-      { start: String(gating.time.unlockAt), end: MAX_UINT64 },
+      {
+        start: String(gating.time.unlockAt ?? 1),
+        end:
+          gating.time.expiresAt != null
+            ? String(gating.time.expiresAt)
+            : MAX_UINT64,
+      },
     ];
   }
   if (gating.multisig) {

@@ -20,14 +20,16 @@ export function VaultsView({ personaId }: { personaId: string }) {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("");
-  // Gating policy (#45 slice 2): amount cap per period + optional unlock date.
+  // Gating policy (#45 slice 2): amount cap per period + an optional active
+  // window (start / end date).
   const [period, setPeriod] = useState<"none" | "daily" | "weekly" | "monthly">(
     "weekly",
   );
   const [limit, setLimit] = useState("");
-  const [unlockDate, setUnlockDate] = useState(""); // yyyy-mm-dd
-  // Multi-sig (#45 slice 3): signer bb1 addresses (one per line) + threshold.
-  const [signersText, setSignersText] = useState("");
+  const [startDate, setStartDate] = useState(""); // yyyy-mm-dd; withdrawals open
+  const [endDate, setEndDate] = useState(""); // yyyy-mm-dd; withdrawals close
+  // Multi-sig (#45 slice 3): one bb1 signer address per row + threshold.
+  const [signerList, setSignerList] = useState<string[]>([""]);
   const [threshold, setThreshold] = useState("");
   // Withdrawal rules are advanced + optional — hidden behind a toggle so the
   // common case (a plain vault) is two fields (#55).
@@ -37,16 +39,21 @@ export function VaultsView({ personaId }: { personaId: string }) {
 
   // Live-derived gating from the form, shared by the preview, inline validation,
   // and submit. Only counts when the rules section is open.
-  const signers = signersText
-    .split(/[\s,]+/)
+  const signers = signerList
     .map((s) => s.trim())
     .filter((s) => s.startsWith("bb1"));
   const thresholdNum = Number(threshold);
   const hasAmount = showRules && period !== "none" && Number(limit) > 0;
-  const hasTime = showRules && !!unlockDate;
+  const hasStart = showRules && !!startDate;
+  const hasEnd = showRules && !!endDate;
+  const hasTime = hasStart || hasEnd;
   const hasMultisig = showRules && signers.length > 0;
-  // Inline validation (#55): catch an unreachable multisig threshold in the form
-  // — mirrors the server's parseGating guard (!44) so the user sees it before a 400.
+  // Inline validation (#55): surface unworkable rules in the form (mirrors the
+  // server's parseGating guards) instead of waiting for a 400.
+  const timeError =
+    hasStart && hasEnd && localEpoch(endDate) <= localEpoch(startDate)
+      ? "End date must be after the start date."
+      : null;
   const multisigError = !hasMultisig
     ? null
     : !(thresholdNum >= 1)
@@ -54,9 +61,18 @@ export function VaultsView({ personaId }: { personaId: string }) {
       : thresholdNum > signers.length
         ? `Approvals required (${thresholdNum}) can't exceed the ${signers.length} signer${signers.length === 1 ? "" : "s"}.`
         : null;
+  const formError = timeError || multisigError;
+  const windowText =
+    hasStart && hasEnd
+      ? `active ${fmtLocalDay(startDate)} – ${fmtLocalDay(endDate)}`
+      : hasStart
+        ? `unlocks ${fmtLocalDay(startDate)}`
+        : hasEnd
+          ? `expires ${fmtLocalDay(endDate)}`
+          : null;
   const previewParts = [
     hasAmount ? `≤ ${limit} USDC / ${period}` : null,
-    hasTime ? `unlocks ${fmtLocalDay(unlockDate)}` : null,
+    timeError ? null : windowText,
     hasMultisig && !multisigError
       ? `${thresholdNum}-of-${signers.length} sign-off`
       : null,
@@ -72,19 +88,23 @@ export function VaultsView({ personaId }: { personaId: string }) {
   }, [personaId]);
 
   async function create() {
-    if (!name.trim() || !symbol.trim() || multisigError) return;
+    if (!name.trim() || !symbol.trim() || formError) return;
     setBusy(true);
     setError(null);
     try {
       const gating: {
         amount?: { limitUsd: number; period: "daily" | "weekly" | "monthly" };
-        time?: { unlockAt?: number };
+        time?: { unlockAt?: number; expiresAt?: number };
         multisig?: { signers: { address: string }[]; threshold: number };
       } = {};
       // `hasAmount` already narrows period to a non-"none" value (it includes
       // `period !== "none"`), so the assignment typechecks.
       if (hasAmount) gating.amount = { limitUsd: Number(limit), period };
-      if (hasTime) gating.time = { unlockAt: new Date(unlockDate).getTime() };
+      if (hasTime)
+        gating.time = {
+          ...(hasStart ? { unlockAt: localEpoch(startDate) } : {}),
+          ...(hasEnd ? { expiresAt: localEpoch(endDate) } : {}),
+        };
       if (hasMultisig)
         gating.multisig = {
           signers: signers.map((address) => ({ address })),
@@ -98,9 +118,10 @@ export function VaultsView({ personaId }: { personaId: string }) {
       setName("");
       setSymbol("");
       setLimit("");
-      setUnlockDate("");
+      setStartDate("");
+      setEndDate("");
       setPeriod("weekly");
-      setSignersText("");
+      setSignerList([""]);
       setThreshold("");
       setShowRules(false);
       setCreating(false);
@@ -206,25 +227,70 @@ export function VaultsView({ personaId }: { personaId: string }) {
                 </div>
               </Label>
 
-              {/* Time lock */}
-              <Label text="Time lock">
-                <Input
-                  type="date"
-                  value={unlockDate}
-                  onChange={(e) => setUnlockDate(e.target.value)}
-                  title="No withdrawals before this date"
-                />
+              {/* Active window — start / end date (#55). */}
+              <Label text="Active window">
+                <div className="grid grid-cols-2 gap-2">
+                  <Input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    title="Start — no withdrawals before this date"
+                  />
+                  <Input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    title="End — no withdrawals after this date"
+                  />
+                </div>
+                <p className="mt-1 text-[11px] text-soft">
+                  Start and end are both optional — leave either blank for
+                  open-ended.
+                </p>
+                {timeError && (
+                  <p className="mt-1.5 flex items-center gap-1 text-xs text-danger">
+                    <Icon name="warn" size={12} /> {timeError}
+                  </p>
+                )}
               </Label>
 
-              {/* Multi-sig sign-off */}
+              {/* Multi-sig sign-off — one signer address per row. */}
               <Label text="Multi-sig sign-off">
-                <textarea
-                  value={signersText}
-                  onChange={(e) => setSignersText(e.target.value)}
-                  placeholder="Signer bb1… addresses, one per line"
-                  rows={2}
-                  className="w-full rounded-md border border-border bg-surface-3 px-3 py-2 font-mono text-xs text-fg placeholder:text-soft focus:border-accent focus:outline-none"
-                />
+                <div className="space-y-1.5">
+                  {signerList.map((addr, i) => (
+                    <div key={i} className="flex items-center gap-1.5">
+                      <Input
+                        value={addr}
+                        onChange={(e) =>
+                          setSignerList((list) =>
+                            list.map((s, j) => (j === i ? e.target.value : s)),
+                          )
+                        }
+                        placeholder="bb1…"
+                        className="font-mono text-xs"
+                      />
+                      {signerList.length > 1 && (
+                        <button
+                          onClick={() =>
+                            setSignerList((list) =>
+                              list.filter((_, j) => j !== i),
+                            )
+                          }
+                          title="Remove signer"
+                          className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-border text-soft transition-colors hover:border-danger hover:text-danger"
+                        >
+                          <Icon name="x" size={13} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <button
+                    onClick={() => setSignerList((list) => [...list, ""])}
+                    className="flex items-center gap-1.5 text-xs text-accent transition-colors hover:text-accent-strong"
+                  >
+                    <Icon name="plus" size={12} /> Add signer
+                  </button>
+                </div>
                 <Input
                   value={threshold}
                   onChange={(e) => setThreshold(e.target.value)}
@@ -266,9 +332,7 @@ export function VaultsView({ personaId }: { personaId: string }) {
           <div className="flex justify-end">
             <Button
               onClick={create}
-              disabled={
-                busy || !name.trim() || !symbol.trim() || !!multisigError
-              }
+              disabled={busy || !name.trim() || !symbol.trim() || !!formError}
             >
               {busy ? "Creating on-chain…" : "Create vault"}
             </Button>
@@ -300,12 +364,33 @@ export function VaultsView({ personaId }: { personaId: string }) {
 // (`new Date("2026-06-01")`) is UTC midnight, which renders as the PREVIOUS day
 // for users behind UTC — so build the date from local parts (!54 LOW).
 function fmtLocalDay(iso: string): string {
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(y!, m! - 1, d!).toLocaleDateString(undefined, {
+  return localDate(iso).toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
     year: "numeric",
   });
+}
+
+// yyyy-mm-dd → a Date at LOCAL midnight (not UTC, which would shift the day).
+function localDate(iso: string): Date {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y!, m! - 1, d!);
+}
+const localEpoch = (iso: string): number => localDate(iso).getTime();
+
+// Label for a vault's active window (epoch-ms bounds) in the list — null if no
+// time gate. unlockAt = start, expiresAt = end (#55).
+function timeBadge(time?: {
+  unlockAt?: number;
+  expiresAt?: number;
+}): string | null {
+  const start = time?.unlockAt;
+  const end = time?.expiresAt;
+  const day = (e: number) => new Date(e).toLocaleDateString();
+  if (start != null && end != null) return `active ${day(start)} – ${day(end)}`;
+  if (start != null) return `unlocks ${day(start)}`;
+  if (end != null) return `expires ${day(end)}`;
+  return null;
 }
 
 // Mono-caps field label wrapper — matches the Settings/onboarding form motif.
@@ -482,11 +567,8 @@ function VaultRow({
                 {vault.gating.amount.period}
               </Badge>
             )}
-            {vault.gating?.time?.unlockAt != null && (
-              <Badge tone="default">
-                unlocks{" "}
-                {new Date(vault.gating.time.unlockAt).toLocaleDateString()}
-              </Badge>
+            {timeBadge(vault.gating?.time) && (
+              <Badge tone="default">{timeBadge(vault.gating?.time)}</Badge>
             )}
             {vault.gating?.multisig && (
               <Badge tone="accent">
@@ -495,7 +577,7 @@ function VaultRow({
               </Badge>
             )}
             {!vault.gating?.amount &&
-              vault.gating?.time?.unlockAt == null &&
+              !timeBadge(vault.gating?.time) &&
               !vault.gating?.multisig && (
                 <span className="text-[11px] text-soft">no withdrawal cap</span>
               )}

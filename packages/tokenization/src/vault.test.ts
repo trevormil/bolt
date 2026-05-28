@@ -126,6 +126,31 @@ describe("vault gating compiler (#45 slice 2)", () => {
     expect(wd.transferTimes[0].end).toBe("18446744073709551615");
   });
 
+  test("time start + end → a bounded transferTimes window (#55)", () => {
+    const unlockAt = 2_000_000_000_000;
+    const expiresAt = 2_100_000_000_000;
+    const msg = buildVaultMsg(AGENT, {
+      ...INPUT,
+      dailyWithdrawLimit: undefined,
+      gating: { time: { unlockAt, expiresAt } },
+    });
+    const wd = findWithdraw(msg);
+    expect(wd.transferTimes[0].start).toBe(String(unlockAt));
+    expect(wd.transferTimes[0].end).toBe(String(expiresAt));
+  });
+
+  test("end-only window starts at epoch and closes at expiresAt (#55)", () => {
+    const expiresAt = 2_100_000_000_000;
+    const msg = buildVaultMsg(AGENT, {
+      ...INPUT,
+      dailyWithdrawLimit: undefined,
+      gating: { time: { expiresAt } },
+    });
+    const wd = findWithdraw(msg);
+    expect(wd.transferTimes[0].start).toBe("1");
+    expect(wd.transferTimes[0].end).toBe(String(expiresAt));
+  });
+
   test("gating supersedes the legacy dailyWithdrawLimit (no SDK daily cap)", () => {
     // With gating set, the SDK's daily cap must NOT also be applied.
     const msg = buildVaultMsg(AGENT, {

@@ -123,12 +123,25 @@ export function parseGating(raw: unknown): VaultGating | undefined | "invalid" {
     out.amount = { limitUsd: a.limitUsd, period: a.period as GatingPeriod };
   }
   if (g.time != null) {
-    const t = g.time as { unlockAt?: unknown };
+    const t = g.time as { unlockAt?: unknown; expiresAt?: unknown };
+    const time: { unlockAt?: number; expiresAt?: number } = {};
     if (t.unlockAt != null) {
       if (typeof t.unlockAt !== "number" || t.unlockAt < 0) return "invalid";
-      // An empty time:{} is a no-op (not a policy) — see !43.
-      out.time = { unlockAt: t.unlockAt };
+      time.unlockAt = t.unlockAt;
     }
+    if (t.expiresAt != null) {
+      if (typeof t.expiresAt !== "number" || t.expiresAt < 0) return "invalid";
+      time.expiresAt = t.expiresAt;
+    }
+    // A window that ends at/before it starts can never be withdrawn from.
+    if (
+      time.unlockAt != null &&
+      time.expiresAt != null &&
+      time.expiresAt <= time.unlockAt
+    )
+      return "invalid";
+    // An empty time:{} is a no-op (not a policy) — see !43.
+    if (time.unlockAt != null || time.expiresAt != null) out.time = time;
   }
   if (g.multisig != null) {
     const ms = g.multisig as {

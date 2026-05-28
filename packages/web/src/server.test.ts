@@ -516,6 +516,22 @@ describe("vault gating parse (#45 slice 2)", () => {
       "invalid",
     );
     expect(parseGating({ time: { unlockAt: -1 } })).toBe("invalid");
+
+    // Active window (#55): start / end, each optional.
+    expect(parseGating({ time: { expiresAt: 500 } })).toEqual({
+      time: { expiresAt: 500 },
+    });
+    expect(parseGating({ time: { unlockAt: 100, expiresAt: 500 } })).toEqual({
+      time: { unlockAt: 100, expiresAt: 500 },
+    });
+    expect(parseGating({ time: { expiresAt: -1 } })).toBe("invalid");
+    // A window that ends at/before it starts can never be withdrawn from.
+    expect(parseGating({ time: { unlockAt: 500, expiresAt: 500 } })).toBe(
+      "invalid",
+    );
+    expect(parseGating({ time: { unlockAt: 500, expiresAt: 100 } })).toBe(
+      "invalid",
+    );
   });
 
   test("POST /vaults rejects an invalid gating policy (400)", async () => {
