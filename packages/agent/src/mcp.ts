@@ -9,6 +9,10 @@ import type { ToolSpec } from "./tools.ts";
 
 const log = createLogger("mcp");
 
+// A stdio connect that never completes the handshake is bounded by this so the
+// spawned child can't hang (or leak) indefinitely (!47 review).
+const DEFAULT_CONNECT_TIMEOUT_MS = 15_000;
+
 /**
  * Race a promise against a deadline (#46 review): an external MCP server that
  * stalls during connect, discovery, or a tool call must never hang the daemon or
@@ -44,22 +48,42 @@ export class McpClient {
 
   /** Spawn an MCP server as a child process and connect over stdio. A caller
    *  `env` is merged OVER the SDK's safe default environment (PATH, HOME, …) so
-   *  it augments rather than replaces it — otherwise the child loses PATH. */
+   *  it augments rather than replaces it — otherwise the child loses PATH. The
+   *  connect is bounded by `timeoutMs` so a server that never completes the
+   *  handshake can't hang — and on timeout the transport is closed so the
+   *  spawned child process can't leak (!47 review). */
   async connectStdio(
     command: string,
     args: string[] = [],
     env?: Record<string, string>,
+    opts: { timeoutMs?: number } = {},
   ): Promise<void> {
     const merged = env ? { ...getDefaultEnvironment(), ...env } : undefined;
     await this.connect(
       new StdioClientTransport({ command, args, env: merged }),
+      {
+        timeoutMs: opts.timeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS,
+      },
     );
   }
 
-  /** Connect over any transport (stdio, in-memory for tests, …). */
-  async connect(transport: Transport): Promise<void> {
-    await this.client.connect(transport);
-    log.info("connected");
+  /** Connect over any transport (stdio, in-memory for tests, …). When `timeoutMs`
+   *  is set the handshake is bounded; ANY connect failure (incl. timeout) closes
+   *  the transport so a half-open connection / spawned child can't leak. */
+  async connect(
+    transport: Transport,
+    opts: { timeoutMs?: number } = {},
+  ): Promise<void> {
+    try {
+      const connecting = this.client.connect(transport);
+      await (opts.timeoutMs
+        ? withTimeout(connecting, opts.timeoutMs, "mcp connect")
+        : connecting);
+      log.info("connected");
+    } catch (e) {
+      await transport.close().catch(() => {}); // kill the spawned child on failure
+      throw e;
+    }
   }
 
   /** List the server's tools as agent-loop ToolSpecs. */
