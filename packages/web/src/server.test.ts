@@ -109,6 +109,13 @@ describe("web API", () => {
     });
   });
 
+  test("SPA shell is served no-cache (so a rebuild's bundles aren't stale)", async () => {
+    const res = await app.request("/");
+    // The HTML shell must always revalidate — otherwise a browser keeps loading
+    // an old hashed bundle after an update (the "still seeing old UI" bug).
+    expect(res.headers.get("cache-control")).toBe("no-cache");
+  });
+
   test("create persona provisions a bb1 wallet", async () => {
     const res = await post("/api/personas", { name: "Atlas", role: "finance" });
     expect(res.status).toBe(201);

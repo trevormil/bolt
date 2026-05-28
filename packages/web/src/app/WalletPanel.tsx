@@ -86,7 +86,7 @@ export function WalletPanel({ personaId }: { personaId: string }) {
       </div>
       <button
         onClick={copy}
-        className="mt-1 flex w-full items-center gap-2 rounded-lg border border-border bg-surface-3 px-2.5 py-2 text-left font-mono text-xs text-muted transition-colors hover:border-border-gold hover:text-fg"
+        className="mt-1 flex w-full items-center gap-2 rounded-lg border border-border bg-surface-3 px-2.5 py-2 text-left font-mono text-xs text-fg transition-colors hover:border-border-gold"
         title="Copy address"
       >
         <span className="truncate">{address || "…"}</span>

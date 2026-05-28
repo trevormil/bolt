@@ -922,12 +922,24 @@ export function buildApp(
     const rel =
       c.req.path === "/" ? "index.html" : c.req.path.replace(/^\/+/, "");
     let file = Bun.file(DIST + rel);
-    if (!(await file.exists())) file = Bun.file(DIST + "index.html");
+    const served = await file.exists();
+    if (!served) file = Bun.file(DIST + "index.html");
     if (!(await file.exists())) {
       return c.text("build the SPA first: bun run build", 404);
     }
     const type = file.type || "application/octet-stream";
-    return new Response(file, { headers: { "content-type": type } });
+    // Vite's hashed assets are immutable (the hash changes when content does), so
+    // cache them hard. The HTML shell must always revalidate, or a browser keeps
+    // loading a stale bundle after a rebuild — which silently serves old UI/CSS.
+    const immutable = served && rel.startsWith("assets/");
+    return new Response(file, {
+      headers: {
+        "content-type": type,
+        "cache-control": immutable
+          ? "public, max-age=31536000, immutable"
+          : "no-cache",
+      },
+    });
   });
 
   return app;
