@@ -6,7 +6,6 @@ import type { Meter } from "@vellum/llm";
 import type { RunLoop } from "@vellum/orchestrator";
 import type { TxChain } from "@vellum/tx";
 import { env } from "@vellum/shared";
-import { generateWallet } from "@vellum/chain";
 import { createEngine } from "@vellum/engine";
 import {
   buildApp,
@@ -1061,26 +1060,17 @@ describe("first-run web setup (/api/setup)", () => {
     rmSync(envFilePath, { force: true });
   });
 
-  test("import flow accepts a valid phrase + never echoes it back", async () => {
-    env.AGENT_SIGNER_MNEMONIC = undefined;
-    const { mnemonic } = await generateWallet(); // a real, valid 24-word phrase
-    const { app, envFilePath, applied } = setupApp();
-    const res = await postSetup(app, { mnemonic });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as Record<string, unknown>;
-    expect(JSON.stringify(body)).not.toContain("mnemonic"); // never returned
-    expect(applied[0]?.AGENT_SIGNER_MNEMONIC).toBe(mnemonic);
-    rmSync(envFilePath, { force: true });
-  });
-
-  test("rejects an invalid mnemonic", async () => {
+  test("ignores any mnemonic in the body — wallets are always generated (#59)", async () => {
+    // No import: even if a caller sends a phrase, setup generates a fresh one.
     env.AGENT_SIGNER_MNEMONIC = undefined;
     const { app, applied } = setupApp();
     const res = await postSetup(app, {
-      mnemonic: "totally not a real bip39 phrase",
+      mnemonic: "attacker supplied phrase that must be ignored",
     });
-    expect(res.status).toBe(400);
-    expect(applied).toHaveLength(0);
+    expect(res.status).toBe(200);
+    const adopted = applied[0]?.AGENT_SIGNER_MNEMONIC ?? "";
+    expect(adopted.trim().split(/\s+/)).toHaveLength(24); // freshly generated
+    expect(adopted).not.toContain("attacker");
   });
 });
 

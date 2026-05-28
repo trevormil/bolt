@@ -4,36 +4,24 @@ import { api } from "./api.ts";
 import { PersonaForm } from "./PersonaForm.tsx";
 
 // First-run web onboarding (#19): the browser-native alternative to the terminal
-// wizard. Walks a from-scratch user through the LLM key + agent wallet (generate
-// server-side or import) + first persona, all on loopback — secrets go to the
-// local daemon's .env via POST /api/setup. The generated phrase is the AGENT's
-// key, never shown here; the user reveals it deliberately from Settings → Export
+// wizard. Walks a from-scratch user through the LLM key + first persona, all on
+// loopback — secrets go to the local daemon's .env via POST /api/setup. The agent
+// wallet is ALWAYS generated fresh server-side (#59, no import); the phrase is the
+// AGENT's key, never shown here — the user reveals it from Settings → Export
 // (#57). On done, the app reloads into the dashboard.
 type Step = "secrets" | "persona";
 
 export function SetupFlow({ onDone }: { onDone: (personaId: string) => void }) {
   const [step, setStep] = useState<Step>("secrets");
   const [openRouterKey, setKey] = useState("");
-  const [walletMode, setWalletMode] = useState<"generate" | "import">(
-    "generate",
-  );
-  const [importMnemonic, setImport] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function submitSecrets() {
-    if (
-      walletMode === "import" &&
-      importMnemonic.trim().split(/\s+/).length < 12
-    )
-      return setError("That doesn't look like a 12–24 word mnemonic.");
     setBusy(true);
     setError(null);
     try {
-      await api.setup({
-        openRouterKey: openRouterKey.trim() || undefined,
-        mnemonic: walletMode === "import" ? importMnemonic.trim() : undefined,
-      });
+      await api.setup({ openRouterKey: openRouterKey.trim() || undefined });
       setStep("persona");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -81,34 +69,16 @@ export function SetupFlow({ onDone }: { onDone: (personaId: string) => void }) {
                 placeholder="sk-or-…  (optional)"
               />
             </Field>
-            <Field
-              label="Agent wallet"
-              hint="All persona wallets derive from one master key — held locally, never sent anywhere."
-            >
-              <div className="flex gap-2">
-                <Choice
-                  active={walletMode === "generate"}
-                  onClick={() => setWalletMode("generate")}
-                  title="Generate"
-                  sub="fresh key"
-                />
-                <Choice
-                  active={walletMode === "import"}
-                  onClick={() => setWalletMode("import")}
-                  title="Import"
-                  sub="existing phrase"
-                />
+            <div className="rounded-lg border border-border-gold bg-accent-soft/20 p-3">
+              <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-accent">
+                <Icon name="wallet" size={13} /> Agent wallet
               </div>
-              {walletMode === "import" && (
-                <textarea
-                  value={importMnemonic}
-                  onChange={(e) => setImport(e.target.value)}
-                  placeholder="paste your 24-word recovery phrase"
-                  rows={2}
-                  className="mt-2 w-full rounded-md border border-border bg-surface-3 px-3 py-2 font-mono text-xs text-fg placeholder:text-soft focus:border-accent focus:outline-none"
-                />
-              )}
-            </Field>
+              <p className="mt-1.5 text-xs leading-relaxed text-muted">
+                A fresh wallet is generated automatically and held locally — all
+                persona wallets derive from it. You can back up the seed phrase
+                anytime in Settings → Wallet recovery.
+              </p>
+            </div>
             {error && <p className="text-sm text-danger">{error}</p>}
             <Button
               className="w-full"

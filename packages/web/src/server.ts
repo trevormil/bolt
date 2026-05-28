@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
-import { confirmTx, generateWallet, addressOf } from "@vellum/chain";
+import { confirmTx, generateWallet } from "@vellum/chain";
 import { tracer } from "@vellum/trace";
 import {
   createLogger,
@@ -388,22 +388,12 @@ export function buildApp(
 
     const body = (await c.req.json().catch(() => ({}))) as {
       openRouterKey?: unknown;
-      mnemonic?: unknown;
       apiToken?: unknown;
     };
 
-    // Generate a fresh wallet unless the user imported one.
-    let mnemonic: string;
-    if (typeof body.mnemonic === "string" && body.mnemonic.trim()) {
-      mnemonic = body.mnemonic.trim();
-      try {
-        await addressOf(mnemonic); // validate the phrase
-      } catch {
-        return c.json({ error: "invalid mnemonic" }, 400);
-      }
-    } else {
-      mnemonic = (await generateWallet()).mnemonic;
-    }
+    // Agent wallets are ALWAYS generated fresh (#59) — no import. The phrase
+    // is the agent's key; it never enters the app from the user side.
+    const mnemonic = (await generateWallet()).mnemonic;
 
     const updates: Record<string, string> = { AGENT_SIGNER_MNEMONIC: mnemonic };
     const runtime: Partial<typeof env> = { AGENT_SIGNER_MNEMONIC: mnemonic };

@@ -92,15 +92,11 @@ export const api = {
   setupStatus: () =>
     fetch("/api/setup-status").then((r) => json<SetupStatus>(r)),
 
-  // First-run web setup (#19): persist the LLM key + agent wallet (generate
-  // server-side, or import) so the running daemon adopts them. The generated
-  // phrase is the agent's key — it is NEVER returned to the browser (reveal it
+  // First-run web setup (#19): persist the LLM key + auto-generate the agent
+  // wallet (#59, no import) so the running daemon adopts them. The generated
+  // phrase is the agent's key — NEVER returned to the browser (reveal it
   // deliberately from Settings → Export, #57).
-  setup: (input: {
-    openRouterKey?: string;
-    mnemonic?: string;
-    apiToken?: string;
-  }) =>
+  setup: (input: { openRouterKey?: string; apiToken?: string }) =>
     fetch("/api/setup", {
       method: "POST",
       headers: { "content-type": "application/json" },
