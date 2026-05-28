@@ -7,13 +7,18 @@ import type { CapabilityStore } from "./store.ts";
 // bound by on-chain rules.
 //
 // YOLO dev capability (#52): the local filesystem (fs.read/fs.write) AND command
-// execution (exec) are granted by DEFAULT, scoped to the agent workspace. This is
-// the OpenClaw / Claude-Code-style "full local access in a workspace" posture,
-// disclosed loudly at setup (CLI wizard + web onboarding). The capability model
-// (#37) remains the enforcement MECHANISM — YOLO is just a permissive default
-// POLICY: grants are scoped to the workspace root, so the agent still can't touch
-// disk or run commands outside it, and the #35 symlink/`..` escape guards still
-// apply. To lock the agent down, revoke these grants per-persona.
+// execution (exec) are granted by DEFAULT — the OpenClaw / Claude-Code-style
+// "full local access" posture, disclosed loudly at setup (CLI wizard + web
+// onboarding) as the explicit, informed opt-in. The capability model (#37) is the
+// enforcement MECHANISM; YOLO is a permissive default POLICY. CRUCIAL asymmetry,
+// honestly scoped (!56 review):
+//   - fs.read/fs.write are WORKSPACE-scoped — genuinely confined: the target must
+//     resolve under the workspace root and the #35 symlink/`..` guard holds.
+//   - exec is UNSCOPED (host-wide). A command's cwd STARTS in the workspace, but
+//     `sh -c` can `cd` / touch absolute paths — exec is NOT sandboxed. Scoping it
+//     `null` keeps the grant from falsely claiming workspace confinement; the
+//     setup disclosure says "full host access" so consent is informed. Real
+//     isolation is the future sandbox (ADR-0004). To lock down: revoke per-persona.
 //
 // DELIBERATE: there is NO free-form USDC spend cap on the `spend` capability, and
 // MONEY stays rule-bound regardless of YOLO — vault.create/withdraw are still
@@ -29,20 +34,17 @@ export function grantDefaultCapabilities(
   store: CapabilityStore,
   personaId: string,
 ): void {
-  // Unscoped "allow" grants — money + scheduling machinery.
-  for (const capability of [
-    "spend",
-    "vault.create",
-    "vault.withdraw",
-    "schedule",
-  ])
+  // Unscoped "allow" grants. Money machinery (rule-bound on-chain) + exec. exec
+  // is UNSCOPED on purpose: a shell command has full host access, so a workspace
+  // scope would be a false confinement claim (!56). Default-deny still applies
+  // without the grant; the setup disclosure makes the host-access opt-in informed.
+  for (const capability of ["spend", "vault.create", "vault.withdraw", "exec"])
     store.grant({ personaId, capability, scope: null, mode: "allow" });
 
-  // Workspace-scoped YOLO dev grants. The scope must be the canonical workspace
-  // path the fs/exec tools authorize against (they resolve via workspaceDir()),
-  // so both sides match: fs.* is path-scoped (target must resolve under the
-  // root); exec matches scope==target exactly.
+  // Filesystem grants ARE workspace-confined — the scope is the canonical
+  // workspace root and fs.* is path-scoped (target must resolve under it; the #35
+  // symlink/`..` guard holds), so these honestly stay within the workspace.
   const workspace = workspaceDir();
-  for (const capability of ["fs.read", "fs.write", "exec"])
+  for (const capability of ["fs.read", "fs.write"])
     store.grant({ personaId, capability, scope: workspace, mode: "allow" });
 }

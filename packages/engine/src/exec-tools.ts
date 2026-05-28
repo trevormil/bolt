@@ -7,15 +7,16 @@ import type { Engine } from "./engine.ts";
 // code execution). It is the YOLO dev capability: the agent runs shell commands
 // IN its workspace, like Claude Code / OpenClaw. Every guard the ticket calls
 // for is enforced here:
-//   - capability-gated on a NEW `exec` grant (default-deny via the #37 model;
-//     the YOLO default grant scopes it to the workspace).
-//   - cwd is ALWAYS the workspace — the command can't be pointed elsewhere.
-//   - a per-command timeout kills the process tree so a runaway build can't hang
-//     the agent loop.
-//   - stdout/stderr are truncated so a flood can't blow up the LLM context.
-//   - a small denylist refuses catastrophic host ops (rm -rf /, fork bombs, …)
-//     even under YOLO — informed consent is workspace dev work, not nuking the
-//     host. MONEY is untouched: this is local exec only.
+//   - capability-gated on a NEW `exec` grant (default-deny via the #37 model).
+//     The grant is UNSCOPED (host-wide) — NOT a false workspace scope: a `sh -c`
+//     command's cwd STARTS in the workspace but can `cd` / touch absolute paths,
+//     so exec is full host access, not sandboxed (!56). Setup discloses this as
+//     "full local access" — the informed opt-in. Real isolation = future sandbox.
+//   - a per-command timeout kills the process so a runaway build can't hang the
+//     loop; output is byte-capped during the read so a flood can't blow up memory.
+//   - a denylist refuses catastrophic host ops (rm -rf / and /*, fork bombs, …) —
+//     a guardrail, NOT a security boundary (exec is arbitrary code by design).
+//   - MONEY is untouched: exec is local code, can't move funds (vault/spend gates).
 
 // Catastrophic-op denylist (#52). NOT a security boundary — exec is arbitrary
 // code execution by design, so this can't be exhaustive. It's a guardrail that
@@ -29,9 +30,10 @@ import type { Engine } from "./engine.ts";
 // path that merely CONTAINS the word isn't refused.
 const CMD = String.raw`(?:^|[;&|(\n])\s*(?:sudo\s+)?`;
 const CATASTROPHIC: { pattern: RegExp; why: string }[] = [
-  // rm with a recursive/force flag targeting `/` (the filesystem root).
+  // rm with a recursive/force flag targeting `/` or `/*` (the filesystem root /
+  // its top-level glob — `rm -rf /*` is just as catastrophic as `rm -rf /`).
   {
-    pattern: /\brm\s+(?:-[a-z]*\s+)*-[a-z]*[rf][a-z]*\b[^\n]*\s\/(\s|$)/,
+    pattern: /\brm\s+(?:-[a-z]*\s+)*-[a-z]*[rf][a-z]*\b[^\n]*\s\/(\s|$|\*)/,
     why: "recursive delete of the filesystem root",
   },
   // rm with a recursive/force flag targeting ~ or $HOME.
@@ -157,17 +159,16 @@ export function execTools(
   engine: Engine,
   personaId: string,
 ): { tools: ToolSpec[]; invoke: ToolInvoker } {
-  // Resolve the workspace ONCE and use the identical string for the grant scope
-  // (in grantDefaultCapabilities) and the authorize target. The `exec`
-  // capability is non-fs, so the store matches scope==target by exact string —
-  // both sides must canonicalize via workspaceDir(). Create it if missing.
+  // The command's cwd (its STARTING directory). exec itself is host-wide, so the
+  // `exec` capability is unscoped — we don't pass a target to authorize() (it
+  // matches the unscoped grant). Create the dir if missing.
   const workspace = ensureWorkspaceDir();
 
   const tools: ToolSpec[] = [
     {
       name: "run_command",
       description:
-        "Run a shell command in your workspace (like a dev terminal) and get back its stdout, stderr, and exit code. Use for building, testing, running scripts, git, etc. Runs in the workspace directory only; long-running commands are killed after a timeout and output is truncated if large.",
+        "Run a shell command on this machine (like a dev terminal) and get back its stdout, stderr, and exit code. Full local access — it starts in your workspace directory but can reach anywhere on the host. Use for building, testing, running scripts, git, etc. Long-running commands are killed after a timeout; output is truncated if large.",
       parameters: {
         type: "object",
         properties: {
@@ -210,16 +211,16 @@ export function execTools(
       return `Refused: that command looks like ${danger}. I won't run host-destroying commands even in YOLO mode.`;
     }
 
-    // Gate on the `exec` capability scoped to the workspace (#37). Default-deny:
-    // without the grant the agent cannot run anything.
+    // Gate on the `exec` capability (#37). Default-deny: without the grant the
+    // agent cannot run anything. exec is UNSCOPED (host-wide) — no target — so we
+    // don't imply a workspace confinement the shell doesn't actually enforce (!56).
     const ok = await engine.authorizer.authorize(personaId, {
       capability: "exec",
-      target: workspace,
-      summary: `run command in ${workspace}: ${command.slice(0, 80)}`,
+      summary: `run command (cwd ${workspace}): ${command.slice(0, 80)}`,
     });
     if (!ok) {
       execEvent(command, false, { denied: true });
-      return `Denied: no exec permission for the workspace.`;
+      return `Denied: no exec permission.`;
     }
 
     // Defensive: the workspace could have been removed between provisioning and

@@ -3,7 +3,7 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateWallet } from "@vellum/chain";
-import { env, setRuntimeEnv, workspaceDir } from "@vellum/shared";
+import { env, setRuntimeEnv } from "@vellum/shared";
 import { createEngine, execTools, type Engine } from "./index.ts";
 
 // The exec tool reads the live `env` singleton at call time; restore the bounds
@@ -44,7 +44,7 @@ function grantExec(e: Engine, personaId = "p"): void {
   e.capabilities.grant({
     personaId,
     capability: "exec",
-    scope: workspaceDir(), // identical canonical scope the tool authorizes against
+    scope: null, // exec is unscoped (host-wide) — not a false workspace scope (!56)
     mode: "allow",
   });
 }
@@ -79,6 +79,20 @@ describe("run_command exec tool (#52)", () => {
       command: "ls",
     });
     expect(out).toContain("marker.txt");
+  });
+
+  test("exec is host-wide by design (YOLO) — cwd starts in workspace, not jailed", async () => {
+    // !56: exec is intentionally NOT workspace-confined (full local access, the
+    // disclosed opt-in). cwd STARTS in the workspace, but the shell can `cd` out.
+    // This asserts the honest behavior so a future change can't silently claim a
+    // confinement the implementation never had. (Money stays vault-gated.)
+    const e = eng();
+    grantExec(e);
+    const out = await execTools(e, "p").invoke("run_command", {
+      command: "cd / && pwd",
+    });
+    expect(out).toContain("exit 0");
+    expect(out).toMatch(/stdout:\n\/\n/); // pwd printed "/", i.e. it escaped the workspace
   });
 
   test("non-zero exit is reported, not thrown", async () => {
@@ -137,6 +151,7 @@ describe("run_command exec tool (#52)", () => {
   describe("catastrophic-op denylist (refused even in YOLO)", () => {
     const refused = [
       "rm -rf /",
+      "rm -rf /*", // root glob — just as catastrophic (!56)
       "rm -rf /  # cleanup",
       "sudo rm -fr /",
       ":(){ :|:& };:",

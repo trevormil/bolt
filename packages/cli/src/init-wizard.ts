@@ -80,34 +80,35 @@ export async function initWizard(
   console.log(step(3, "Your first persona"));
   const personaName = ask("name " + dim("[Assistant]") + ": ", "Assistant");
 
-  // YOLO dev capability disclosure (#52). The default grant gives the agent
-  // full read/write + command execution in its workspace — informed consent,
-  // shown loudly. Money stays rule-bound (vault-gated) regardless.
+  // YOLO dev capability disclosure (#52) — the informed opt-in. Be HONEST about
+  // the asymmetry (!56): files are workspace-confined, but command execution is
+  // FULL HOST access (not sandboxed). Money stays rule-bound regardless.
   console.log(
     "\n   " +
       copper("⚡ Full local access (YOLO).") +
       " " +
-      dim("By default this agent can read & write files and"),
+      dim("By default this agent can:"),
   );
   console.log(
     "   " +
-      dim("run shell commands in its workspace:") +
+      dim("• read & write files in its workspace:") +
       " " +
       gold(workspaceDir()),
   );
   console.log(
     "   " +
-      dim(
-        "It runs commands like a dev terminal there. Money stays vault-gated — it can't move funds.",
-      ),
+      dim("• run ANY shell command on this machine") +
+      " " +
+      copper("(full host access — not sandboxed)") +
+      dim(", starting in that workspace."),
   );
   console.log(
     "   " +
       dim(
-        "Revoke fs.read / fs.write / exec per-persona to lock it down later.",
-      ) +
-      "\n",
+        "Money stays vault-gated — exec can't move funds. Revoke fs.read / fs.write / exec",
+      ),
   );
+  console.log("   " + dim("per-persona to lock it down later.") + "\n");
 
   // 4) Expose the daemon beyond loopback? (default no — local-first).
   console.log(step(4, "Network exposure"));

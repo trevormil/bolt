@@ -118,30 +118,33 @@ describe("CapabilityStore.decide — default-deny + scope", () => {
 describe("grantDefaultCapabilities — YOLO default policy (#52)", () => {
   afterEach(() => delete process.env.VELLUM_WORKSPACE);
 
-  test("grants exec + fs.read/fs.write scoped to the workspace", () => {
+  test("grants fs.read/fs.write (workspace-scoped) + exec (host-wide, honest)", () => {
     const workspace = "/tmp/vellum-yolo-test-ws";
     process.env.VELLUM_WORKSPACE = workspace;
     const s = store();
     grantDefaultCapabilities(s, "p");
 
-    // Money + scheduling: unscoped allow (unchanged).
+    // Money: unscoped allow (unchanged).
     expect(s.decide("p", "spend")).toBe("allow");
     expect(s.decide("p", "vault.create")).toBe("allow");
     expect(s.decide("p", "vault.withdraw")).toBe("allow");
 
-    // YOLO dev grants are allowed INSIDE the workspace…
+    // fs.* IS workspace-confined — allowed inside…
     expect(s.decide("p", "fs.read", join(workspace, "a.txt"))).toBe("allow");
     expect(s.decide("p", "fs.write", join(workspace, "sub/b.txt"))).toBe(
       "allow",
     );
-    expect(s.decide("p", "exec", workspace)).toBe("allow");
-
-    // …and DENIED outside it (workspace-scoped, not blanket).
+    // …and DENIED outside (genuinely scoped + traversal-safe).
     expect(s.decide("p", "fs.read", "/etc/passwd")).toBe("deny");
     expect(s.decide("p", "fs.write", join(workspace, "../escape"))).toBe(
       "deny",
     );
-    expect(s.decide("p", "exec", "/some/other/dir")).toBe("deny");
+
+    // exec is UNSCOPED (host-wide) — not a false workspace claim (!56). The grant
+    // covers any target (and no target); default-deny still holds without it.
+    expect(s.decide("p", "exec")).toBe("allow");
+    expect(s.decide("p", "exec", "/some/other/dir")).toBe("allow");
+    expect(s.decide("q", "exec")).toBe("deny"); // un-provisioned persona = denied
     s.close();
   });
 });

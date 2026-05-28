@@ -108,9 +108,13 @@ export function SetupFlow({ onDone }: { onDone: (personaId: string) => void }) {
                 <Icon name="zap" size={13} /> Full local access (YOLO)
               </div>
               <p className="mt-1.5 text-xs leading-relaxed text-muted">
-                By default this agent can read &amp; write files and run shell
-                commands in its workspace folder — like a dev terminal. It can
-                build, test, and run code there. Money stays vault-gated; exec
+                By default this agent can read &amp; write files in its
+                workspace folder, and{" "}
+                <strong className="text-fg">
+                  run any shell command on this machine
+                </strong>{" "}
+                — full host access, not sandboxed (it starts in the workspace
+                but can reach anywhere). Money stays vault-gated; exec
                 can&apos;t move funds. You can revoke file &amp; command access
                 per-persona later.
               </p>
