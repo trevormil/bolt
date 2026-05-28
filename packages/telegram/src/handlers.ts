@@ -15,8 +15,8 @@ const PERSONA_ID = "assistant";
 
 async function ensurePersona(engine: Engine): Promise<string> {
   if (!engine.store.getPersona(PERSONA_ID)) {
-    engine.store.createPersona(PERSONA_ID, "Vellum", {
-      name: "Vellum",
+    engine.store.createPersona(PERSONA_ID, "Bolt", {
+      name: "Bolt",
       role: "payment-first personal agent",
       voice: "warm, concise, plain-English",
     });
@@ -31,7 +31,7 @@ const usdc = (micro: string) => (Number(micro) / 1e6).toFixed(2);
 export async function onStart(ctx: BotCtx, engine: Engine): Promise<void> {
   await ensurePersona(engine);
   await ctx.reply(
-    "Vellum online — your payment-first agent. Ask me anything in plain English; I can create USDC vaults and manage funds within rules. Try /balance or /ledger.",
+    "Bolt online — your payment-first agent. Ask me anything in plain English; I can create USDC vaults and manage funds within rules. Try /balance or /ledger.",
   );
 }
 

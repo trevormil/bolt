@@ -2,6 +2,18 @@ import { join } from "node:path";
 import { generateWallet, addressOf } from "@vellum/chain";
 import { env } from "@vellum/shared";
 import { runSetup } from "./setup.ts";
+import {
+  banner,
+  step,
+  gold,
+  goldBright,
+  copper,
+  fg,
+  dim,
+  bold,
+  check,
+  warn,
+} from "./term.ts";
 
 // The interactive install + onboarding wizard (#19) — the I/O shell over the
 // pure runSetup(). Zero → a running local agent: collect the LLM key, the agent
@@ -9,15 +21,15 @@ import { runSetup } from "./setup.ts";
 // choice, then write .env + create the persona, and optionally install the
 // macOS background daemon. Cross-platform autostart is a later extension.
 
+// Gold prompt caret so every question reads as part of the brand.
 function ask(q: string, fallback = ""): string {
-  const a = (prompt(q) ?? "").trim();
+  const a = (prompt(`   ${gold("›")} ${q}`) ?? "").trim();
   return a || fallback;
 }
 
 function yesno(q: string, def = false): boolean {
-  const a = (prompt(`${q} ${def ? "[Y/n]" : "[y/N]"}`) ?? "")
-    .trim()
-    .toLowerCase();
+  const hint = dim(def ? "[Y/n]" : "[y/N]");
+  const a = (prompt(`   ${gold("›")} ${q} ${hint}`) ?? "").trim().toLowerCase();
   if (!a) return def;
   return a === "y" || a === "yes";
 }
@@ -26,38 +38,51 @@ export async function initWizard(
   opts: { envPath?: string } = {},
 ): Promise<void> {
   const envPath = opts.envPath ?? join(process.cwd(), ".env");
-  console.log("\n  Vellum — local-first setup");
-  console.log("  Nothing is hosted; only OpenRouter is ever contacted.\n");
+  console.log(banner());
+  console.log(
+    "  " + dim("Nothing is hosted; only OpenRouter is ever contacted."),
+  );
 
   // 1) LLM key (optional — boots offline-of-cloud, just can't think yet).
-  console.log("1) OpenRouter API key — powers the agent's LLM.");
-  const openRouterKey = ask("   key (blank to skip for now): ") || undefined;
+  console.log(step(1, "OpenRouter API key", "powers the agent's LLM"));
+  const openRouterKey =
+    ask("key " + dim("(blank to skip for now)") + ": ") || undefined;
 
   // 2) Agent signer wallet — all persona wallets derive from one mnemonic.
-  console.log("\n2) Agent signer wallet.");
+  console.log(step(2, "Agent signer wallet"));
   let mnemonic: string;
-  if (yesno("   Import an existing 24-word mnemonic? (No = generate fresh)")) {
-    mnemonic = ask("   paste mnemonic: ");
+  if (
+    yesno(
+      "Import an existing 24-word mnemonic? " + dim("(No = generate fresh)"),
+    )
+  ) {
+    mnemonic = ask("paste mnemonic: ");
     const addr = await addressOf(mnemonic); // throws on an invalid phrase
-    console.log(`   ✓ imported · ${addr}`);
+    console.log(`   ${check} imported ${dim("·")} ${gold(addr)}`);
   } else {
     const w = await generateWallet();
     mnemonic = w.mnemonic;
-    console.log("   ✓ generated a new mnemonic — saved to .env, BACK IT UP:");
-    console.log(`\n     ${mnemonic}\n`);
+    console.log(
+      `   ${check} generated a new mnemonic ${dim("— saved to .env,")} ${copper("BACK IT UP")}${dim(":")}`,
+    );
+    console.log("\n     " + gold(mnemonic) + "\n");
   }
 
   // 3) First persona.
-  console.log("3) Your first persona.");
-  const personaName = ask("   name [Assistant]: ", "Assistant");
+  console.log(step(3, "Your first persona"));
+  const personaName = ask("name " + dim("[Assistant]") + ": ", "Assistant");
 
   // 4) Expose the daemon beyond loopback? (default no — local-first).
-  console.log("\n4) Network exposure.");
+  console.log(step(4, "Network exposure"));
   let apiToken: string | undefined;
-  if (yesno("   Expose the daemon beyond this machine? (No = loopback only)")) {
+  if (
+    yesno(
+      "Expose the daemon beyond this machine? " + dim("(No = loopback only)"),
+    )
+  ) {
     apiToken = crypto.randomUUID().replace(/-/g, "");
     console.log(
-      "   ✓ generated VELLUM_API_TOKEN (required to bind non-loopback).",
+      `   ${check} generated ${gold("VELLUM_API_TOKEN")} ${dim("(required to bind non-loopback).")}`,
     );
   }
 
@@ -66,26 +91,32 @@ export async function initWizard(
     { envPath },
   );
 
-  console.log("\n  Setup complete:");
+  console.log("\n  " + goldBright("Setup complete"));
   console.log(
     res.card
       .split("\n")
-      .map((l) => `   ${l}`)
+      .map((l, i) =>
+        i === 0
+          ? "   " + gold(l)
+          : "   " + dim(l.replace(/^( *\S+:)/, (m) => m)),
+      )
       .join("\n"),
   );
-  console.log(`   • data dir  ${res.dataDir}`);
-  console.log(`   • secrets   ${res.envPath} (${res.wroteKeys.join(", ")})`);
+  console.log(`   ${dim("• data dir")}  ${fg(res.dataDir)}`);
+  console.log(
+    `   ${dim("• secrets")}   ${fg(res.envPath)} ${dim("(" + res.wroteKeys.join(", ") + ")")}`,
+  );
   if (!openRouterKey)
     console.log(
-      "   ! no LLM key set — add OPENROUTER_API_KEY to .env to enable chat.",
+      `   ${warn} ${copper("no LLM key set")} ${dim("— add OPENROUTER_API_KEY to .env to enable chat.")}`,
     );
 
-  // 5) Run Vellum — seamlessly. The user shouldn't have to run any command: the
+  // 5) Run Bolt — seamlessly. The user shouldn't have to run any command: the
   // wizard starts the daemon for them (gated by y/n) and only ever points them at
   // the URL. If a daemon is already serving the configured port, we don't start a
   // second one (that would just fail on the bound port).
   const url = `http://127.0.0.1:${env.WEB_PORT}`;
-  console.log("\n5) Run Vellum");
+  console.log(step(5, "Run Bolt"));
   const alreadyUp = await fetch(`${url}/api/health`, {
     signal: AbortSignal.timeout(800),
   })
@@ -93,13 +124,13 @@ export async function initWizard(
     .catch(() => false);
 
   if (alreadyUp) {
-    console.log("   ✓ Vellum is already running.");
+    console.log(`   ${check} Bolt is already running.`);
     printTryList(res.personaId, url);
     return;
   }
 
-  if (!yesno("   Start Vellum now?", true)) {
-    console.log("   OK — start it any time with:  bun run daemon");
+  if (!yesno("Start Bolt now?", true)) {
+    console.log(`   OK — start it any time with  ${gold("bun run daemon")}`);
     printTryList(res.personaId, url);
     return;
   }
@@ -108,25 +139,27 @@ export async function initWizard(
   // the foreground and hand the terminal to the server.
   if (
     process.platform === "darwin" &&
-    yesno("   Keep it running at login (background)?")
+    yesno("Keep it running at login (background)?")
   ) {
     const r = Bun.spawnSync(
       ["bash", join(process.cwd(), "scripts/install-daemon.sh"), "install"],
       { stdout: "inherit", stderr: "inherit" },
     );
     if (r.exitCode === 0) {
-      console.log("   ✓ installed and running in the background.");
+      console.log(`   ${check} installed and running in the background.`);
       printTryList(res.personaId, url);
       return;
     }
-    console.log("   ! background install failed — starting in the foreground.");
+    console.log(
+      `   ${warn} background install failed — starting in the foreground.`,
+    );
   }
 
   // Foreground: spawn the daemon and block on it so `bun run setup` ends with a
   // live server. The SPA was already built by quickstart, so the dashboard is
   // real. Ctrl-C stops it.
   printTryList(res.personaId, url);
-  console.log("  Starting Vellum… (Ctrl-C to stop)\n");
+  console.log(`  ${gold("Starting Bolt…")} ${dim("(Ctrl-C to stop)")}\n`);
   const proc = Bun.spawn(["bun", "run", "daemon"], {
     cwd: process.cwd(),
     stdout: "inherit",
@@ -138,13 +171,16 @@ export async function initWizard(
 
 // The post-setup "open it + try this" guidance (#25), shown on every exit path.
 function printTryList(personaId: string, url: string): void {
-  console.log(`\n  Open ${url} and try, in ${personaId}:`);
-  console.log('   • Chat — ask anything, or "remember …" to teach it.');
   console.log(
-    "   • Vaults → create one with a spending limit; watch the gating badges + escrow.",
+    `\n  Open ${goldBright(url)} ${dim("and try, in")} ${gold(personaId)}${dim(":")}`,
   );
-  console.log(
-    "   • Activity — every action lands on the timeline with its cost + tx hash.",
+  const item = (s: string) => console.log(`   ${gold("›")} ${dim(s)}`);
+  item('Chat — ask anything, or "remember …" to teach it.');
+  item(
+    "Vaults → create one with a spending limit; watch the gating badges + escrow.",
+  );
+  item(
+    "Activity — every action lands on the timeline with its cost + tx hash.",
   );
   console.log("");
 }

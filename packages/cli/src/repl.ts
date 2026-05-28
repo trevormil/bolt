@@ -14,8 +14,8 @@ export async function repl(
   const initial = startPersona ?? engine.store.listPersonas()[0]?.id;
   let personaId: string;
   if (!initial) {
-    engine.store.createPersona("assistant", "Vellum", {
-      name: "Vellum",
+    engine.store.createPersona("assistant", "Bolt", {
+      name: "Bolt",
       role: "payment-first personal agent",
       voice: "warm, concise, plain-English",
     });
@@ -29,7 +29,7 @@ export async function repl(
   }
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
-  console.log(`Vellum · talking to "${personaId}". ${HELP}`);
+  console.log(`Bolt · talking to "${personaId}". ${HELP}`);
   const reprompt = () => {
     rl.setPrompt(`${personaId} › `);
     rl.prompt();

@@ -912,6 +912,6 @@ if (import.meta.main) {
     );
     process.exit(1);
   }
-  log.info(`Vellum web · http://${opts.hostname}:${opts.port}`);
+  log.info(`Bolt web · http://${opts.hostname}:${opts.port}`);
   Bun.serve(opts);
 }

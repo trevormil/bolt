@@ -25,7 +25,7 @@ export interface BotOptions {
 }
 
 const DENY_MSG =
-  "Vellum is a personal agent bound to one owner — it can't take commands from this chat.";
+  "Bolt is a personal agent bound to one owner — it can't take commands from this chat.";
 
 export function buildBot(
   token: string,

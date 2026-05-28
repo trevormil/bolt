@@ -54,7 +54,7 @@ describe("telegram handlers (engine-wired)", () => {
     const engine = engineWithFakes();
     const { c, replies } = ctx("what can you do?");
     await onText(c, engine);
-    expect(replies[0]).toContain("Hi, I'm Vellum.");
+    expect(replies[0]).toContain("Hi, I'm Bolt.");
     expect(replies[0]).toContain("tok"); // cost footer
   });
 
@@ -62,7 +62,7 @@ describe("telegram handlers (engine-wired)", () => {
     const engine = engineWithFakes();
     const { c, replies } = ctx();
     await onStart(c, engine);
-    expect(replies[0]).toContain("Vellum online");
+    expect(replies[0]).toContain("Bolt online");
     expect(engine.store.getPersona("assistant")).not.toBeNull();
     expect(engine.wallets.addressFor("assistant")).toMatch(/^bb1/);
   });

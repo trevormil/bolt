@@ -1,6 +1,6 @@
 {
-  "name": "Vellum",
-  "short_name": "Vellum",
+  "name": "Bolt",
+  "short_name": "Bolt",
   "description": "Your local-first, payment-aware AI agent — talks to localhost only, never to a hosted backend.",
   "start_url": "/",
   "scope": "/",

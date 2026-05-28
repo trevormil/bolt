@@ -1,15 +1,23 @@
 <!doctype html>
-<html lang="en" data-theme="dusk">
+<html lang="en" data-theme="aurum">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Vellum</title>
+    <title>Bolt — the agent with a wallet</title>
     <!-- PWA (#38): manifest + theme color + svg/apple touch icon make the app
          installable. The service worker is registered from main.tsx. -->
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#0e0f12" />
+    <meta name="theme-color" content="#0b0b0e" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="apple-touch-icon" href="/icon.svg" />
+    <!-- Aurum type system (#53): Fraunces (serif display), Hanken Grotesk (body),
+         JetBrains Mono (money / addresses / terminal). -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..900;1,9..144,400..700&family=Hanken+Grotesk:wght@300..800&family=JetBrains+Mono:wght@400..700&display=swap"
+      rel="stylesheet"
+    />
   </head>
   <body class="vellum-ui">
     <div id="root"></div>

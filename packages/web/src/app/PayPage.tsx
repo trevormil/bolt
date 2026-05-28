@@ -55,7 +55,7 @@ export function PayPage({ reqId }: { reqId: string }) {
           <span className="grid h-8 w-8 place-items-center rounded-md bg-accent text-accent-fg">
             <Icon name="wallet" size={16} />
           </span>
-          <span className="font-serif text-xl">Vellum payment request</span>
+          <span className="font-serif text-xl">Bolt payment request</span>
         </div>
 
         {loadErr ? (

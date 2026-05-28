@@ -76,7 +76,7 @@ export function App() {
           <span className="grid h-7 w-7 place-items-center rounded-md bg-accent text-accent-fg">
             <Icon name="sparkle" size={16} />
           </span>
-          <span className="font-serif text-lg">Vellum</span>
+          <span className="font-serif text-lg">Bolt</span>
         </div>
         <div className="px-3 text-xs uppercase tracking-wide text-soft">
           Personas
@@ -230,7 +230,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
           <span className="grid h-8 w-8 place-items-center rounded-md bg-accent text-accent-fg">
             <Icon name="wallet" size={16} />
           </span>
-          <span className="font-serif text-xl">Vellum</span>
+          <span className="font-serif text-xl">Bolt</span>
         </div>
         <p className="mt-4 text-sm text-muted">
           This instance is access-protected. Enter the API token to continue.
@@ -264,7 +264,7 @@ function Welcome({ onStart }: { onStart: () => void }) {
         <span className="mx-auto mb-5 grid h-14 w-14 place-items-center rounded-xl bg-accent text-accent-fg shadow-glow">
           <Icon name="sparkle" size={28} />
         </span>
-        <h1 className="font-serif text-4xl">Vellum</h1>
+        <h1 className="font-serif text-4xl">Bolt</h1>
         <p className="mt-3 text-muted">
           A payment-first personal agent. Every persona is its own compartment —
           its own memory, wallet, and budget, walled off from the rest.

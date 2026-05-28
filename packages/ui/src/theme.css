@@ -5,10 +5,14 @@
  *   tokens.css   — theme-independent structure (radii, fonts) + .vellum-ui base
  *   themes/*.css — per-theme color + elevation tokens; Dusk is the default (dark)
  *
- * Switch themes by setting `data-theme` on a root element (defaults to Dusk):
- *   <html data-theme="dusk">  // or omit entirely for the default
+ * Switch themes by setting `data-theme` on a root element (defaults to Aurum):
+ *   <html data-theme="aurum">  // or omit entirely for the default
  * Add a theme by dropping a themes/<name>.css with its own [data-theme="<name>"]
- * block and importing it below — no component changes needed. */
+ * block and importing it below — no component changes needed.
+ *
+ * Aurum (gold-on-black, #53) is imported LAST so its :root block wins as the
+ * default; Dusk stays selectable via [data-theme="dusk"]. */
 
 @import "./tokens.css";
 @import "./themes/dusk.css";
+@import "./themes/aurum.css";
