@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bolt — the agent with a wallet</title>
+    <meta
+      name="description"
+      content="Bolt is a local-first personal agent with its own wallet. Spins up in one command. Nothing hosted but the LLM."
+    />
+    <meta name="theme-color" content="#0b0b0e" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..900;1,9..144,400..700&family=Hanken+Grotesk:wght@300..800&family=JetBrains+Mono:wght@400..700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #0b0b0e;
+        --surface: #141318;
+        --surface-2: #1c1a22;
+        --border: #2a2731;
+        --border-gold: rgba(212, 175, 55, 0.22);
+        --text: #f2ede0;
+        --muted: #a8a08c;
+        --soft: #6f6a5c;
+        --gold: #d4af37;
+        --gold-bright: #ecca6e;
+        --copper: #b87333;
+        --grad-gold: linear-gradient(135deg, #ecca6e 0%, #d4af37 42%, #b87333 100%);
+        --sans: "Hanken Grotesk", system-ui, sans-serif;
+        --serif: "Fraunces", Georgia, serif;
+        --mono: "JetBrains Mono", ui-monospace, monospace;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html { scroll-behavior: smooth; }
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--sans);
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+        overflow-x: hidden;
+      }
+      /* Atmosphere: a warm gold glow up top + a faint chain-link weave. */
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background:
+          radial-gradient(60rem 40rem at 50% -10%, rgba(212, 175, 55, 0.12), transparent 60%),
+          radial-gradient(50rem 40rem at 85% 10%, rgba(184, 115, 51, 0.08), transparent 55%);
+        pointer-events: none;
+        z-index: 0;
+      }
+      /* Subtle film grain for depth. */
+      body::after {
+        content: "";
+        position: fixed;
+        inset: 0;
+        opacity: 0.035;
+        pointer-events: none;
+        z-index: 1;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      }
+      .wrap { position: relative; z-index: 2; max-width: 64rem; margin: 0 auto; padding: 0 1.5rem; }
+
+      /* ── nav ── */
+      nav {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 1.6rem 0;
+      }
+      .word { display: flex; align-items: center; gap: 0.55rem; font-family: var(--serif); font-size: 1.35rem; font-weight: 600; letter-spacing: 0.02em; }
+      .bolt { color: var(--gold); filter: drop-shadow(0 0 10px rgba(212,175,55,0.45)); }
+      nav a.ghost { color: var(--muted); text-decoration: none; font-size: 0.92rem; transition: color 0.2s; }
+      nav a.ghost:hover { color: var(--gold); }
+
+      /* ── hero ── */
+      header { text-align: center; padding: 5rem 0 3rem; }
+      .eyebrow {
+        font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.32em;
+        text-transform: uppercase; color: var(--copper); margin-bottom: 1.6rem;
+        animation: fade 0.8s ease both;
+      }
+      h1 {
+        font-family: var(--serif); font-weight: 600;
+        font-size: clamp(3rem, 9vw, 6.5rem); line-height: 0.96;
+        letter-spacing: -0.02em; margin-bottom: 1.2rem;
+        animation: rise 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+      }
+      h1 .grad {
+        background: var(--grad-gold); -webkit-background-clip: text;
+        background-clip: text; color: transparent;
+      }
+      h1 em { font-style: italic; font-weight: 400; }
+      .sub {
+        font-size: clamp(1.05rem, 2.4vw, 1.35rem); color: var(--muted);
+        max-width: 34rem; margin: 0 auto 2.4rem; animation: rise 0.9s 0.1s cubic-bezier(0.2,0.8,0.2,1) both;
+      }
+      .sub b { color: var(--text); font-weight: 600; }
+
+      /* ── install command ── */
+      .cmd {
+        display: inline-flex; align-items: center; gap: 1rem;
+        background: var(--surface); border: 1px solid var(--border-gold);
+        border-radius: 14px; padding: 0.95rem 1.1rem 0.95rem 1.4rem;
+        font-family: var(--mono); font-size: 1.02rem;
+        box-shadow: 0 24px 60px rgba(0,0,0,0.5), 0 0 40px rgba(212,175,55,0.06);
+        animation: rise 0.9s 0.2s cubic-bezier(0.2,0.8,0.2,1) both;
+      }
+      .cmd .prompt { color: var(--gold); }
+      .cmd code { color: var(--text); }
+      .cmd .copy {
+        font-family: var(--sans); font-size: 0.78rem; color: var(--soft);
+        border: 1px solid var(--border); border-radius: 8px; padding: 0.3rem 0.6rem;
+        background: transparent; cursor: pointer; transition: all 0.2s;
+      }
+      .cmd .copy:hover { color: var(--gold); border-color: var(--border-gold); }
+      .prereq { margin-top: 1rem; font-size: 0.85rem; color: var(--soft); font-family: var(--mono); }
+      .prereq a { color: var(--copper); text-decoration: none; }
+      .prereq a:hover { color: var(--gold); }
+
+      /* ── features ── */
+      .features {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+        gap: 1rem; padding: 3.5rem 0;
+      }
+      .card {
+        background: linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 100%);
+        border: 1px solid var(--border); border-radius: 16px; padding: 1.6rem;
+        transition: border-color 0.25s, transform 0.25s;
+      }
+      .card:hover { border-color: var(--border-gold); transform: translateY(-3px); }
+      .card .ic { font-size: 1.4rem; color: var(--gold); margin-bottom: 0.7rem; display: block; }
+      .card h3 { font-family: var(--serif); font-weight: 600; font-size: 1.18rem; margin-bottom: 0.4rem; }
+      .card p { color: var(--muted); font-size: 0.92rem; }
+
+      /* ── steps ── */
+      .install { padding: 2rem 0 4rem; }
+      .install h2 {
+        font-family: var(--serif); font-size: 2rem; font-weight: 600;
+        text-align: center; margin-bottom: 0.5rem;
+      }
+      .install .lead { text-align: center; color: var(--muted); margin-bottom: 2.5rem; }
+      .steps { display: grid; gap: 0.75rem; max-width: 40rem; margin: 0 auto; }
+      .steprow {
+        display: flex; gap: 1rem; align-items: flex-start;
+        background: var(--surface); border: 1px solid var(--border);
+        border-radius: 12px; padding: 1rem 1.2rem;
+      }
+      .stepn {
+        font-family: var(--mono); color: var(--gold); font-weight: 700;
+        flex-shrink: 0; width: 1.5rem;
+      }
+      .steprow code { font-family: var(--mono); color: var(--gold-bright); }
+      .steprow .t { color: var(--muted); font-size: 0.95rem; }
+      .steprow .t b { color: var(--text); font-weight: 600; }
+
+      footer {
+        border-top: 1px solid var(--border); padding: 2.5rem 0 3.5rem;
+        text-align: center; color: var(--soft); font-size: 0.85rem;
+      }
+      footer .word { justify-content: center; font-size: 1.05rem; margin-bottom: 0.6rem; }
+
+      @keyframes rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+      @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+      @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <nav>
+        <span class="word"><span class="bolt">⚡</span> Bolt</span>
+        <a class="ghost" href="https://labs.gauntletai.com/trevormiller/vellum-project">Source ↗</a>
+      </nav>
+
+      <header>
+        <p class="eyebrow">Local-first · agentic · payment-native</p>
+        <h1>The agent<br /><em>with a</em> <span class="grad">wallet.</span></h1>
+        <p class="sub">
+          Bolt is a personal AI agent that <b>holds its own USDC</b>, acts within
+          rules you set, and runs entirely on your machine. One command to a
+          running agent. <b>Nothing hosted</b> but the model.
+        </p>
+
+        <div class="cmd">
+          <span class="prompt">$</span>
+          <code>bun run setup</code>
+          <button class="copy" onclick="navigator.clipboard?.writeText('bun run setup');this.textContent='copied'">copy</button>
+        </div>
+        <p class="prereq">requires <a href="https://bun.sh">bun</a> · macOS / Linux · ~30s to first chat</p>
+      </header>
+
+      <section class="features">
+        <div class="card">
+          <span class="ic">◈</span>
+          <h3>Its own wallet</h3>
+          <p>Per-persona USDC vaults with on-chain rules — spend caps, time locks, multisig sign-off. The agent moves money only within them.</p>
+        </div>
+        <div class="card">
+          <span class="ic">⚙</span>
+          <h3>Many tools</h3>
+          <p>Connect any MCP server. Each tool is capability-gated and lands on a proof-of-action ledger — you see exactly what it did.</p>
+        </div>
+        <div class="card">
+          <span class="ic">⌂</span>
+          <h3>Local-first</h3>
+          <p>Personas, memory, keys, and ledger live in <code>~/.vellum</code> on your machine. The only outbound call is to your LLM.</p>
+        </div>
+        <div class="card">
+          <span class="ic">⚡</span>
+          <h3>Quiet by default</h3>
+          <p>Acts autonomously within its limits, surfaces a plain receipt for anything that moves money, and interrupts you only when it matters.</p>
+        </div>
+      </section>
+
+      <section class="install" id="install">
+        <h2>Up and running in one command</h2>
+        <p class="lead">The wizard sets up your key, wallet, and first persona — then launches Bolt.</p>
+        <div class="steps">
+          <div class="steprow"><span class="stepn">1</span><span class="t">Install <a style="color:var(--copper)" href="https://bun.sh">bun</a> if you don't have it — <code>curl -fsSL https://bun.sh/install | bash</code></span></div>
+          <div class="steprow"><span class="stepn">2</span><span class="t">Clone &amp; enter the repo, then run <code>bun run setup</code></span></div>
+          <div class="steprow"><span class="stepn">3</span><span class="t">Answer the wizard — <b>OpenRouter key, wallet, first persona</b> — and it starts the app for you</span></div>
+          <div class="steprow"><span class="stepn">4</span><span class="t">Open <code>http://127.0.0.1:8787</code> and start chatting</span></div>
+        </div>
+      </section>
+
+      <footer>
+        <span class="word"><span class="bolt">⚡</span> Bolt</span>
+        the agent with a wallet · local-first, terminal-native, yours
+      </footer>
+    </div>
+  </body>
+</html>
