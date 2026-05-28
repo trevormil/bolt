@@ -35,7 +35,13 @@ export class TaskScheduler {
           // unattended schedule can't move money without explicit opt-in.
           readOnly: !t.armed,
         });
-        // task_run telemetry (#42): a scheduled run fired (ok).
+        await this.deps.deliver(
+          t.personaId,
+          `⏰ ${t.prompt.slice(0, 60)}\n${r.reply}`,
+        );
+        // task_run telemetry (#42): emit success only AFTER delivery succeeds,
+        // so a delivery failure (caught below as ok:false) can't also leave an
+        // ok:true record for the same run (!46 review).
         this.deps.engine.events.emit({
           personaId: t.personaId,
           kind: "task_run",
@@ -43,10 +49,6 @@ export class TaskScheduler {
           ok: true,
           meta: { taskId: t.id, armed: t.armed },
         });
-        await this.deps.deliver(
-          t.personaId,
-          `⏰ ${t.prompt.slice(0, 60)}\n${r.reply}`,
-        );
       } catch (e) {
         log.warn(`task ${t.id.slice(0, 8)} failed: ${e}`);
         this.deps.engine.events.emit({

@@ -99,4 +99,31 @@ describe("TaskScheduler.runDue (#36)", () => {
     expect(ev!.ok).toBe(false);
     expect(ev!.meta).toMatchObject({ taskId: t.id });
   });
+
+  test("a delivery failure emits exactly one task_run, ok=false (no double event) (!46 review)", async () => {
+    const engine = engineWith("digest");
+    engine.store.createPersona("p", "Atlas", {
+      name: "Atlas",
+      role: "assistant",
+      voice: "terse",
+    });
+    await engine.wallets.ensureWallet("p");
+    engine.tasks.create({
+      personaId: "p",
+      prompt: "summarize",
+      intervalMs: 1000,
+      now: 0,
+      armed: true,
+    });
+    const sched = new TaskScheduler({
+      engine,
+      deliver: () => {
+        throw new Error("delivery channel down");
+      },
+    });
+    await sched.runDue(1000);
+    const runs = engine.events.recent("p").filter((x) => x.kind === "task_run");
+    expect(runs).toHaveLength(1); // not both ok:true AND ok:false
+    expect(runs[0]!.ok).toBe(false);
+  });
 });
