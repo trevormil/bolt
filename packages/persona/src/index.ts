@@ -8,6 +8,7 @@ export {
   personaDir,
 } from "./markdown.ts";
 export { hashEmbedder, openAiEmbedder } from "./embedder.ts";
+export { scanForInjection } from "./injection.ts";
 export type {
   Persona,
   SoulIdentity,

@@ -77,8 +77,8 @@ describe("chat() ⨉ MCP wiring (#46)", () => {
     await chat(engine, { conversationId: "c1", personaId: "p", message: "hi" });
     const cap = get()!;
     expect(cap.tools.map((t) => t.name)).toContain("mcp_calc_add"); // namespaced (#46 review)
-    // The assembled invoker routes by the unique namespaced name (#46 review).
-    expect(await cap.invoke("mcp_calc_add", { a: 2, b: 3 })).toBe("5");
+    // Routes by the unique namespaced name; output is wrapped untrusted (#24 T-12).
+    expect(await cap.invoke("mcp_calc_add", { a: 2, b: 3 })).toContain("5");
 
     // A second turn reuses the pooled connection — no re-spawn.
     await chat(engine, { conversationId: "c1", personaId: "p", message: "yo" });

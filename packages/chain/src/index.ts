@@ -7,6 +7,7 @@ export {
   sendCoins,
   confirmTx,
   claimFaucet,
+  withRetry,
   TxRevertedError,
   type Coin,
 } from "./client.ts";

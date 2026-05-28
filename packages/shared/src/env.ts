@@ -9,6 +9,9 @@ export const envSchema = z.object({
   BITBADGES_CHAIN_ID: z.string().default("bitbadges-1"),
   BITBADGES_RPC: z.string().url().default("https://rpc.meridian.trevormil.com"),
   BITBADGES_LCD: z.string().url().default("https://lcd.meridian.trevormil.com"),
+  // Optional comma-separated fallback RPC endpoints (#24 F-05) — tried in order
+  // after BITBADGES_RPC for read queries when the primary is unreachable.
+  BITBADGES_RPC_FALLBACKS: z.string().default(""),
 
   AGENT_SIGNER_MNEMONIC: z.string().optional(),
   AGENT_SIGNER_PRIVKEY_HEX: z.string().optional(),

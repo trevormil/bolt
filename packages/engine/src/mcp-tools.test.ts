@@ -165,7 +165,7 @@ describe("MCP end-to-end (#33)", () => {
       scope: "calc",
       mode: "allow",
     });
-    expect(await invoke("add", { a: 1, b: 1 })).toBe("2");
+    expect(await invoke("add", { a: 1, b: 1 })).toContain("2"); // wrapped as untrusted (#24 T-12)
     await client.close();
   });
 
@@ -190,8 +190,8 @@ describe("MCP end-to-end (#33)", () => {
     expect(a.tools.map((t) => t.name)).toContain("mcp_alpha_add");
     expect(b.tools.map((t) => t.name)).toContain("mcp_beta_add");
     expect(a.tools[0]!.name).not.toBe(b.tools[0]!.name);
-    // The namespaced name routes to the server's real tool.
-    expect(await a.invoke("mcp_alpha_add", { a: 2, b: 3 })).toBe("5");
+    // The namespaced name routes to the server's real tool (output wrapped untrusted).
+    expect(await a.invoke("mcp_alpha_add", { a: 2, b: 3 })).toContain("5");
     await c1.close();
     await c2.close();
   });

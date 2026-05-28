@@ -25,6 +25,45 @@ const log = createLogger("chain");
 export type { Coin };
 
 /**
+ * Retry an idempotent operation with exponential backoff + FULL jitter (#24
+ * F-05). Full jitter (sleep ∈ [0, base·2^n]) avoids the thundering-herd of a
+ * fixed/decorrelated backoff when many callers retry at once. Only ever wrap
+ * idempotent work (reads, connects) — NEVER a broadcast, which could double-send.
+ */
+export async function withRetry<T>(
+  fn: () => Promise<T>,
+  opts: { tries?: number; baseMs?: number; label?: string } = {},
+): Promise<T> {
+  const tries = opts.tries ?? 3;
+  const baseMs = opts.baseMs ?? 200;
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < tries; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      if (attempt === tries - 1) break;
+      const ceil = baseMs * 2 ** attempt;
+      const wait = Math.floor(Math.random() * ceil); // full jitter
+      if (opts.label)
+        log.warn(
+          `${opts.label} attempt ${attempt + 1} failed, retrying in ${wait}ms`,
+        );
+      await new Promise((r) => setTimeout(r, wait));
+    }
+  }
+  throw lastErr;
+}
+
+/** The RPC endpoints to try, in order: primary then optional fallbacks (F-05). */
+function rpcEndpoints(): string[] {
+  const fallbacks = env.BITBADGES_RPC_FALLBACKS.split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return [env.BITBADGES_RPC, ...fallbacks];
+}
+
+/**
  * Thrown by confirmTx ONLY when the chain definitively rejected the tx (nonzero
  * code). Distinct from timeout/network errors (plain Error) so callers can treat
  * a not-yet-observed tx as still-pending/reconcilable rather than failed (0023).
@@ -64,14 +103,31 @@ export async function generateWallet(): Promise<{
   return { mnemonic: wallet.mnemonic, address: account.address };
 }
 
-/** All balances for an address (read-only, via RPC). */
+/** All balances for an address (read-only, via RPC). Resilient (#24 F-05):
+ *  retries each endpoint with jittered backoff, then falls over to the next
+ *  configured fallback endpoint before giving up. */
 export async function getBalances(address: string): Promise<readonly Coin[]> {
-  const client = await StargateClient.connect(env.BITBADGES_RPC);
-  try {
-    return await client.getAllBalances(address);
-  } finally {
-    client.disconnect();
+  const endpoints = rpcEndpoints();
+  let lastErr: unknown;
+  for (const rpc of endpoints) {
+    try {
+      return await withRetry(
+        async () => {
+          const client = await StargateClient.connect(rpc);
+          try {
+            return await client.getAllBalances(address);
+          } finally {
+            client.disconnect();
+          }
+        },
+        { label: `getBalances(${rpc})` },
+      );
+    } catch (e) {
+      lastErr = e;
+      if (endpoints.length > 1) log.warn(`rpc ${rpc} exhausted, trying next`);
+    }
   }
+  throw lastErr;
 }
 
 /** Send native coins; resolves once the tx is included in a block. */
