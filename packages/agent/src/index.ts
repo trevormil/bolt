@@ -7,7 +7,7 @@ export {
   type AgentRun,
 } from "./loop.ts";
 export { selectTools, type ToolSpec } from "./tools.ts";
-export { McpClient } from "./mcp.ts";
+export { McpClient, withTimeout } from "./mcp.ts";
 
 if (import.meta.main) {
   const { createLogger } = await import("@vellum/shared");

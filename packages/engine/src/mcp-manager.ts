@@ -1,4 +1,4 @@
-import { McpClient } from "@vellum/agent";
+import { McpClient, withTimeout } from "@vellum/agent";
 import { createLogger } from "@vellum/shared";
 import type { McpServerConfig } from "./mcp-setting.ts";
 
@@ -8,6 +8,9 @@ const log = createLogger("mcp-manager");
 // turn never hammers (or blocks on) a broken server on every message, but the
 // daemon still recovers a server that comes back without a restart.
 const RETRY_COOLDOWN_MS = 30_000;
+// A connect that never completes the MCP handshake must not hang warmup or a
+// chat turn (!50 review). Bounded; a timeout is treated like any connect failure.
+const DEFAULT_CONNECT_TIMEOUT_MS = 15_000;
 
 export type McpConnector = (cfg: McpServerConfig) => Promise<McpClient>;
 
@@ -43,9 +46,14 @@ export class McpManager {
   >();
   private failedAt = new Map<string, number>();
   private connect: McpConnector;
+  private connectTimeoutMs: number;
 
-  constructor(connect: McpConnector = defaultConnect) {
+  constructor(
+    connect: McpConnector = defaultConnect,
+    opts: { connectTimeoutMs?: number } = {},
+  ) {
     this.connect = connect;
+    this.connectTimeoutMs = opts.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS;
   }
 
   /**
@@ -78,7 +86,11 @@ export class McpManager {
       if (failed !== undefined && Date.now() - failed < RETRY_COOLDOWN_MS)
         continue;
       try {
-        const client = await this.connect(cfg);
+        const client = await withTimeout(
+          this.connect(cfg),
+          this.connectTimeoutMs,
+          `mcp connect "${cfg.name}"`,
+        );
         this.clients.set(cfg.name, { client, config: cfg });
         this.failedAt.delete(cfg.name);
         out.push({ name: cfg.name, client });

@@ -9,6 +9,29 @@ import type { ToolSpec } from "./tools.ts";
 
 const log = createLogger("mcp");
 
+/**
+ * Race a promise against a deadline (#46 review): an external MCP server that
+ * stalls during connect, discovery, or a tool call must never hang the daemon or
+ * a chat turn. Callers wrap each MCP await so a timeout surfaces as a rejection
+ * they can degrade on (skip the server / return a tool error). The timer is
+ * unref'd so it can't keep the process alive on its own.
+ */
+export function withTimeout<T>(
+  p: Promise<T>,
+  ms: number,
+  label: string,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`${label} timed out after ${ms}ms`)),
+      ms,
+    );
+    timer.unref?.();
+  });
+  return Promise.race([p, timeout]).finally(() => clearTimeout(timer));
+}
+
 // Thin wrapper over the MCP SDK client: connect to a server (stdio in prod, any
 // Transport in tests), discover its tools as ToolSpecs, and invoke them with the
 // result flattened to a string the agent loop can feed back to the model.

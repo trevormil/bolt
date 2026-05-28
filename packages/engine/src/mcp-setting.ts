@@ -10,7 +10,18 @@ import { defineSetting } from "@vellum/settings";
  * child's safe default environment (it does not replace PATH).
  */
 export const McpServerSchema = z.object({
-  name: z.string().min(1), // unique id + the capability scope (#37) for this server
+  // Unique id + the capability scope (#37). Constrained to a provider-safe
+  // identifier (no spaces/punctuation, length-bounded) because it becomes part of
+  // the model-facing tool name `mcp_<name>_<tool>`, which must be a valid
+  // OpenAI-compatible function name or the chat request is rejected (!47/!50).
+  name: z
+    .string()
+    .min(1)
+    .max(40)
+    .regex(
+      /^[A-Za-z0-9_-]+$/,
+      "MCP server name must be alphanumeric, '-' or '_' (no spaces or punctuation)",
+    ),
   command: z.string().min(1), // executable to spawn (e.g. "npx", "bun")
   args: z.array(z.string()).optional(),
   env: z.record(z.string()).optional(),

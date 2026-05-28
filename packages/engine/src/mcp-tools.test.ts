@@ -195,4 +195,84 @@ describe("MCP end-to-end (#33)", () => {
     await c1.close();
     await c2.close();
   });
+
+  test("sanitizes punctuated tool names + skips runtime-name collisions (!47/!50)", async () => {
+    const e = await eng();
+    e.store.createPersona("p", "Pat", {
+      name: "Pat",
+      role: "tester",
+      voice: "plain",
+    });
+    e.capabilities.grant({
+      personaId: "p",
+      capability: "mcp",
+      scope: null,
+      mode: "allow",
+    });
+    // "a.b" and "a_b" both sanitize to the same runtime name → one is dropped.
+    let called = "";
+    const client = {
+      listTools: async () => [
+        { name: "do it!", description: "", parameters: {} },
+        { name: "a.b", description: "", parameters: {} },
+        { name: "a_b", description: "", parameters: {} },
+      ],
+      callTool: async (n: string) => {
+        called = n;
+        return "ok";
+      },
+      close: async () => {},
+    } as unknown as McpClient;
+    const { tools, invoke } = await mcpTools(e, "p", client, "calc");
+    const names = tools.map((t) => t.name);
+    expect(names.every((n) => /^[A-Za-z0-9_-]+$/.test(n))).toBe(true); // provider-safe
+    expect(names).toContain("mcp_calc_do_it_");
+    expect(names.filter((n) => n === "mcp_calc_a_b")).toHaveLength(1); // collision skipped
+    // Routes back to the ORIGINAL tool name on the wire.
+    await invoke("mcp_calc_do_it_", {});
+    expect(called).toBe("do it!");
+  });
+
+  test("discovery timeout: a server that never lists tools is bounded (!50)", async () => {
+    const e = await eng();
+    e.store.createPersona("p", "Pat", {
+      name: "Pat",
+      role: "tester",
+      voice: "plain",
+    });
+    const client = {
+      listTools: () => new Promise(() => {}),
+      callTool: async () => "",
+      close: async () => {},
+    } as unknown as McpClient;
+    await expect(
+      mcpTools(e, "p", client, "calc", { discoveryTimeoutMs: 20 }),
+    ).rejects.toThrow(/timed out/);
+  });
+
+  test("call timeout: a tool that never returns yields a tool error, not a hang (!50)", async () => {
+    const e = await eng();
+    e.store.createPersona("p", "Pat", {
+      name: "Pat",
+      role: "tester",
+      voice: "plain",
+    });
+    e.capabilities.grant({
+      personaId: "p",
+      capability: "mcp",
+      scope: null,
+      mode: "allow",
+    });
+    const client = {
+      listTools: async () => [
+        { name: "hang", description: "", parameters: {} },
+      ],
+      callTool: () => new Promise(() => {}),
+      close: async () => {},
+    } as unknown as McpClient;
+    const { invoke } = await mcpTools(e, "p", client, "calc", {
+      callTimeoutMs: 20,
+    });
+    expect(await invoke("mcp_calc_hang", {})).toContain("tool error");
+  });
 });

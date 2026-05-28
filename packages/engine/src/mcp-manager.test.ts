@@ -89,4 +89,15 @@ describe("McpManager lifecycle (#46)", () => {
     await m.ensure([{ name: "a", command: "new", args: ["--flag"] }]);
     expect(connects).toBe(2);
   });
+
+  test("a connect that never resolves is bounded by a timeout and skipped (!50)", async () => {
+    // Connector hangs forever; a short connect timeout must surface as a failure
+    // so warmup/chat never block on it.
+    const m = new McpManager(() => new Promise<McpClient>(() => {}), {
+      connectTimeoutMs: 20,
+    });
+    const out = await m.ensure([{ name: "hang", command: "noop" }]);
+    expect(out).toEqual([]);
+    expect(m.connected()).toEqual([]);
+  });
 });

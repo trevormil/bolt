@@ -904,6 +904,16 @@ describe("MCP server config API (#46)", () => {
       servers: [{ name: "", command: "x" }],
     });
     expect(bad.status).toBe(400);
+    // Provider-unsafe server names (spaces/slashes) are rejected — they'd become
+    // invalid model tool names `mcp_<name>_<tool>` (!47/!50).
+    const unsafe = await putMcp("atlas", {
+      servers: [{ name: "local fs", command: "x" }],
+    });
+    expect(unsafe.status).toBe(400);
+    const slash = await putMcp("atlas", {
+      servers: [{ name: "github/fs", command: "x" }],
+    });
+    expect(slash.status).toBe(400);
   });
 
   test("null clears the override (inherit)", async () => {
