@@ -7,7 +7,7 @@ type: dx
 source: planning
 created: 2026-05-26
 updated: 2026-05-28
-prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/48"]
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/48", "https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/51"]
 refs: ["ARCHITECTURE.md", "docs/decisions/0002-local-first-terminal-native.md"]
 ---
 
