@@ -113,10 +113,13 @@ export function SetupFlow({ onDone }: { onDone: (personaId: string) => void }) {
                 <strong className="text-fg">
                   run any shell command on this machine
                 </strong>{" "}
-                — full host access, not sandboxed (it starts in the workspace
-                but can reach anywhere). Money stays vault-gated; exec
-                can&apos;t move funds. You can revoke file &amp; command access
-                per-persona later.
+                — full host access, not sandboxed. This is{" "}
+                <strong className="text-fg">full trust</strong>: a command can
+                even read the agent&apos;s signing key and move funds, so only
+                enable it for an agent you trust. (The vault/spend rules still
+                gate the agent&apos;s money <em>tools</em>; raw commands bypass
+                them.) Revoke file &amp; command access per-persona to lock
+                down.
               </p>
             </div>
             <PersonaForm submitLabel="Enter Bolt" onCreated={onDone} />

@@ -16,7 +16,9 @@ import type { Engine } from "./engine.ts";
 //     loop; output is byte-capped during the read so a flood can't blow up memory.
 //   - a denylist refuses catastrophic host ops (rm -rf / and /*, fork bombs, …) —
 //     a guardrail, NOT a security boundary (exec is arbitrary code by design).
-//   - MONEY is untouched: exec is local code, can't move funds (vault/spend gates).
+//   - MONEY: host-wide exec is NOT money-rule-bound — a shell can read the signing
+//     key from disk + move funds. The vault/spend gates bind the agent's structured
+//     tools only. YOLO exec = full trust (disclosed at setup); ADR-0004.
 
 // Catastrophic-op denylist (#52). NOT a security boundary — exec is arbitrary
 // code execution by design, so this can't be exhaustive. It's a guardrail that

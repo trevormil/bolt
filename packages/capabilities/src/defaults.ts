@@ -20,10 +20,12 @@ import type { CapabilityStore } from "./store.ts";
 //     setup disclosure says "full host access" so consent is informed. Real
 //     isolation is the future sandbox (ADR-0004). To lock down: revoke per-persona.
 //
-// DELIBERATE: there is NO free-form USDC spend cap on the `spend` capability, and
-// MONEY stays rule-bound regardless of YOLO — vault.create/withdraw are still
-// gated + on-chain-bound, and exec is local-only (it can't move funds). ALL
-// spending limits live in vaults (on-chain, protocol-enforced). The app-side
+// DELIBERATE: there is NO free-form USDC spend cap on the `spend` capability. The
+// vault/spend gates bind the agent's STRUCTURED money tools (withdraw, the spend
+// route) — but host-wide `exec` (YOLO) can read the signing key from disk and move
+// funds directly, bypassing them (!56, ADR-0004). So YOLO = full trust incl.
+// funds; we do NOT claim exec is money-rule-bound. ALL structured-tool spending
+// limits live in vaults (on-chain, protocol-enforced). The app-side
 // guardrail on agent activity is the per-persona LLM-cost budget (#44), not a
 // wallet cap. (A reviewer flagged "uncapped default spend" against an older spec
 // that was since reversed — allow-by-design is intentional, not an oversight.)

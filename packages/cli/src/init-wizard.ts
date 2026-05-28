@@ -80,9 +80,10 @@ export async function initWizard(
   console.log(step(3, "Your first persona"));
   const personaName = ask("name " + dim("[Assistant]") + ": ", "Assistant");
 
-  // YOLO dev capability disclosure (#52) — the informed opt-in. Be HONEST about
-  // the asymmetry (!56): files are workspace-confined, but command execution is
-  // FULL HOST access (not sandboxed). Money stays rule-bound regardless.
+  // YOLO dev capability disclosure (#52) — the informed opt-in. Be HONEST (!56):
+  // files are workspace-confined, but command execution is FULL HOST access (not
+  // sandboxed) — and a shell can read the signing key from disk + move funds, so
+  // it is full trust, NOT money-rule-bound. Don't claim otherwise.
   console.log(
     "\n   " +
       copper("⚡ Full local access (YOLO).") +
@@ -104,11 +105,23 @@ export async function initWizard(
   );
   console.log(
     "   " +
+      copper("Full trust:") +
+      " " +
       dim(
-        "Money stays vault-gated — exec can't move funds. Revoke fs.read / fs.write / exec",
+        "a command can read the signing key + move funds — only for an agent you trust.",
       ),
   );
-  console.log("   " + dim("per-persona to lock it down later.") + "\n");
+  console.log(
+    "   " +
+      dim(
+        "(Vault/spend rules gate the agent's money TOOLS; raw commands bypass them.)",
+      ),
+  );
+  console.log(
+    "   " +
+      dim("Revoke fs.read / fs.write / exec per-persona to lock down.") +
+      "\n",
+  );
 
   // 4) Expose the daemon beyond loopback? (default no — local-first).
   console.log(step(4, "Network exposure"));

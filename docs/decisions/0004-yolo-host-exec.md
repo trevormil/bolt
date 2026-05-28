@@ -43,9 +43,15 @@ per-command timeout (SIGKILL), byte-capped output, a catastrophic-op denylist
 secret-env redaction (the child can't read the mnemonic/keys). Read-only runs
 (T-13) withhold exec + fs-write entirely.
 
-**Money is never affected by YOLO.** exec is local code execution; it cannot move
-funds — vault gating (#45) + the spend gate (#37) are the money boundary and are
-unchanged.
+**Money: YOLO exec is full trust, NOT money-rule-bound (!56).** The vault gating
+(#45) + spend gate (#37) bind the agent's STRUCTURED money tools (`withdraw_from_vault`,
+the spend route). But host-wide `run_command` can `cat` the signing mnemonic from
+`.env`/`~/.vellum` and sign/broadcast transactions directly, bypassing those gates
+entirely (the child-env redaction only blocks env-vars, not file reads). So an
+agent with YOLO exec can move funds — this is disclosed as "full trust" at setup,
+not claimed to be protected. Making exec genuinely unable to move funds requires
+protecting the key from a host-wide shell (OS keychain / external signer / sandbox)
+— that is the same future-isolation work, tracked as a follow-up.
 
 ## Consequences
 
