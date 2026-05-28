@@ -1,7 +1,7 @@
 ---
 id: 29
 title: "Adopt the on-chain BitBadges PaymentRequest standard"
-status: open
+status: icebox
 priority: low
 type: feature
 source: planning
@@ -29,3 +29,6 @@ requests are first-class on-chain objects rather than app-tracked rows.
 
 ## Note 2026-05-28 (reconciliation — stays open)
 App-side PaymentRequest (#14) shipped instead. Adopting the on-chain BitBadges PaymentRequest standard is still deferred.
+
+## Iceboxed 2026-05-28
+Decision: keep PaymentRequests app-side (#14, shipped). Not adopting the on-chain BitBadges PaymentRequest standard for now — app-side covers the need. Revisit if cross-app interop becomes a requirement.

@@ -1,7 +1,7 @@
 ---
 id: 30
 title: "Optional semantic embeddings for memory retrieval"
-status: open
+status: icebox
 priority: low
 type: performance
 source: planning
@@ -24,3 +24,6 @@ option. Pass `embedder` to `createEngine` to enable.
 - Pick a semantic embedder (OpenAI vs local model) + document the tradeoff
 - Configurable via env; default stays the key-free local embedder
 - Measure recall improvement on the eval suite (#22) before/after
+
+## Iceboxed 2026-05-28
+Decision: stay on the key-free lexical embedder (hash + BM25). OpenAI embeddings break "OpenRouter for everything"; a local model is a heavy dep for a low-priority recall gain. Revisit with a local model later if recall quality becomes a felt problem.
