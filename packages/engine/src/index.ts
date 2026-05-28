@@ -33,6 +33,9 @@ export { scheduleTools } from "./schedule-tools.ts";
 export { TaskStore, type Task } from "./tasks.ts";
 export { chat, type ChatInput, type ChatResult } from "./chat.ts";
 export { llmBudget, type LlmBudget } from "./budgets.ts";
+// Re-export the persona card renderer (#25) so the CLI/wizard can show a
+// personality card at creation without a direct @vellum/persona dep.
+export { renderPersonaCard } from "@vellum/persona";
 // Re-export capability helpers so surfaces wire grants/approval without a direct
 // @vellum/capabilities dep (#37).
 export {

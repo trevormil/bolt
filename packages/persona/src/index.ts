@@ -1,7 +1,7 @@
 // Public surface of @vellum/persona: the compartment core — personas with
 // hard-walled memory + hybrid retrieval, a thin global layer, and SOUL identity.
 export { PersonaStore } from "./store.ts";
-export { renderSoul } from "./soul.ts";
+export { renderSoul, renderPersonaCard } from "./soul.ts";
 export {
   readPersonaMarkdown,
   listPersonaDocs,

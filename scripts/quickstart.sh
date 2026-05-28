@@ -17,6 +17,13 @@ fi
 echo "→ installing workspace…"
 bun install
 
+# Build the web SPA up front so the daemon serves a real dashboard, not a blank
+# page. The daemon (and launchd unit the wizard can install) only SERVE the
+# prebuilt dist/ — they don't build it — so this must happen before the wizard's
+# optional daemon-install step starts a server.
+echo "→ building dashboard…"
+bun run --filter @vellum/web build
+
 # The wizard writes secrets into ./.env (the file Bun auto-loads at startup),
 # creates ~/.vellum, and sets up the first persona. Run from the repo root so it
 # targets the right .env and shares the same data dir as the daemon + web.

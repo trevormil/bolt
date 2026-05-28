@@ -1,6 +1,7 @@
 import {
   createEngine as defaultCreateEngine,
   grantDefaultCapabilities,
+  renderPersonaCard,
 } from "@vellum/engine";
 import { ensureDataDir, dataDir } from "@vellum/shared";
 import { upsertEnvFile } from "./env-file.ts";
@@ -29,6 +30,7 @@ export interface SetupResult {
   dataDir: string;
   envPath: string;
   wroteKeys: string[];
+  card: string; // the personality card (#25), ready to print
 }
 
 export interface SetupDeps {
@@ -70,6 +72,7 @@ export async function runSetup(
     });
   const w = await engine.wallets.ensureWallet(id);
   grantDefaultCapabilities(engine.capabilities, id); // #37 baseline policy
+  const persona = engine.store.getPersona(id)!;
 
   return {
     personaId: id,
@@ -77,5 +80,6 @@ export async function runSetup(
     dataDir: dataDir(),
     envPath: deps.envPath,
     wroteKeys,
+    card: renderPersonaCard(persona.soul, w.address),
   };
 }

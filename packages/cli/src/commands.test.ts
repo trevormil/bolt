@@ -31,7 +31,9 @@ describe("runCommand", () => {
     const e = eng();
     expect(await runCommand(e, ["personas"])).toContain("No personas");
     const created = await runCommand(e, ["new", "Atlas"]);
-    expect(created).toMatch(/created persona atlas · bb1/);
+    // #25: `new` now prints the personality card (name + wallet), not a terse line.
+    expect(created).toContain("Atlas");
+    expect(created).toMatch(/bb1/);
     const list = await runCommand(e, ["personas"]);
     expect(list).toContain("atlas");
   });

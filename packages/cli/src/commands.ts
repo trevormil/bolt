@@ -1,6 +1,7 @@
 import {
   chat,
   grantDefaultCapabilities,
+  renderPersonaCard,
   Model,
   APPROVED_MODELS,
   isApprovedModel,
@@ -78,7 +79,9 @@ export async function runCommand(
       });
       const w = await engine.wallets.ensureWallet(id);
       grantDefaultCapabilities(engine.capabilities, id); // #37 baseline policy
-      return `created persona ${id} · ${w.address}`;
+      const persona = engine.store.getPersona(id)!;
+      // #25: show the personality card at creation, not just a terse line.
+      return renderPersonaCard(persona.soul, w.address);
     }
 
     case "balance": {

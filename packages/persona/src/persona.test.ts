@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { PersonaStore, hashEmbedder, renderSoul } from "./index.ts";
+import {
+  PersonaStore,
+  hashEmbedder,
+  renderSoul,
+  renderPersonaCard,
+} from "./index.ts";
 import type { Embedder, SoulIdentity } from "./index.ts";
 
 const SOUL_A: SoulIdentity = {
@@ -34,6 +39,25 @@ describe("renderSoul", () => {
     expect(s).toContain("Role: finance copilot");
     expect(s).toContain("Voice: terse");
     expect(s).toContain("never overspend");
+  });
+
+  test("carries the #25 quiet-by-default proactivity rule for every persona", () => {
+    expect(renderSoul(SOUL_A)).toContain("Be quiet by default");
+    expect(renderSoul(SOUL_B)).toContain("loud when it matters");
+  });
+});
+
+describe("renderPersonaCard (#25)", () => {
+  test("renders a card with name, role, voice, and wallet", () => {
+    const card = renderPersonaCard(SOUL_A, "bb1abc");
+    expect(card).toContain("Atlas");
+    expect(card).toContain("finance copilot");
+    expect(card).toContain("terse");
+    expect(card).toContain("bb1abc");
+  });
+
+  test("omits the wallet line when no address is known", () => {
+    expect(renderPersonaCard(SOUL_B)).not.toContain("Wallet:");
   });
 });
 

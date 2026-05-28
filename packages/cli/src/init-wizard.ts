@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { generateWallet, addressOf } from "@vellum/chain";
+import { env } from "@vellum/shared";
 import { runSetup } from "./setup.ts";
 
 // The interactive install + onboarding wizard (#19) — the I/O shell over the
@@ -66,7 +67,12 @@ export async function initWizard(
   );
 
   console.log("\n  Setup complete:");
-  console.log(`   • persona   ${res.personaId} · ${res.address}`);
+  console.log(
+    res.card
+      .split("\n")
+      .map((l) => `   ${l}`)
+      .join("\n"),
+  );
   console.log(`   • data dir  ${res.dataDir}`);
   console.log(`   • secrets   ${res.envPath} (${res.wroteKeys.join(", ")})`);
   if (!openRouterKey)
@@ -74,29 +80,71 @@ export async function initWizard(
       "   ! no LLM key set — add OPENROUTER_API_KEY to .env to enable chat.",
     );
 
-  // 5) Optional background daemon (macOS launchd). Cross-platform later.
-  console.log("\n5) Background daemon (runs Vellum at login).");
-  if (yesno("   Install the background daemon now?")) {
-    if (process.platform !== "darwin") {
-      console.log(
-        "   skipped — autostart currently supports macOS only (cross-platform is an extension).",
-      );
-    } else {
-      const r = Bun.spawnSync(
-        ["bash", join(process.cwd(), "scripts/install-daemon.sh"), "install"],
-        { stdout: "inherit", stderr: "inherit" },
-      );
-      if (r.exitCode === 0)
-        console.log(`   ✓ daemon installed · http://127.0.0.1:8787`);
-      else
-        console.log(
-          "   ! daemon install failed — run `bun run daemon` manually instead.",
-        );
-    }
-  } else {
-    console.log("\n  Start Vellum:");
-    console.log("    vellum                # terminal REPL");
-    console.log("    bun run daemon        # web + schedulers (open :8787)");
+  // 5) Run Vellum — seamlessly. The user shouldn't have to run any command: the
+  // wizard starts the daemon for them (gated by y/n) and only ever points them at
+  // the URL. If a daemon is already serving the configured port, we don't start a
+  // second one (that would just fail on the bound port).
+  const url = `http://127.0.0.1:${env.WEB_PORT}`;
+  console.log("\n5) Run Vellum");
+  const alreadyUp = await fetch(`${url}/api/health`, {
+    signal: AbortSignal.timeout(800),
+  })
+    .then((r) => r.ok)
+    .catch(() => false);
+
+  if (alreadyUp) {
+    console.log("   ✓ Vellum is already running.");
+    printTryList(res.personaId, url);
+    return;
   }
+
+  if (!yesno("   Start Vellum now?", true)) {
+    console.log("   OK — start it any time with:  bun run daemon");
+    printTryList(res.personaId, url);
+    return;
+  }
+
+  // Offer to keep it running across logins (macOS launchd); otherwise run it in
+  // the foreground and hand the terminal to the server.
+  if (
+    process.platform === "darwin" &&
+    yesno("   Keep it running at login (background)?")
+  ) {
+    const r = Bun.spawnSync(
+      ["bash", join(process.cwd(), "scripts/install-daemon.sh"), "install"],
+      { stdout: "inherit", stderr: "inherit" },
+    );
+    if (r.exitCode === 0) {
+      console.log("   ✓ installed and running in the background.");
+      printTryList(res.personaId, url);
+      return;
+    }
+    console.log("   ! background install failed — starting in the foreground.");
+  }
+
+  // Foreground: spawn the daemon and block on it so `bun run setup` ends with a
+  // live server. The SPA was already built by quickstart, so the dashboard is
+  // real. Ctrl-C stops it.
+  printTryList(res.personaId, url);
+  console.log("  Starting Vellum… (Ctrl-C to stop)\n");
+  const proc = Bun.spawn(["bun", "run", "daemon"], {
+    cwd: process.cwd(),
+    stdout: "inherit",
+    stderr: "inherit",
+    stdin: "inherit",
+  });
+  await proc.exited;
+}
+
+// The post-setup "open it + try this" guidance (#25), shown on every exit path.
+function printTryList(personaId: string, url: string): void {
+  console.log(`\n  Open ${url} and try, in ${personaId}:`);
+  console.log('   • Chat — ask anything, or "remember …" to teach it.');
+  console.log(
+    "   • Vaults → create one with a spending limit; watch the gating badges + escrow.",
+  );
+  console.log(
+    "   • Activity — every action lands on the timeline with its cost + tx hash.",
+  );
   console.log("");
 }

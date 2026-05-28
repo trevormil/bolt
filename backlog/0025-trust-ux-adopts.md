@@ -6,8 +6,8 @@ priority: medium
 type: ux
 source: audit
 created: 2026-05-26
-updated: 2026-05-27
-prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/16"]
+updated: 2026-05-28
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/50"]
 refs: ["ARCHITECTURE.md", "research/audit/00-summary.md"]
 ---
 
@@ -30,3 +30,17 @@ Cross-cutting polish (a few are MVP: breadcrumb, receipt, plain-English sign)
 
 ## Note 2026-05-28 (reconciliation — stays in-progress)
 Ledger/proof-of-action view + plain-English replies shipped (#11/#17). Remaining trust-UX polish (breadcrumb, per-action receipt) not yet built.
+
+## Progress 2026-05-28 #2 (MR !50)
+Shipped the behavior-shaping + onboarding slice:
+- **"Quiet by default, loud when it matters"** proactivity rule baked into
+  `renderSoul` — every persona carries it (act within limits, plain receipt for
+  money/state changes, interrupt only when needed).
+- **Personality card at creation** (`renderPersonaCard`) — `vellum new` + the
+  install wizard show a name/role/voice/wallet card.
+Already shipped elsewhere: `/ledger` Telegram command, plain-English sign page
+(#45 slice 3), vault gating badges, plain-English replies + ledger view (#11/#17).
+Remaining (lower-priority cross-cutting copy, not blocking): the breadcrumb
+"here's what I did before asking" approval preamble, an explicit per-chain-op
+receipt line with budget-remaining, and the Stripe/YNAB/1Password market-framing
+copy in user-facing text. Persona "personality card" ✓.
