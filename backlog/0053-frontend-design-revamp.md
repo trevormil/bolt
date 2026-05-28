@@ -1,12 +1,13 @@
 ---
 id: 53
 title: "Full frontend design + UX revamp (Dusk 2.0)"
-status: open
+status: in-progress
 priority: medium
 type: ux
 source: planning
 created: 2026-05-28
 updated: 2026-05-28
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/51"]
 refs: ["0026-ui-component-library.md", "0047-frontend-surfaces.md", "0038-installable-pwa.md", "0025-trust-ux-adopts.md"]
 ---
 

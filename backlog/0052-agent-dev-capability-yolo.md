@@ -1,12 +1,13 @@
 ---
 id: 52
 title: "Agent dev capability: command execution + YOLO filesystem/exec by default"
-status: open
+status: in-progress
 priority: high
 type: feature
 source: planning
 created: 2026-05-28
 updated: 2026-05-28
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/56"]
 refs: ["0035-filesystem-tools.md", "0037-capability-permission-model.md", "0024-security-hardening-premainnet.md", "0019-install-onboarding-wizard.md"]
 ---
 

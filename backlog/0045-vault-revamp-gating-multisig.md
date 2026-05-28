@@ -1,12 +1,13 @@
 ---
 id: 45
 title: "Vault revamp — configurable gating (time + multi-sig voting), escrow tracking, manager admin, third-party sign-off page"
-status: open
+status: closed
 priority: high
 type: feature
 source: planning
 created: 2026-05-27
 updated: 2026-05-27
+prs: []
 refs: ["ARCHITECTURE.md", "0016-web-vault-mgmt.md", "0028-vault-manager-rule-change.md", "0012-vaults.md", "project_vellum_bitbadges_model"]
 ---
 
