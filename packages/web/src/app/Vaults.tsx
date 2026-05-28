@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 import { Badge, Button, Card, Icon, Input } from "@vellum/ui";
 import { api, type Vault } from "./api.ts";
-import { signAndBroadcast, vaultDepositMsg } from "./keplr.ts";
+import {
+  signAndBroadcast,
+  vaultDepositMsg,
+  managerWithdrawMsg,
+  managerRevokeMsg,
+} from "./keplr.ts";
 import { useWallet } from "./wallet-context.tsx";
 
 // Per-persona vaults: 1:1 USDC-backed, siloed for a purpose. The agent creates +
@@ -209,7 +214,9 @@ function VaultRow({
 }) {
   const { wallet } = useWallet();
   const [amount, setAmount] = useState("");
-  const [busy, setBusy] = useState<"withdraw" | "deposit" | null>(null);
+  const [busy, setBusy] = useState<
+    "withdraw" | "deposit" | "drain" | "revoke" | null
+  >(null);
   const [note, setNote] = useState<string | null>(null);
   const [escrowMicro, setEscrowMicro] = useState<string | null>(null);
 
@@ -244,6 +251,48 @@ function VaultRow({
       setNote(`Withdrawal ${r.status} (${r.hash.slice(0, 10)}…)`);
       void reloadEscrow();
       setAmount("");
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // Manager-admin (#45 slice 4): the human manager, signing from their own
+  // Keplr wallet, drains or claws back the agent's escrow — overriding the
+  // agent's gated approval. Only shown when the connected wallet IS the manager.
+  const isManager =
+    !!wallet &&
+    !!vault.managerAddress &&
+    wallet.address === vault.managerAddress;
+  async function managerAction(kind: "drain" | "revoke") {
+    if (!wallet || !agentAddress || !escrowMicro || escrowMicro === "0") return;
+    setBusy(kind);
+    setNote(null);
+    try {
+      const msg =
+        kind === "drain"
+          ? managerWithdrawMsg({
+              manager: wallet.address,
+              agentAddress,
+              backingAddress: vault.backingAddress,
+              collectionId: vault.collectionId,
+              amountMicro: escrowMicro,
+            })
+          : managerRevokeMsg({
+              manager: wallet.address,
+              agentAddress,
+              collectionId: vault.collectionId,
+              amountMicro: escrowMicro,
+            });
+      const txHash = await signAndBroadcast(
+        [msg],
+        `manager ${kind} · vault ${vault.symbol}`,
+      );
+      setNote(
+        `Manager ${kind === "drain" ? "drained" : "revoked"} (${txHash.slice(0, 10)}…)`,
+      );
+      void reloadEscrow();
     } catch (e) {
       setNote(e instanceof Error ? e.message : String(e));
     } finally {
@@ -372,6 +421,31 @@ function VaultRow({
           </Button>
         </div>
       </div>
+      {isManager && (
+        <div className="mt-2 flex items-center gap-2 border-t border-border pt-2">
+          <span className="text-[11px] uppercase tracking-wide text-soft">
+            Manager
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => managerAction("drain")}
+            disabled={busy !== null || !escrowMicro || escrowMicro === "0"}
+            title="Burn the agent's vault tokens → release USDC to you (drain)"
+          >
+            {busy === "drain" ? "…" : "Drain"}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => managerAction("revoke")}
+            disabled={busy !== null || !escrowMicro || escrowMicro === "0"}
+            title="Forcefully claw back the agent's vault tokens to you"
+          >
+            {busy === "revoke" ? "…" : "Revoke agent tokens"}
+          </Button>
+        </div>
+      )}
       {note && <div className="mt-2 text-xs text-muted">{note}</div>}
     </Card>
   );

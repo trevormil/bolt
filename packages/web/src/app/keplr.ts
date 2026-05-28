@@ -203,6 +203,86 @@ export function vaultDepositMsg(input: {
   };
 }
 
+// Manager-admin transfers (#45 slice 4), human-signed via the manager approvals
+// baked into the vault (see @vellum/tokenization applyManagerAdmin). These move
+// the AGENT's vault tokens without the agent's consent — the manager's complete-
+// admin escape hatch, independent of the agent's gated withdrawal.
+function managerTransferMsg(input: {
+  manager: string;
+  from: string; // the agent wallet holding the vault tokens
+  to: string;
+  collectionId: string;
+  amountMicro: string;
+  approvalId: string;
+}): MsgJson {
+  return {
+    typeUrl: "/tokenization.MsgTransferTokens",
+    value: {
+      creator: input.manager,
+      collectionId: input.collectionId,
+      transfers: [
+        {
+          from: input.from,
+          toAddresses: [input.to],
+          balances: [
+            {
+              amount: input.amountMicro,
+              tokenIds: [{ start: "1", end: "1" }],
+              ownershipTimes: FULL_RANGE,
+            },
+          ],
+          prioritizedApprovals: [
+            {
+              approvalId: input.approvalId,
+              approvalLevel: "collection",
+              approverAddress: "",
+              version: "0",
+            },
+          ],
+          onlyCheckPrioritizedCollectionApprovals: true,
+        },
+      ],
+    },
+  };
+}
+
+/** Manager drains the vault: burn the agent's vault tokens → backing (releases
+ *  USDC). Uses the `vault-manager-withdraw` approval (overrides the agent). */
+export function managerWithdrawMsg(input: {
+  manager: string;
+  agentAddress: string;
+  backingAddress: string;
+  collectionId: string;
+  amountMicro: string;
+}): MsgJson {
+  return managerTransferMsg({
+    manager: input.manager,
+    from: input.agentAddress,
+    to: input.backingAddress,
+    collectionId: input.collectionId,
+    amountMicro: input.amountMicro,
+    approvalId: "vault-manager-withdraw", // @vellum/tokenization VAULT_MANAGER_WITHDRAW_APPROVAL_ID
+  });
+}
+
+/** Manager forcefully revokes the agent's vault tokens → the manager. Uses the
+ *  `vault-manager-revoke` approval (overrides both sides). */
+export function managerRevokeMsg(input: {
+  manager: string;
+  agentAddress: string;
+  collectionId: string;
+  amountMicro: string;
+}): MsgJson {
+  return managerTransferMsg({
+    manager: input.manager,
+    from: input.agentAddress,
+    to: input.manager,
+    collectionId: input.collectionId,
+    amountMicro: input.amountMicro,
+    approvalId: "vault-manager-revoke", // @vellum/tokenization VAULT_MANAGER_REVOKE_APPROVAL_ID
+  });
+}
+
 // ── sign + broadcast (mirrors @vellum/chain/sdk.ts, with the Keplr adapter) ──
 
 interface AccountInfo {

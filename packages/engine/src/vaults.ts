@@ -21,6 +21,7 @@ export interface VaultRecord {
   symbol: string;
   name: string;
   gating: VaultGating | null; // #45 slice 2 — the withdrawal policy, for display
+  managerAddress: string; // #45 slice 4 — the human manager (complete admin)
   created: number;
 }
 
@@ -139,13 +140,18 @@ export class VaultService {
       symbol TEXT NOT NULL,
       name TEXT NOT NULL,
       gating TEXT,
+      manager_address TEXT NOT NULL DEFAULT '',
       created INTEGER NOT NULL)`);
-    // Migrate pre-#45-slice2 DBs that lack the gating column.
+    // Migrate older DBs that lack the gating / manager_address columns.
     const cols = this.db.query("PRAGMA table_info(vaults)").all() as {
       name: string;
     }[];
     if (!cols.some((c) => c.name === "gating"))
       this.db.run("ALTER TABLE vaults ADD COLUMN gating TEXT");
+    if (!cols.some((c) => c.name === "manager_address"))
+      this.db.run(
+        "ALTER TABLE vaults ADD COLUMN manager_address TEXT NOT NULL DEFAULT ''",
+      );
   }
 
   async create(
@@ -177,8 +183,8 @@ export class VaultService {
     const created = Date.now();
     this.db
       .query(
-        `INSERT INTO vaults (collection_id, persona_id, backing_address, withdraw_approval_id, symbol, name, gating, created)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO vaults (collection_id, persona_id, backing_address, withdraw_approval_id, symbol, name, gating, manager_address, created)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         ref.collectionId,
@@ -188,6 +194,7 @@ export class VaultService {
         req.symbol,
         req.name,
         req.gating ? JSON.stringify(req.gating) : null,
+        manager,
         created,
       );
     this.ledger.record({
@@ -207,6 +214,7 @@ export class VaultService {
       symbol: req.symbol,
       name: req.name,
       gating: req.gating ?? null,
+      managerAddress: manager,
       created,
     };
   }
@@ -222,6 +230,7 @@ export class VaultService {
       symbol: string;
       name: string;
       gating: string | null;
+      manager_address: string;
       created: number;
     }[];
     return rows.map((r) => ({
@@ -232,6 +241,7 @@ export class VaultService {
       symbol: r.symbol,
       name: r.name,
       gating: r.gating ? (JSON.parse(r.gating) as VaultGating) : null,
+      managerAddress: r.manager_address ?? "",
       created: r.created,
     }));
   }

@@ -285,6 +285,7 @@ export interface Vault {
   symbol: string;
   name: string;
   gating: VaultGating | null;
+  managerAddress: string;
   created: number;
 }
 
