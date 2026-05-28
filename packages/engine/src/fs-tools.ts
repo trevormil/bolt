@@ -85,23 +85,43 @@ export function filesystemTools(
     },
   ];
 
+  // fs_op telemetry (#42): record the op + ok/err on the activity timeline.
+  // Metadata only — the path (operational), never file contents.
+  const fsEvent = (op: string, path: string, ok: boolean) =>
+    engine.events.emit({
+      personaId,
+      kind: "fs_op",
+      summary: `${op} ${basename(path)}`,
+      ok,
+      meta: { op, path },
+    });
+
   const invoke: ToolInvoker = async (name, args) => {
     const path = realResolve(String(args.path ?? "")); // symlink-safe
     if (!path || path === "/") return "A specific path is required.";
 
     if (name === "fs_read" || name === "fs_list") {
+      const op = name === "fs_list" ? "list" : "read";
       const ok = await engine.authorizer.authorize(personaId, {
         capability: "fs.read",
         target: path,
-        summary: `${name === "fs_list" ? "list" : "read"} ${path}`,
+        summary: `${op} ${path}`,
       });
       if (!ok) return `Denied: no read permission for ${path}.`;
-      if (!existsSync(path)) return `No such path: ${path}`;
+      if (!existsSync(path)) {
+        fsEvent(op, path, false);
+        return `No such path: ${path}`;
+      }
       if (name === "fs_list") {
-        if (!statSync(path).isDirectory()) return `${path} is not a directory.`;
+        if (!statSync(path).isDirectory()) {
+          fsEvent(op, path, false);
+          return `${path} is not a directory.`;
+        }
+        fsEvent(op, path, true);
         return readdirSync(path).join("\n") || "(empty)";
       }
       const text = readFileSync(path, "utf8");
+      fsEvent(op, path, true);
       return text.length > MAX_READ
         ? text.slice(0, MAX_READ) + `\n…(truncated, ${text.length} chars)`
         : text;
@@ -117,6 +137,7 @@ export function filesystemTools(
       if (!ok) return `Denied: no write permission for ${path}.`;
       mkdirSync(dirname(path), { recursive: true });
       writeFileSync(path, content);
+      fsEvent("write", path, true);
       return `Wrote ${content.length} chars to ${path}.`;
     }
 

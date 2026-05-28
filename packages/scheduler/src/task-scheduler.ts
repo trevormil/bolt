@@ -39,8 +39,25 @@ export class TaskScheduler {
           t.personaId,
           `⏰ ${t.prompt.slice(0, 60)}\n${r.reply}`,
         );
+        // task_run telemetry (#42): emit success only AFTER delivery succeeds,
+        // so a delivery failure (caught below as ok:false) can't also leave an
+        // ok:true record for the same run (!46 review).
+        this.deps.engine.events.emit({
+          personaId: t.personaId,
+          kind: "task_run",
+          summary: `scheduled: ${t.prompt.slice(0, 60)}`,
+          ok: true,
+          meta: { taskId: t.id, armed: t.armed },
+        });
       } catch (e) {
         log.warn(`task ${t.id.slice(0, 8)} failed: ${e}`);
+        this.deps.engine.events.emit({
+          personaId: t.personaId,
+          kind: "task_run",
+          summary: `scheduled (failed): ${t.prompt.slice(0, 60)}`,
+          ok: false,
+          meta: { taskId: t.id, armed: t.armed },
+        });
       }
       this.deps.engine.tasks.markRan(t.id, now);
     }
