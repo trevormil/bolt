@@ -76,9 +76,9 @@ describe("chat() ⨉ MCP wiring (#46)", () => {
 
     await chat(engine, { conversationId: "c1", personaId: "p", message: "hi" });
     const cap = get()!;
-    expect(cap.tools.map((t) => t.name)).toContain("add");
-    // The assembled invoker routes the MCP call through the gate + server.
-    expect(await cap.invoke("add", { a: 2, b: 3 })).toBe("5");
+    expect(cap.tools.map((t) => t.name)).toContain("mcp_calc_add"); // namespaced (#46 review)
+    // The assembled invoker routes by the unique namespaced name (#46 review).
+    expect(await cap.invoke("mcp_calc_add", { a: 2, b: 3 })).toBe("5");
 
     // A second turn reuses the pooled connection — no re-spawn.
     await chat(engine, { conversationId: "c1", personaId: "p", message: "yo" });
@@ -93,8 +93,10 @@ describe("chat() ⨉ MCP wiring (#46)", () => {
     await chat(engine, { conversationId: "c1", personaId: "p", message: "hi" });
     const cap = get()!;
     // The tool is offered, but invoking it without the grant is denied.
-    expect(cap.tools.map((t) => t.name)).toContain("add");
-    expect(await cap.invoke("add", { a: 1, b: 1 })).toContain("Denied");
+    expect(cap.tools.map((t) => t.name)).toContain("mcp_calc_add"); // namespaced (#46 review)
+    expect(await cap.invoke("mcp_calc_add", { a: 1, b: 1 })).toContain(
+      "Denied",
+    );
   });
 
   test("a connected server whose tool discovery fails is skipped, not fatal to the turn", async () => {

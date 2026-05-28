@@ -72,4 +72,21 @@ describe("McpManager lifecycle (#46)", () => {
     await m.ensure([cfg("a")]);
     expect(connects).toBe(2);
   });
+
+  test("a same-name config change closes the stale client and reconnects (#46 review)", async () => {
+    let connects = 0;
+    let closed = 0;
+    const m = new McpManager(async () => {
+      connects++;
+      return fakeClient(() => closed++);
+    });
+    await m.ensure([{ name: "a", command: "old" }]);
+    // Same name, changed command/args → must drop the stale client + reconnect.
+    await m.ensure([{ name: "a", command: "new", args: ["--flag"] }]);
+    expect(connects).toBe(2);
+    expect(closed).toBe(1);
+    // Unchanged config now reuses (no further connect).
+    await m.ensure([{ name: "a", command: "new", args: ["--flag"] }]);
+    expect(connects).toBe(2);
+  });
 });

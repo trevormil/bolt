@@ -11,6 +11,15 @@ const RETRY_COOLDOWN_MS = 30_000;
 
 export type McpConnector = (cfg: McpServerConfig) => Promise<McpClient>;
 
+// Two configs are the same connection iff command + args + env all match. A
+// changed name is a different pool entry entirely; a changed command/args/env
+// under the same name must force a reconnect.
+function sameConfig(a: McpServerConfig, b: McpServerConfig): boolean {
+  const norm = (c: McpServerConfig) =>
+    JSON.stringify([c.command, c.args ?? [], c.env ?? {}]);
+  return norm(a) === norm(b);
+}
+
 async function defaultConnect(cfg: McpServerConfig): Promise<McpClient> {
   const client = new McpClient();
   await client.connectStdio(cfg.command, cfg.args ?? [], cfg.env);
@@ -52,8 +61,18 @@ export class McpManager {
     for (const cfg of configs) {
       const existing = this.clients.get(cfg.name);
       if (existing) {
-        out.push({ name: cfg.name, client: existing.client });
-        continue;
+        // Reuse only when the FULL config is unchanged (#46 review): a same-name
+        // edit to command/args/env must drop the stale subprocess and reconnect,
+        // otherwise a config change silently keeps talking to the old server.
+        if (sameConfig(existing.config, cfg)) {
+          out.push({ name: cfg.name, client: existing.client });
+          continue;
+        }
+        await existing.client
+          .close()
+          .catch((e) => log.warn(`closing stale "${cfg.name}": ${e}`));
+        this.clients.delete(cfg.name);
+        log.info(`mcp server "${cfg.name}" config changed — reconnecting`);
       }
       const failed = this.failedAt.get(cfg.name);
       if (failed !== undefined && Date.now() - failed < RETRY_COOLDOWN_MS)

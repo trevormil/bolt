@@ -168,4 +168,31 @@ describe("MCP end-to-end (#33)", () => {
     expect(await invoke("add", { a: 1, b: 1 })).toBe("2");
     await client.close();
   });
+
+  test("MCP tools are namespaced per server so two servers can't shadow each other (#46 review)", async () => {
+    const e = await eng();
+    e.store.createPersona("p", "Pat", {
+      name: "Pat",
+      role: "tester",
+      voice: "plain",
+    });
+    e.capabilities.grant({
+      personaId: "p",
+      capability: "mcp",
+      scope: null,
+      mode: "allow",
+    });
+    const c1 = await connectedClient();
+    const c2 = await connectedClient();
+    const a = await mcpTools(e, "p", c1, "alpha");
+    const b = await mcpTools(e, "p", c2, "beta");
+    // Same underlying tool ("add") → distinct, namespaced runtime names.
+    expect(a.tools.map((t) => t.name)).toContain("mcp_alpha_add");
+    expect(b.tools.map((t) => t.name)).toContain("mcp_beta_add");
+    expect(a.tools[0]!.name).not.toBe(b.tools[0]!.name);
+    // The namespaced name routes to the server's real tool.
+    expect(await a.invoke("mcp_alpha_add", { a: 2, b: 3 })).toBe("5");
+    await c1.close();
+    await c2.close();
+  });
 });
