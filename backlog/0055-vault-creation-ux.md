@@ -1,12 +1,13 @@
 ---
 id: 55
 title: "Streamline the vault-creation UX"
-status: open
+status: in-progress
 priority: medium
 type: ux
 source: review
 created: 2026-05-28
 updated: 2026-05-28
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/54"]
 refs: ["0045-vault-revamp.md", "0053-frontend-design-revamp.md"]
 ---
 

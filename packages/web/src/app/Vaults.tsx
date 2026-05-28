@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Badge, Button, Card, Icon, Input } from "@vellum/ui";
 import { BrandLogo } from "./BrandLogo.tsx";
 import { api, type Vault } from "./api.ts";
@@ -22,15 +22,47 @@ export function VaultsView({ personaId }: { personaId: string }) {
   const [symbol, setSymbol] = useState("");
   // Gating policy (#45 slice 2): amount cap per period + optional unlock date.
   const [period, setPeriod] = useState<"none" | "daily" | "weekly" | "monthly">(
-    "daily",
+    "weekly",
   );
   const [limit, setLimit] = useState("");
   const [unlockDate, setUnlockDate] = useState(""); // yyyy-mm-dd
   // Multi-sig (#45 slice 3): signer bb1 addresses (one per line) + threshold.
   const [signersText, setSignersText] = useState("");
   const [threshold, setThreshold] = useState("");
+  // Withdrawal rules are advanced + optional — hidden behind a toggle so the
+  // common case (a plain vault) is two fields (#55).
+  const [showRules, setShowRules] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Live-derived gating from the form, shared by the preview, inline validation,
+  // and submit. Only counts when the rules section is open.
+  const signers = signersText
+    .split(/[\s,]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.startsWith("bb1"));
+  const thresholdNum = Number(threshold);
+  const hasAmount = showRules && period !== "none" && Number(limit) > 0;
+  const hasTime = showRules && !!unlockDate;
+  const hasMultisig = showRules && signers.length > 0;
+  // Inline validation (#55): catch an unreachable multisig threshold in the form
+  // — mirrors the server's parseGating guard (!44) so the user sees it before a 400.
+  const multisigError = !hasMultisig
+    ? null
+    : !(thresholdNum >= 1)
+      ? "Set how many approvals each withdrawal needs."
+      : thresholdNum > signers.length
+        ? `Approvals required (${thresholdNum}) can't exceed the ${signers.length} signer${signers.length === 1 ? "" : "s"}.`
+        : null;
+  const previewParts = [
+    hasAmount ? `≤ ${limit} USDC / ${period}` : null,
+    hasTime
+      ? `unlocks ${new Date(unlockDate).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`
+      : null,
+    hasMultisig && !multisigError
+      ? `${thresholdNum}-of-${signers.length} sign-off`
+      : null,
+  ].filter(Boolean) as string[];
 
   async function reload() {
     setVaults(await api.listVaults(personaId));
@@ -42,7 +74,7 @@ export function VaultsView({ personaId }: { personaId: string }) {
   }, [personaId]);
 
   async function create() {
-    if (!name.trim() || !symbol.trim()) return;
+    if (!name.trim() || !symbol.trim() || multisigError) return;
     setBusy(true);
     setError(null);
     try {
@@ -51,18 +83,14 @@ export function VaultsView({ personaId }: { personaId: string }) {
         time?: { unlockAt?: number };
         multisig?: { signers: { address: string }[]; threshold: number };
       } = {};
-      if (period !== "none" && Number(limit) > 0)
-        gating.amount = { limitUsd: Number(limit), period };
-      if (unlockDate)
-        gating.time = { unlockAt: new Date(unlockDate).getTime() };
-      const signers = signersText
-        .split(/[\s,]+/)
-        .map((s) => s.trim())
-        .filter((s) => s.startsWith("bb1"));
-      if (signers.length && Number(threshold) > 0)
+      // `hasAmount` already narrows period to a non-"none" value (it includes
+      // `period !== "none"`), so the assignment typechecks.
+      if (hasAmount) gating.amount = { limitUsd: Number(limit), period };
+      if (hasTime) gating.time = { unlockAt: new Date(unlockDate).getTime() };
+      if (hasMultisig)
         gating.multisig = {
           signers: signers.map((address) => ({ address })),
-          threshold: Number(threshold),
+          threshold: thresholdNum,
         };
       await api.createVault(personaId, {
         name: name.trim(),
@@ -73,9 +101,10 @@ export function VaultsView({ personaId }: { personaId: string }) {
       setSymbol("");
       setLimit("");
       setUnlockDate("");
-      setPeriod("daily");
+      setPeriod("weekly");
       setSignersText("");
       setThreshold("");
+      setShowRules(false);
       setCreating(false);
       await reload();
     } catch (e) {
@@ -106,82 +135,142 @@ export function VaultsView({ personaId }: { personaId: string }) {
       </div>
 
       {creating && (
-        <Card className="mb-4 space-y-3 p-4">
+        <Card className="mb-4 space-y-4 p-4">
+          {/* Basics — all most vaults need. */}
           <div className="grid grid-cols-2 gap-3">
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Name (Groceries)"
-            />
-            <Input
-              value={symbol}
-              onChange={(e) => setSymbol(e.target.value)}
-              placeholder="Symbol (vUSDC)"
-            />
+            <Label text="Name">
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Groceries"
+                autoFocus
+              />
+            </Label>
+            <Label text="Symbol">
+              <Input
+                value={symbol}
+                onChange={(e) => setSymbol(e.target.value)}
+                placeholder="vUSDC"
+              />
+            </Label>
           </div>
-          {/* Gating policy — agent withdrawal guardrails (#45 slice 2). */}
-          <div className="space-y-1">
-            <span className="text-xs uppercase tracking-wide text-soft">
-              Withdrawal gating
-            </span>
-            <div className="grid grid-cols-3 gap-3">
-              <select
-                value={period}
-                onChange={(e) => setPeriod(e.target.value as typeof period)}
-                className="rounded-md border border-border bg-surface px-3 py-2 text-sm text-fg"
-              >
-                <option value="none">No amount cap</option>
-                <option value="daily">Cap / day</option>
-                <option value="weekly">Cap / week</option>
-                <option value="monthly">Cap / month</option>
-              </select>
-              <Input
-                value={limit}
-                onChange={(e) => setLimit(e.target.value)}
-                placeholder="Cap (USDC)"
-                disabled={period === "none"}
-              />
-              <Input
-                type="date"
-                value={unlockDate}
-                onChange={(e) => setUnlockDate(e.target.value)}
-                title="Unlock date — no withdrawals before this"
-              />
+
+          {/* Withdrawal rules — optional + advanced, hidden by default (#55). */}
+          {!showRules ? (
+            <button
+              onClick={() => setShowRules(true)}
+              className="flex items-center gap-1.5 text-sm text-accent transition-colors hover:text-accent-strong"
+            >
+              <Icon name="plus" size={13} /> Add withdrawal rules (optional)
+            </button>
+          ) : (
+            <div className="space-y-4 rounded-lg border border-border-gold bg-accent-soft/10 p-3">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-accent">
+                  Withdrawal rules
+                </span>
+                <button
+                  onClick={() => setShowRules(false)}
+                  className="text-xs text-soft transition-colors hover:text-fg"
+                >
+                  remove rules
+                </button>
+              </div>
+
+              {/* Amount cap */}
+              <Label text="Amount cap">
+                <div className="grid grid-cols-2 gap-2">
+                  <select
+                    value={period}
+                    onChange={(e) => setPeriod(e.target.value as typeof period)}
+                    className="rounded-md border border-border bg-surface px-3 text-sm text-fg"
+                  >
+                    <option value="none">No cap</option>
+                    <option value="daily">per day</option>
+                    <option value="weekly">per week</option>
+                    <option value="monthly">per month</option>
+                  </select>
+                  <div className="relative">
+                    <BrandLogo
+                      name="usdc"
+                      size={15}
+                      className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2"
+                    />
+                    <Input
+                      value={limit}
+                      onChange={(e) => setLimit(e.target.value)}
+                      placeholder="25"
+                      inputMode="decimal"
+                      disabled={period === "none"}
+                      className="pl-8 font-mono"
+                    />
+                  </div>
+                </div>
+              </Label>
+
+              {/* Time lock */}
+              <Label text="Time lock">
+                <Input
+                  type="date"
+                  value={unlockDate}
+                  onChange={(e) => setUnlockDate(e.target.value)}
+                  title="No withdrawals before this date"
+                />
+              </Label>
+
+              {/* Multi-sig sign-off */}
+              <Label text="Multi-sig sign-off">
+                <textarea
+                  value={signersText}
+                  onChange={(e) => setSignersText(e.target.value)}
+                  placeholder="Signer bb1… addresses, one per line"
+                  rows={2}
+                  className="w-full rounded-md border border-border bg-surface-3 px-3 py-2 font-mono text-xs text-fg placeholder:text-soft focus:border-accent focus:outline-none"
+                />
+                <Input
+                  value={threshold}
+                  onChange={(e) => setThreshold(e.target.value)}
+                  placeholder={
+                    signers.length
+                      ? `Approvals required (1–${signers.length})`
+                      : "Approvals required"
+                  }
+                  inputMode="numeric"
+                  disabled={!signers.length}
+                  className="mt-2 font-mono"
+                />
+                {multisigError && (
+                  <p className="mt-1.5 flex items-center gap-1 text-xs text-danger">
+                    <Icon name="warn" size={12} /> {multisigError}
+                  </p>
+                )}
+              </Label>
             </div>
-            <p className="text-[11px] text-soft">
-              The agent can withdraw up to the cap per{" "}
-              {period === "none" ? "—" : period}
-              {unlockDate ? `, and not before ${unlockDate}` : ""}.
-            </p>
-          </div>
-          {/* Multi-sig (#45 slice 3): withdrawals need signer sign-off. */}
-          <div className="space-y-1">
-            <span className="text-xs uppercase tracking-wide text-soft">
-              Multi-sig sign-off (optional)
+          )}
+
+          {/* Plain-English preview of the rule being created (#55). */}
+          <div className="rounded-md border border-border bg-surface-3 px-3 py-2 text-xs">
+            <span className="font-mono uppercase tracking-[0.15em] text-soft">
+              Preview ·{" "}
             </span>
-            <textarea
-              value={signersText}
-              onChange={(e) => setSignersText(e.target.value)}
-              placeholder="Signer bb1… addresses, one per line (leave blank for none)"
-              rows={2}
-              className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-xs text-fg"
-            />
-            <Input
-              value={threshold}
-              onChange={(e) => setThreshold(e.target.value)}
-              placeholder="Approvals required (e.g. 2)"
-              disabled={!signersText.trim()}
-            />
-            <p className="text-[11px] text-soft">
-              If set, each withdrawal needs this many signer approvals (via a
-              shareable sign-off link) before it executes.
-            </p>
+            {previewParts.length ? (
+              <span className="font-medium text-accent-strong">
+                {previewParts.join("  ·  ")}
+              </span>
+            ) : (
+              <span className="text-muted">
+                No limits — the agent withdraws freely within escrow.
+              </span>
+            )}
           </div>
+
           {error && <p className="text-sm text-danger">{error}</p>}
           <div className="flex justify-end">
             <Button
               onClick={create}
-              disabled={busy || !name.trim() || !symbol.trim()}
+              disabled={
+                busy || !name.trim() || !symbol.trim() || !!multisigError
+              }
             >
               {busy ? "Creating on-chain…" : "Create vault"}
             </Button>
@@ -206,6 +295,18 @@ export function VaultsView({ personaId }: { personaId: string }) {
         </div>
       )}
     </div>
+  );
+}
+
+// Mono-caps field label wrapper — matches the Settings/onboarding form motif.
+function Label({ text, children }: { text: string; children: ReactNode }) {
+  return (
+    <label className="block">
+      <span className="mb-1 block font-mono text-[10px] uppercase tracking-[0.18em] text-soft">
+        {text}
+      </span>
+      {children}
+    </label>
   );
 }
 
