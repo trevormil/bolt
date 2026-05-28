@@ -18,8 +18,10 @@ const fmtUsdc = (base: string) =>
     maximumFractionDigits: 2,
   });
 
-// Shows the persona's bb1 wallet + live USDC balance, with a devnet faucet tap.
-// Vellum is single-asset (USDC); agent-initiated funding (PaymentRequests) is 0014.
+// Shows the persona's bb1 wallet + live USDC balance, with a devnet faucet tap,
+// inbound funding (Fund / Request), and outbound Send (#65 — the persona spends
+// its OWN funds via the gated /spend route, mirroring the agent's send_usdc tool
+// and Telegram /spend). Vellum is single-asset (USDC).
 export function WalletPanel({ personaId }: { personaId: string }) {
   const [address, setAddress] = useState("");
   const [usdc, setUsdc] = useState("0");
@@ -126,6 +128,7 @@ export function WalletPanel({ personaId }: { personaId: string }) {
             onFunded={refresh}
             onRequested={bumpRequests}
           />
+          <SendActions personaId={personaId} onSent={refresh} />
           <PendingRequests
             personaId={personaId}
             version={reqVersion}
@@ -231,6 +234,82 @@ function FundActions({
       <p className="mt-3 text-xs leading-relaxed text-soft">
         “From my wallet” signs with Keplr (your address). “Request” raises a
         payment request you can pay inline below or share as a link.
+      </p>
+    </div>
+  );
+}
+
+// Outbound send (#65): spend USDC from THIS persona's own wallet to any bb1
+// address. Server-signed via the gated /spend route (txManager.spend chokepoint,
+// capability "spend", ledgered) — the same path the agent's send_usdc tool and
+// Telegram /spend use. No Keplr: these are the agent's own funds, not the human's.
+function SendActions({
+  personaId,
+  onSent,
+}: {
+  personaId: string;
+  onSent: () => void;
+}) {
+  const [to, setTo] = useState("");
+  const [amount, setAmount] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function send() {
+    const usd = Number(amount);
+    if (!usd || usd <= 0 || !to.startsWith("bb1")) {
+      setError("Enter a bb1 recipient and a positive USDC amount.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setNote(null);
+    try {
+      const micro = String(Math.round(usd * 1e6));
+      const tx = await api.spend(personaId, { to: to.trim(), amount: micro });
+      setNote(`Sent ${usd} USDC (${(tx.hash ?? tx.id).slice(0, 10)}…)`);
+      setTo("");
+      setAmount("");
+      // Spend settles on-chain shortly; refresh after a beat.
+      await new Promise((r) => setTimeout(r, 1500));
+      onSent();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-5 border-t border-border pt-4">
+      <Label>Send</Label>
+      <Input
+        value={to}
+        onChange={(e) => setTo(e.target.value)}
+        placeholder="Recipient (bb1…)"
+        className="mt-1 font-mono text-xs"
+      />
+      <Input
+        value={amount}
+        onChange={(e) => setAmount(e.target.value)}
+        placeholder="Amount (USDC)"
+        className="mt-2"
+      />
+      <Button
+        size="sm"
+        variant="secondary"
+        className="mt-2 w-full"
+        onClick={send}
+        disabled={busy || !to || !amount}
+      >
+        <Icon name="send" size={13} /> {busy ? "Sending…" : "Send USDC"}
+      </Button>
+      {note && <p className="mt-2 text-xs text-muted">{note}</p>}
+      {error && <p className="mt-2 text-xs text-danger">{error}</p>}
+      <p className="mt-3 text-xs leading-relaxed text-soft">
+        Sends from this persona’s wallet (the agent’s funds) — gated by the
+        spend capability and recorded in the ledger.
       </p>
     </div>
   );

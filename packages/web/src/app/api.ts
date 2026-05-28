@@ -147,6 +147,18 @@ export const api = {
       json<{ txHash?: string; amount?: string; denom?: string }>(r),
     ),
 
+  // Send USDC from this persona's wallet (#65). Server-signed through the gated
+  // txManager.spend chokepoint — the same path the agent's send_usdc tool and
+  // Telegram /spend use. `amount` is a base-unit (µUSDC) integer string.
+  spend: (id: string, body: { to: string; amount: string }) =>
+    fetch(`/api/personas/${id}/spend`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((r) =>
+      json<{ id: string; hash: string | null; status: string }>(r),
+    ),
+
   ledger: (id: string) =>
     fetch(`/api/personas/${id}/ledger`).then((r) =>
       json<{ entries: LedgerEntry[]; summary: LedgerSummary }>(r),
