@@ -8,6 +8,9 @@ import { useWallet } from "./wallet-context.tsx";
 // withdraws within rules; the human is the manager + funds escrow.
 export function VaultsView({ personaId }: { personaId: string }) {
   const [vaults, setVaults] = useState<Vault[]>([]);
+  // The persona agent's own wallet address — the recipient of deposited vault
+  // tokens (#45 / !37): the agent must hold them to withdraw within rules.
+  const [agentAddress, setAgentAddress] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("");
@@ -20,6 +23,7 @@ export function VaultsView({ personaId }: { personaId: string }) {
   }
   useEffect(() => {
     void reload();
+    void api.wallet(personaId).then((w) => setAgentAddress(w.address));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [personaId]);
 
@@ -98,7 +102,12 @@ export function VaultsView({ personaId }: { personaId: string }) {
       ) : (
         <div className="space-y-2">
           {vaults.map((v) => (
-            <VaultRow key={v.collectionId} personaId={personaId} vault={v} />
+            <VaultRow
+              key={v.collectionId}
+              personaId={personaId}
+              vault={v}
+              agentAddress={agentAddress}
+            />
           ))}
         </div>
       )}
@@ -106,7 +115,15 @@ export function VaultsView({ personaId }: { personaId: string }) {
   );
 }
 
-function VaultRow({ personaId, vault }: { personaId: string; vault: Vault }) {
+function VaultRow({
+  personaId,
+  vault,
+  agentAddress,
+}: {
+  personaId: string;
+  vault: Vault;
+  agentAddress: string | null;
+}) {
   const { wallet } = useWallet();
   const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState<"withdraw" | "deposit" | null>(null);
@@ -138,13 +155,18 @@ function VaultRow({ personaId, vault }: { personaId: string; vault: Vault }) {
   async function deposit() {
     const usdc = Number(amount);
     if (!usdc || !wallet) return;
+    if (!agentAddress) {
+      setNote("agent wallet not loaded yet — try again in a moment");
+      return;
+    }
     setBusy("deposit");
     setNote(null);
     try {
       const txHash = await signAndBroadcast(
         [
           vaultDepositMsg({
-            human: wallet.address,
+            human: wallet.address, // signer
+            agentAddress, // recipient: the persona agent, who later withdraws
             collectionId: vault.collectionId,
             backingAddress: vault.backingAddress,
             amountMicro: String(Math.round(usdc * 1e6)),

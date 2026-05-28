@@ -132,10 +132,18 @@ export function bankSendMsg(
 
 const FULL_RANGE = [{ start: "1", end: "18446744073709551615" }];
 
-/** Human funds vault escrow (0016): provide USDC, receive 1:1 vault tokens. Same
- *  MsgTransferTokens shape the agent uses (vault.ts), with the human as signer. */
+/**
+ * Human funds vault escrow (0016): the human signs (creator) + provides USDC,
+ * but the minted 1:1 vault tokens go to the PERSONA AGENT wallet — because the
+ * agent is the one who later withdraws within the vault's rules (vaults.ts burns
+ * from the agent). Minting to the human would strand the escrow: a funded vault
+ * could never be withdrawn (the agent would hold zero vault tokens to burn).
+ * (#45 / !37 HIGH.) The deposit approval permits any initiator, so a
+ * human-signed transfer that mints to the agent is valid.
+ */
 export function vaultDepositMsg(input: {
-  human: string;
+  human: string; // signer / tx creator (the human's Keplr wallet)
+  agentAddress: string; // recipient of the minted vault tokens (the persona)
   collectionId: string;
   backingAddress: string;
   amountMicro: string;
@@ -148,7 +156,7 @@ export function vaultDepositMsg(input: {
       transfers: [
         {
           from: input.backingAddress,
-          toAddresses: [input.human],
+          toAddresses: [input.agentAddress],
           balances: [
             {
               amount: input.amountMicro,
