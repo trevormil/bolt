@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Avatar, Button, Card, Icon, Input, cn } from "@vellum/ui";
-import { api, type Persona } from "./api.ts";
+import { api, type Persona, type SetupStatus } from "./api.ts";
 import { Chat } from "./Chat.tsx";
 import { LedgerView } from "./Ledger.tsx";
 import { VaultsView } from "./Vaults.tsx";
@@ -269,10 +269,41 @@ function Welcome({ onStart }: { onStart: () => void }) {
           A payment-first personal agent. Every persona is its own compartment —
           its own memory, wallet, and budget, walled off from the rest.
         </p>
+        <SetupBanner />
         <Button className="mt-6" onClick={onStart}>
           Create your first persona <Icon name="arrowRight" size={16} />
         </Button>
       </div>
+    </div>
+  );
+}
+
+// Surfaces missing first-run setup (#19) — secrets are configured through the
+// terminal wizard (never the browser), so the web onboarding guides the user
+// there rather than collecting an API key + mnemonic over HTTP.
+function SetupBanner() {
+  const [status, setStatus] = useState<SetupStatus | null>(null);
+  useEffect(() => {
+    api
+      .setupStatus()
+      .then(setStatus)
+      .catch(() => {});
+  }, []);
+  if (!status) return null;
+  const missing: string[] = [];
+  if (!status.hasLlmKey) missing.push("an OpenRouter API key");
+  if (!status.hasWallet) missing.push("an agent signer wallet");
+  if (!missing.length) return null;
+  return (
+    <div className="mt-5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-left text-sm">
+      <p className="font-medium text-amber-300">Finish setup to enable chat</p>
+      <p className="mt-1 text-muted">
+        Missing {missing.join(" and ")}. Run the one-command wizard in a
+        terminal:
+      </p>
+      <pre className="mt-2 rounded bg-base/60 px-2 py-1 font-mono text-xs">
+        bun run setup
+      </pre>
     </div>
   );
 }

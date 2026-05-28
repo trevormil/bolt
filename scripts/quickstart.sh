@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
-# Vellum quickstart (0019): zero → running agent in one command. Assumes bun is
-# present (https://bun.sh). Installs the workspace, seeds .env from the example
-# if missing, then builds and serves the web app.
+# Vellum quickstart (#19): zero → a running local agent in one command. Assumes
+# bun is present (https://bun.sh). Installs the workspace, then runs the
+# interactive setup wizard (LLM key, agent wallet, first persona, optional
+# background daemon). The wizard prints exactly how to start once it's done.
+#
+# Nothing is hosted; only OpenRouter is ever contacted. macOS-only for the
+# background-daemon step (cross-platform autostart is a later extension).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -13,14 +17,7 @@ fi
 echo "→ installing workspace…"
 bun install
 
-if [ ! -f .env ]; then
-  echo "→ creating .env from .env.example (add your secrets to enable the LLM + bot)"
-  cp .env.example .env
-fi
-
-echo "→ starting Vellum web (build + serve)…"
-# Build via the package, but run the server from the repo root so it loads the
-# root .env (secrets) + ./vellum.db — `bun run --filter` sets cwd to packages/web
-# and would miss both.
-bun run --filter @vellum/web build
-exec bun packages/web/src/server.ts
+# The wizard writes secrets into ./.env (the file Bun auto-loads at startup),
+# creates ~/.vellum, and sets up the first persona. Run from the repo root so it
+# targets the right .env and shares the same data dir as the daemon + web.
+exec bun packages/cli/src/cli.ts init

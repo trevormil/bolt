@@ -87,6 +87,11 @@ export const api = {
       }>(r),
     ),
 
+  // Onboarding setup status (#19) — what's configured, so the UI can guide a
+  // from-scratch user to the terminal wizard for secrets.
+  setupStatus: () =>
+    fetch("/api/setup-status").then((r) => json<SetupStatus>(r)),
+
   listPersonas: () =>
     fetch("/api/personas")
       .then((r) => json<{ personas: Persona[] }>(r))
@@ -340,6 +345,15 @@ export interface EventSummary {
   last24h: EventSummaryWindow;
   last7d: EventSummaryWindow;
   last30d: EventSummaryWindow;
+}
+
+// Onboarding setup status (#19). Booleans/counts only — never secret values or
+// local path material (the route is unauthenticated).
+export interface SetupStatus {
+  hasLlmKey: boolean;
+  hasWallet: boolean;
+  personaCount: number;
+  daemonExposed: boolean;
 }
 
 export interface EscrowInfo {
