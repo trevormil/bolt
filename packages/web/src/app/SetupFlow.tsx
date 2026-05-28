@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Button, Card, Icon, Input } from "@vellum/ui";
 import { api } from "./api.ts";
+import { PersonaForm } from "./PersonaForm.tsx";
 
 // First-run web onboarding (#19): the browser-native alternative to the terminal
 // wizard. Walks a from-scratch user through the LLM key + agent wallet (generate
@@ -17,7 +18,6 @@ export function SetupFlow({ onDone }: { onDone: (personaId: string) => void }) {
     "generate",
   );
   const [importMnemonic, setImport] = useState("");
-  const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,19 +38,6 @@ export function SetupFlow({ onDone }: { onDone: (personaId: string) => void }) {
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setBusy(false);
-    }
-  }
-
-  async function createPersona() {
-    if (!name.trim()) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const { persona } = await api.createPersona({ name: name.trim() });
-      onDone(persona.id);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
       setBusy(false);
     }
   }
@@ -137,28 +124,11 @@ export function SetupFlow({ onDone }: { onDone: (personaId: string) => void }) {
 
         {step === "persona" && (
           <div className="mt-6 space-y-4">
-            <Field
-              label="Name your first persona"
-              hint="It gets its own wallet + walled-off memory. You can add more later."
-            >
-              <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && createPersona()}
-                placeholder="Assistant"
-                autoFocus
-              />
-            </Field>
-            {error && <p className="text-sm text-danger">{error}</p>}
-            <Button
-              className="w-full"
-              size="lg"
-              onClick={createPersona}
-              disabled={busy || !name.trim()}
-            >
-              {busy ? "Creating…" : "Enter Bolt"}{" "}
-              <Icon name="arrowRight" size={16} />
-            </Button>
+            <p className="text-sm text-muted">
+              Your first persona gets its own wallet + walled-off memory. You
+              can add more later — name is all you need to start.
+            </p>
+            <PersonaForm submitLabel="Enter Bolt" onCreated={onDone} />
           </div>
         )}
       </Card>

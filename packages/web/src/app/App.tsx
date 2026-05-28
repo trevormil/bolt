@@ -3,6 +3,7 @@ import { Avatar, Button, Card, Icon, Input, cn } from "@vellum/ui";
 import { api, type Persona, type SetupStatus } from "./api.ts";
 import { BrandLogo } from "./BrandLogo.tsx";
 import { SetupFlow } from "./SetupFlow.tsx";
+import { PersonaForm } from "./PersonaForm.tsx";
 import { Chat } from "./Chat.tsx";
 import { LedgerView } from "./Ledger.tsx";
 import { VaultsView } from "./Vaults.tsx";
@@ -358,6 +359,9 @@ function SetupBanner() {
   );
 }
 
+// In-app + empty-state persona creation. The form itself is the shared
+// PersonaForm (#58) — identical to the onboarding persona step — so creating a
+// persona is the same everywhere.
 function Onboarding({
   onCreated,
   onCancel,
@@ -365,90 +369,16 @@ function Onboarding({
   onCreated: (id: string) => void;
   onCancel?: () => void;
 }) {
-  const [name, setName] = useState("");
-  const [role, setRole] = useState("");
-  const [voice, setVoice] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function submit() {
-    if (!name.trim()) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const { persona } = await api.createPersona({
-        name: name.trim(),
-        role: role.trim() || undefined,
-        voice: voice.trim() || undefined,
-      });
-      onCreated(persona.id);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      setBusy(false);
-    }
-  }
-
   return (
     <div className="grid h-full place-items-center bg-base text-fg font-sans">
       <Card className="w-[26rem] p-6">
         <h2 className="font-serif text-2xl">New persona</h2>
-        <p className="mt-1 text-sm text-muted">
+        <p className="mb-5 mt-1 text-sm text-muted">
           A persona gets its own bb1 wallet on creation — fund it from the
           wallet panel.
         </p>
-        <div className="mt-5 space-y-3">
-          <Field label="Name">
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Atlas"
-              autoFocus
-            />
-          </Field>
-          <Field label="Role">
-            <Input
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-              placeholder="finance copilot"
-            />
-          </Field>
-          <Field label="Voice">
-            <Input
-              value={voice}
-              onChange={(e) => setVoice(e.target.value)}
-              placeholder="terse, dry"
-            />
-          </Field>
-        </div>
-        {error && <p className="mt-3 text-sm text-danger">{error}</p>}
-        <div className="mt-5 flex justify-end gap-2">
-          {onCancel && (
-            <Button variant="ghost" onClick={onCancel}>
-              Cancel
-            </Button>
-          )}
-          <Button onClick={submit} disabled={busy || !name.trim()}>
-            {busy ? "Creating…" : "Create persona"}
-          </Button>
-        </div>
+        <PersonaForm onCreated={onCreated} onCancel={onCancel} />
       </Card>
     </div>
-  );
-}
-
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="block">
-      <span className="mb-1 block text-xs uppercase tracking-wide text-soft">
-        {label}
-      </span>
-      {children}
-    </label>
   );
 }

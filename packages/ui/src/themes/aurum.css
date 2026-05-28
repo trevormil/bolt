@@ -6,6 +6,11 @@
 
 :root,
 [data-theme="aurum"] {
+  /* Render native controls (select option popups, scrollbars, date pickers) in
+   * dark mode — otherwise the browser draws them light, putting dark option text
+   * on our dark surface (#54). */
+  color-scheme: dark;
+
   /* Warm near-black canvas, layered (never pure #000 — gold reads richer on warm black). */
   --bg: #0b0b0e;
   --surface: #141318;
