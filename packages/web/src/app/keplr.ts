@@ -2,12 +2,11 @@
 // their OWN browser wallet (coin type 118, standard Cosmos) — distinct from the
 // agent's server-derived hot keys. Pattern copied from the Meridian app
 // (apps/web/lib/chain/keplr.ts + broadcast.ts), trimmed to Keplr-only (no EVM).
-import {
-  GenericCosmosAdapter,
-  createTransactionPayload,
-  createTxBroadcastBody,
-  encodeMsgsFromJson,
-} from "bitbadges";
+//
+// The heavy `bitbadges` SDK (+ cosmjs, ~900 KB) is imported DYNAMICALLY inside
+// signAndBroadcast (#32) so it's split into its own chunk and only fetched when
+// the human actually signs a tx — not on first paint. Everything else in this
+// module is plain fetch with no SDK dependency.
 
 interface KeplrWindow {
   experimentalSuggestChain: (info: unknown) => Promise<void>;
@@ -202,6 +201,13 @@ export async function signAndBroadcast(
   memo = "vellum",
 ): Promise<string> {
   const cfg = await loadConfig();
+  // Lazy-load the chain SDK only when signing (#32 — keeps it out of first paint).
+  const {
+    GenericCosmosAdapter,
+    createTransactionPayload,
+    createTxBroadcastBody,
+    encodeMsgsFromJson,
+  } = await import("bitbadges");
   const adapter = await GenericCosmosAdapter.fromKeplr(cfg.chainId);
   const address = adapter.address;
   const publicKey = await adapter.getPublicKey();

@@ -14,7 +14,14 @@ export default defineConfig({
     nodePolyfills({ globals: { Buffer: true, global: true, process: true } }),
   ],
   server: { port: 5173, proxy: { "/api": "http://localhost:8787" } },
-  build: { outDir: "dist", emptyOutDir: true },
+  build: {
+    outDir: "dist",
+    emptyOutDir: true,
+    // No manualChunks: the chain SDK is a dynamic import (keplr.ts →
+    // import("bitbadges")), so rollup naturally splits it (+ its cosmjs deps)
+    // into an async chunk loaded only on first sign (#32). Manually grouping
+    // it risks an eager vendor dep pulling it back into the first-paint graph.
+  },
   // @vellum/ui ships TS source (workspace) — let Vite transform it, don't prebundle.
   optimizeDeps: { exclude: ["@vellum/ui"] },
 });
