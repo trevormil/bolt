@@ -148,6 +148,11 @@ export function parseGating(raw: unknown): VaultGating | undefined | "invalid" {
       });
     }
     if (typeof ms.threshold !== "number" || ms.threshold <= 0) return "invalid";
+    // The threshold must be reachable: it can't exceed the total signer weight,
+    // or the vault's withdrawal quorum could never be met (a vault you can never
+    // withdraw from). !44 MEDIUM.
+    const totalWeight = signers.reduce((n, s) => n + (s.weight ?? 1), 0);
+    if (ms.threshold > totalWeight) return "invalid";
     if (
       ms.challengeDelayMs != null &&
       (typeof ms.challengeDelayMs !== "number" || ms.challengeDelayMs < 0)

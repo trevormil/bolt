@@ -494,6 +494,14 @@ describe("vault gating parse (#45 slice 2)", () => {
     ); // empty signer set
     expect(
       parseGating({
+        multisig: {
+          signers: [{ address: "bb1a" }, { address: "bb1b" }],
+          threshold: 3, // > total weight (2) → unreachable quorum (!44)
+        },
+      }),
+    ).toBe("invalid");
+    expect(
+      parseGating({
         multisig: { signers: [{ address: "0xbad" }], threshold: 1 },
       }),
     ).toBe("invalid"); // non-bb1 signer
