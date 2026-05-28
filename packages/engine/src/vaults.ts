@@ -1,12 +1,10 @@
 import { Database } from "bun:sqlite";
-import {
-  confirmTx as chainConfirmTx,
-  getBalances as chainGetBalances,
-} from "@vellum/chain";
+import { confirmTx as chainConfirmTx } from "@vellum/chain";
 import {
   createVault as tokCreateVault,
   vaultRefFromTx,
   vaultTransferMsg,
+  type VaultGating,
 } from "@vellum/tokenization";
 import type { Ledger } from "@vellum/ledger";
 import type { PersonaWallets, Signer } from "@vellum/wallet";
@@ -22,6 +20,7 @@ export interface VaultRecord {
   withdrawApprovalId: string;
   symbol: string;
   name: string;
+  gating: VaultGating | null; // #45 slice 2 — the withdrawal policy, for display
   created: number;
 }
 
@@ -29,7 +28,8 @@ export interface CreateVaultRequest {
   name: string;
   symbol: string;
   description?: string;
-  dailyWithdrawLimit?: number;
+  dailyWithdrawLimit?: number; // legacy single daily cap
+  gating?: VaultGating; // #45 slice 2 — amount (any period) + time unlock
   managerAddress?: string; // defaults to env.VELLUM_PRINCIPAL_ADDRESS
 }
 
@@ -52,11 +52,15 @@ export interface VaultServiceDeps {
     personaId: string,
     action: { capability: string; target?: string; summary: string },
   ) => Promise<void>;
-  // Read an arbitrary address's coin balances (escrow tracking #45). Injectable
-  // for tests; defaults to the chain LCD query.
-  fetchBalances?: (
+  // Escrow tracking (#45): read how many of a vault's tokens an address holds in
+  // the x/tokenization collection (alias-converted µUSDC). Injectable for tests;
+  // defaults to the chain LCD get_balance query. This is the correct per-vault
+  // escrow figure — all USDC vaults share one backing alias, so the agent's
+  // per-collection token holding (not the shared backing balance) is the slice.
+  fetchTokenBalance?: (
+    collectionId: string,
     address: string,
-  ) => Promise<readonly { denom: string; amount: string }[]>;
+  ) => Promise<string>;
 }
 
 const DEFAULT_IMAGE = "https://avatars.githubusercontent.com/u/0?v=4";
@@ -70,6 +74,32 @@ async function defaultFetchTx(hash: string) {
   );
   const json = (await res.json()) as { tx_response?: { events?: never[] } };
   return json.tx_response ?? {};
+}
+
+// The address's total holding (µUSDC) of a vault's tokens, from the
+// x/tokenization get_balance LCD query. Sums the balance entries; returns "0"
+// when the address holds none / the query fails (escrow is a read-only display).
+async function defaultFetchTokenBalance(
+  collectionId: string,
+  address: string,
+): Promise<string> {
+  try {
+    const res = await fetch(
+      `${env.BITBADGES_LCD}/bitbadges/bitbadgeschain/tokenization/get_balance/${collectionId}/${address}`,
+      { signal: AbortSignal.timeout(15_000) },
+    );
+    if (!res.ok) return "0";
+    const json = (await res.json()) as {
+      balance?: { balances?: { amount: string }[] };
+    };
+    const total = (json.balance?.balances ?? []).reduce(
+      (sum, b) => sum + BigInt(b.amount || "0"),
+      0n,
+    );
+    return total.toString();
+  } catch {
+    return "0";
+  }
 }
 
 /**
@@ -88,7 +118,7 @@ export class VaultService {
   private fetchTx: NonNullable<VaultServiceDeps["fetchTx"]>;
   private defaultManager: string | undefined;
   private authorize: VaultServiceDeps["authorize"];
-  private fetchBalances: NonNullable<VaultServiceDeps["fetchBalances"]>;
+  private fetchTokenBalance: NonNullable<VaultServiceDeps["fetchTokenBalance"]>;
 
   constructor(deps: VaultServiceDeps) {
     this.authorize = deps.authorize;
@@ -97,7 +127,7 @@ export class VaultService {
     this.txManager = deps.txManager;
     this.createVaultFn = deps.createVault ?? tokCreateVault;
     this.confirmTx = deps.confirmTx ?? chainConfirmTx;
-    this.fetchBalances = deps.fetchBalances ?? chainGetBalances;
+    this.fetchTokenBalance = deps.fetchTokenBalance ?? defaultFetchTokenBalance;
     this.fetchTx = deps.fetchTx ?? defaultFetchTx;
     this.defaultManager = deps.defaultManager ?? env.VELLUM_PRINCIPAL_ADDRESS;
     this.db = new Database(deps.dbPath ?? ":memory:");
@@ -108,7 +138,14 @@ export class VaultService {
       withdraw_approval_id TEXT NOT NULL,
       symbol TEXT NOT NULL,
       name TEXT NOT NULL,
+      gating TEXT,
       created INTEGER NOT NULL)`);
+    // Migrate pre-#45-slice2 DBs that lack the gating column.
+    const cols = this.db.query("PRAGMA table_info(vaults)").all() as {
+      name: string;
+    }[];
+    if (!cols.some((c) => c.name === "gating"))
+      this.db.run("ALTER TABLE vaults ADD COLUMN gating TEXT");
   }
 
   async create(
@@ -133,14 +170,15 @@ export class VaultService {
       image: DEFAULT_IMAGE,
       managerAddress: manager,
       dailyWithdrawLimit: req.dailyWithdrawLimit,
+      gating: req.gating,
     });
     await this.confirmTx(txHash); // setup action — await confirmation
     const ref = vaultRefFromTx(await this.fetchTx(txHash));
     const created = Date.now();
     this.db
       .query(
-        `INSERT INTO vaults (collection_id, persona_id, backing_address, withdraw_approval_id, symbol, name, created)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO vaults (collection_id, persona_id, backing_address, withdraw_approval_id, symbol, name, gating, created)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         ref.collectionId,
@@ -149,6 +187,7 @@ export class VaultService {
         ref.withdrawApprovalId,
         req.symbol,
         req.name,
+        req.gating ? JSON.stringify(req.gating) : null,
         created,
       );
     this.ledger.record({
@@ -162,7 +201,14 @@ export class VaultService {
     log.info(
       `vault created · ${personaId} · collection ${ref.collectionId} · ${req.symbol}`,
     );
-    return { personaId, ...ref, symbol: req.symbol, name: req.name, created };
+    return {
+      personaId,
+      ...ref,
+      symbol: req.symbol,
+      name: req.name,
+      gating: req.gating ?? null,
+      created,
+    };
   }
 
   list(personaId: string): VaultRecord[] {
@@ -175,6 +221,7 @@ export class VaultService {
       withdraw_approval_id: string;
       symbol: string;
       name: string;
+      gating: string | null;
       created: number;
     }[];
     return rows.map((r) => ({
@@ -184,6 +231,7 @@ export class VaultService {
       withdrawApprovalId: r.withdraw_approval_id,
       symbol: r.symbol,
       name: r.name,
+      gating: r.gating ? (JSON.parse(r.gating) as VaultGating) : null,
       created: r.created,
     }));
   }
@@ -195,11 +243,13 @@ export class VaultService {
   }
 
   /**
-   * Escrow tracking (#45, ADR-0003 slice 1): the locked backing balance for a
-   * vault = the USDC the backing address holds on-chain. Read-only truth from
-   * chain — it never gates (gating is the on-chain approvalCriteria); it's the
-   * "how much is actually escrowed" display the manager + agent both need.
-   * Returns base µUSDC as a string. Throws if the persona doesn't own the vault.
+   * Escrow tracking (#45, ADR-0003 rev 2026-05-28): the per-vault escrow is how
+   * much of THIS vault's tokens the persona's AGENT WALLET holds in the
+   * x/tokenization collection (alias-converted, 1:1 µUSDC). All USDC vaults share
+   * one backing alias, so the shared backing balance is the wrong number — the
+   * agent's per-collection holding is this vault's slice. Read-only truth from
+   * chain; never gates (gating is the on-chain approvalCriteria). Throws if the
+   * persona doesn't own the vault.
    */
   async escrow(
     personaId: string,
@@ -207,20 +257,24 @@ export class VaultService {
   ): Promise<{
     collectionId: string;
     backingAddress: string;
+    holderAddress: string;
     denom: string;
     escrowedMicro: string;
   }> {
     const v = this.get(personaId, collectionId);
     if (!v)
       throw new Error(`no vault ${collectionId} for persona ${personaId}`);
-    const balances = await this.fetchBalances(v.backingAddress);
-    const denom = env.VELLUM_DENOM;
-    const escrowedMicro =
-      balances.find((b) => b.denom === denom)?.amount ?? "0";
+    const holderAddress = this.wallets.addressFor(personaId);
+    if (!holderAddress) throw new Error(`no wallet for persona: ${personaId}`);
+    const escrowedMicro = await this.fetchTokenBalance(
+      collectionId,
+      holderAddress,
+    );
     return {
       collectionId,
       backingAddress: v.backingAddress,
-      denom,
+      holderAddress,
+      denom: env.VELLUM_DENOM,
       escrowedMicro,
     };
   }

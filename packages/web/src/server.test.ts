@@ -4,7 +4,12 @@ import type { RunLoop } from "@vellum/orchestrator";
 import type { TxChain } from "@vellum/tx";
 import { env } from "@vellum/shared";
 import { createEngine } from "@vellum/engine";
-import { buildApp, creditedAmount, webServeOptions } from "./server.ts";
+import {
+  buildApp,
+  creditedAmount,
+  webServeOptions,
+  parseGating,
+} from "./server.ts";
 import { PaymentRequests } from "./payment-requests.ts";
 
 const METER: Meter = {
@@ -73,6 +78,8 @@ function makeEngine(over: Parameters<typeof createEngine>[0] = {}) {
       createVault: async () => ({ txHash: "VAULTCREATE1" }),
       confirmTx: async () => ({ height: 9, code: 0 }),
       fetchTx: async () => fakeCreateTxEvents,
+      // Per-vault escrow = the agent's holding of the collection's tokens.
+      fetchTokenBalance: async () => "3000000",
     },
     ...over,
   });
@@ -195,12 +202,12 @@ describe("web API", () => {
     expect(pending.kind).toBe("vault_op");
     expect(pending.status).toBe("pending");
 
-    // Escrow tracking (#45): the locked backing balance, read from chain.
+    // Escrow tracking (#45): the agent's per-collection token holding, read from chain.
     const escrow = (await (
       await app.request("/api/personas/atlas/vaults/777/escrow")
     ).json()) as { backingAddress: string; escrowedMicro: string };
     expect(escrow.backingAddress).toBe("bb1backing");
-    expect(escrow.escrowedMicro).toBe("500"); // fake getBalances → 500 µUSDC
+    expect(escrow.escrowedMicro).toBe("3000000"); // fake fetchTokenBalance → 3 vUSDC
   });
 
   test("budget route reports the LLM-spend cap (no free-form cap)", async () => {
@@ -454,6 +461,37 @@ describe("approved-models allowlist (#43 review fix)", () => {
     };
     expect(Array.isArray(cfg.models)).toBe(true);
     expect(cfg.models).toContain("anthropic/claude-3.5-sonnet");
+  });
+});
+
+describe("vault gating parse (#45 slice 2)", () => {
+  test("accepts valid amount + time, rejects bad shapes", () => {
+    expect(parseGating(undefined)).toBeUndefined();
+    expect(parseGating({})).toBeUndefined();
+    expect(parseGating({ amount: { limitUsd: 25, period: "weekly" } })).toEqual(
+      { amount: { limitUsd: 25, period: "weekly" } },
+    );
+    expect(parseGating({ time: { unlockAt: 123 } })).toEqual({
+      time: { unlockAt: 123 },
+    });
+    // invalid: bad period, non-positive limit, negative unlock
+    expect(parseGating({ amount: { limitUsd: 5, period: "yearly" } })).toBe(
+      "invalid",
+    );
+    expect(parseGating({ amount: { limitUsd: 0, period: "daily" } })).toBe(
+      "invalid",
+    );
+    expect(parseGating({ time: { unlockAt: -1 } })).toBe("invalid");
+  });
+
+  test("POST /vaults rejects an invalid gating policy (400)", async () => {
+    await post("/api/personas", { name: "Atlas" });
+    const res = await post("/api/personas/atlas/vaults", {
+      name: "Rent",
+      symbol: "vRENT",
+      gating: { amount: { limitUsd: 5, period: "yearly" } },
+    });
+    expect(res.status).toBe(400);
   });
 });
 

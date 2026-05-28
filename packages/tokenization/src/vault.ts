@@ -6,6 +6,23 @@ const log = createLogger("tokenization");
 
 type Adapter = Parameters<typeof signAndBroadcast>[0];
 
+// Configurable withdrawal gating (#45 slice 2). Constrains the AGENT, never the
+// recipient. `amount` is a rolling per-period spend cap; `time.unlockAt` makes
+// withdrawals invalid until an epoch-ms unlock. (Multi-sig via votingChallenges
+// is slice 3.) These compile to the withdrawal approval's approvalCriteria.
+export type GatingPeriod = "daily" | "weekly" | "monthly";
+export interface VaultGating {
+  amount?: { limitUsd: number; period: GatingPeriod };
+  time?: { unlockAt?: number }; // epoch ms; withdrawals invalid before this
+}
+
+const PERIOD_MS: Record<GatingPeriod, number> = {
+  daily: 86_400_000,
+  weekly: 604_800_000,
+  monthly: 2_592_000_000, // 30d (rolling, matches the #44 budget windows)
+};
+const MAX_UINT64 = "18446744073709551615";
+
 export interface CreateVaultInput {
   name: string;
   symbol: string; // e.g. vUSDC
@@ -18,9 +35,56 @@ export interface CreateVaultInput {
   // Agent guardrails ONLY (vaults are siloed — never gate recipients, since the
   // agent unwraps to base USDC and vendors take base USDC). Time/amount-gating
   // and votingChallenges constrain the AGENT, not who receives.
-  dailyWithdrawLimit?: number; // display units; 0/undefined = unlimited
+  dailyWithdrawLimit?: number; // legacy single daily cap; 0/undefined = unlimited
+  gating?: VaultGating; // #45 slice 2 — supersedes dailyWithdrawLimit when set
   require2fa?: string; // 2FA collection id gating withdrawals
   emergencyRecovery?: string; // bb1 recovery address
+}
+
+/**
+ * Compile a gating policy onto a built vault msg by editing the withdrawal-tier
+ * approvalCriteria (#45 slice 2). Pure — mutates + returns the msg. The
+ * withdrawal approval is the one whose approvalId starts with "vault-withdraw".
+ * amount → rolling per-period approvalAmounts; time.unlockAt → transferTimes.
+ */
+export function applyGating(
+  msg: MsgJson,
+  gating: VaultGating,
+  now: number = Date.now(),
+): MsgJson {
+  const approvals =
+    (msg.value as { collectionApprovals?: Record<string, unknown>[] })
+      .collectionApprovals ?? [];
+  const wd = approvals.find(
+    (a) =>
+      typeof a.approvalId === "string" &&
+      (a.approvalId as string).startsWith("vault-withdraw"),
+  );
+  if (!wd) throw new Error("vault msg has no withdrawal approval to gate");
+  const criteria = (wd.approvalCriteria ?? {}) as Record<string, unknown>;
+
+  if (gating.amount) {
+    criteria.approvalAmounts = {
+      overallApprovalAmount: "0",
+      perToAddressApprovalAmount: "0",
+      perFromAddressApprovalAmount: "0",
+      perInitiatedByAddressApprovalAmount: String(
+        Math.round(gating.amount.limitUsd * 1e6),
+      ),
+      amountTrackerId: `withdrawal-${gating.amount.period}`,
+      resetTimeIntervals: {
+        startTime: String(now),
+        intervalLength: String(PERIOD_MS[gating.amount.period]),
+      },
+    };
+  }
+  if (gating.time?.unlockAt != null) {
+    wd.transferTimes = [
+      { start: String(gating.time.unlockAt), end: MAX_UINT64 },
+    ];
+  }
+  wd.approvalCriteria = criteria;
+  return msg;
 }
 
 /**
@@ -38,7 +102,9 @@ export function buildVaultMsg(
     symbol: input.symbol,
     description: input.description,
     image: input.image,
-    dailyWithdrawLimit: input.dailyWithdrawLimit,
+    // When a gating policy is provided it owns the amount cap (any period), so
+    // don't also let the SDK set its daily-only cap.
+    dailyWithdrawLimit: input.gating ? undefined : input.dailyWithdrawLimit,
     require2fa: input.require2fa,
     emergencyRecovery: input.emergencyRecovery,
   }) as MsgJson;
@@ -46,6 +112,7 @@ export function buildVaultMsg(
   // the manager role (frozen via the builder's canUpdateManager = forbidden).
   msg.value.creator = agentAddress;
   msg.value.manager = input.managerAddress;
+  if (input.gating) applyGating(msg, input.gating);
   return msg;
 }
 

@@ -4,11 +4,14 @@
 export {
   createVault,
   buildVaultMsg,
+  applyGating,
   vaultWithdraw,
   vaultDeposit,
   vaultTransferMsg,
   vaultRefFromTx,
   type CreateVaultInput,
+  type VaultGating,
+  type GatingPeriod,
   type VaultRef,
 } from "./vault.ts";
 

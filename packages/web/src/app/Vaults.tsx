@@ -14,7 +14,12 @@ export function VaultsView({ personaId }: { personaId: string }) {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("");
+  // Gating policy (#45 slice 2): amount cap per period + optional unlock date.
+  const [period, setPeriod] = useState<"none" | "daily" | "weekly" | "monthly">(
+    "daily",
+  );
   const [limit, setLimit] = useState("");
+  const [unlockDate, setUnlockDate] = useState(""); // yyyy-mm-dd
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,14 +37,24 @@ export function VaultsView({ personaId }: { personaId: string }) {
     setBusy(true);
     setError(null);
     try {
+      const gating: {
+        amount?: { limitUsd: number; period: "daily" | "weekly" | "monthly" };
+        time?: { unlockAt?: number };
+      } = {};
+      if (period !== "none" && Number(limit) > 0)
+        gating.amount = { limitUsd: Number(limit), period };
+      if (unlockDate)
+        gating.time = { unlockAt: new Date(unlockDate).getTime() };
       await api.createVault(personaId, {
         name: name.trim(),
         symbol: symbol.trim(),
-        dailyWithdrawLimit: limit ? Number(limit) : undefined,
+        gating: Object.keys(gating).length ? gating : undefined,
       });
       setName("");
       setSymbol("");
       setLimit("");
+      setUnlockDate("");
+      setPeriod("daily");
       setCreating(false);
       await reload();
     } catch (e) {
@@ -66,7 +81,7 @@ export function VaultsView({ personaId }: { personaId: string }) {
 
       {creating && (
         <Card className="mb-4 space-y-3 p-4">
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -77,11 +92,42 @@ export function VaultsView({ personaId }: { personaId: string }) {
               onChange={(e) => setSymbol(e.target.value)}
               placeholder="Symbol (vUSDC)"
             />
-            <Input
-              value={limit}
-              onChange={(e) => setLimit(e.target.value)}
-              placeholder="Daily limit (USDC)"
-            />
+          </div>
+          {/* Gating policy — agent withdrawal guardrails (#45 slice 2). */}
+          <div className="space-y-1">
+            <span className="text-xs uppercase tracking-wide text-soft">
+              Withdrawal gating
+            </span>
+            <div className="grid grid-cols-3 gap-3">
+              <select
+                value={period}
+                onChange={(e) => setPeriod(e.target.value as typeof period)}
+                className="rounded-md border border-border bg-surface px-3 py-2 text-sm text-fg"
+              >
+                <option value="none">No amount cap</option>
+                <option value="daily">Cap / day</option>
+                <option value="weekly">Cap / week</option>
+                <option value="monthly">Cap / month</option>
+              </select>
+              <Input
+                value={limit}
+                onChange={(e) => setLimit(e.target.value)}
+                placeholder="Cap (USDC)"
+                disabled={period === "none"}
+              />
+              <Input
+                type="date"
+                value={unlockDate}
+                onChange={(e) => setUnlockDate(e.target.value)}
+                title="Unlock date — no withdrawals before this"
+              />
+            </div>
+            <p className="text-[11px] text-soft">
+              The agent can withdraw up to the cap per{" "}
+              {period === "none" ? "—" : period}
+              {unlockDate ? `, and not before ${unlockDate}` : ""}. Multi-sig
+              sign-off is coming next.
+            </p>
           </div>
           {error && <p className="text-sm text-danger">{error}</p>}
           <div className="flex justify-end">
@@ -130,9 +176,9 @@ function VaultRow({
   const [note, setNote] = useState<string | null>(null);
   const [escrowMicro, setEscrowMicro] = useState<string | null>(null);
 
-  // Escrow = the locked backing balance (#45). NOTE: the backing address is
-  // per-DENOM (shared across USDC vaults), so this is the shared reserve, not
-  // strictly this vault's slice — see ticket #45 (per-vault needs token supply).
+  // Escrow = the agent's holding of THIS vault's tokens (#45) — the correct
+  // per-vault figure (all USDC vaults share one backing alias, so the agent's
+  // per-collection token balance, not the shared backing, is this vault's slice).
   async function reloadEscrow() {
     try {
       const e = await api.vaultEscrow(personaId, vault.collectionId);
@@ -216,13 +262,30 @@ function VaultRow({
           </div>
           {escrowMicro !== null && (
             <div className="mt-1 text-xs text-muted">
-              escrow reserve:{" "}
+              escrowed:{" "}
               <span className="text-fg">
                 {(Number(escrowMicro) / 1e6).toFixed(2)} USDC
               </span>{" "}
-              <span className="text-soft">(shared denom reserve)</span>
+              <span className="text-soft">(agent's claim on this vault)</span>
             </div>
           )}
+          <div className="mt-1 flex flex-wrap gap-1">
+            {vault.gating?.amount && (
+              <Badge tone="default">
+                ≤ {vault.gating.amount.limitUsd} USDC /{" "}
+                {vault.gating.amount.period}
+              </Badge>
+            )}
+            {vault.gating?.time?.unlockAt != null && (
+              <Badge tone="default">
+                unlocks{" "}
+                {new Date(vault.gating.time.unlockAt).toLocaleDateString()}
+              </Badge>
+            )}
+            {!vault.gating?.amount && vault.gating?.time?.unlockAt == null && (
+              <span className="text-[11px] text-soft">no withdrawal cap</span>
+            )}
+          </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Input
