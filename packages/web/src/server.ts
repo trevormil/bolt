@@ -138,6 +138,20 @@ export function buildApp(
 ) {
   const app = new Hono();
 
+  // Security headers (#24 / T-11). Defense-in-depth even though the app binds
+  // loopback by default: a malicious local page must not be able to frame the
+  // installed PWA / localhost UI (clickjacking) or MIME-sniff responses. CSRF on
+  // the cookie path is already handled by the SameSite=Strict session cookie.
+  // We set frame-ancestors only (not a full CSP) so the Vite SPA's inline
+  // styles aren't broken.
+  app.use("*", async (c, next) => {
+    await next();
+    c.header("X-Frame-Options", "DENY");
+    c.header("X-Content-Type-Options", "nosniff");
+    c.header("Referrer-Policy", "no-referrer");
+    c.header("Content-Security-Policy", "frame-ancestors 'none'");
+  });
+
   // Auth boundary: protect every state-changing/private route. Public routes
   // (health, config, share-link pay endpoints) pass through. With a token set,
   // protected routes require `Authorization: Bearer <token>`. With NO token,

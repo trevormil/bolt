@@ -367,6 +367,18 @@ describe("web API", () => {
   });
 });
 
+describe("security headers (#24 / T-11)", () => {
+  test("every response carries clickjacking + nosniff hardening headers", async () => {
+    const res = await app.request("/api/health");
+    expect(res.headers.get("X-Frame-Options")).toBe("DENY");
+    expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(res.headers.get("Referrer-Policy")).toBe("no-referrer");
+    expect(res.headers.get("Content-Security-Policy")).toContain(
+      "frame-ancestors 'none'",
+    );
+  });
+});
+
 describe("per-persona spend budgets (#44)", () => {
   test("GET /budget returns evaluation + limits; PUT sets per-persona limits", async () => {
     await post("/api/personas", { name: "Atlas" });
