@@ -1,7 +1,7 @@
 ---
 id: 14
 title: "PaymentRequest funding (Stripe-link style)"
-status: open
+status: closed
 priority: high
 type: feature
 source: planning
@@ -22,3 +22,6 @@ it and signs to fund. Agent never pulls funds.
 
 ## Build-time note: BitBadges pattern
 Confirmed feasible by Trevor. **Reference the Meridian repo first** (`~/CompSci/gauntlet/meridian`: `apps/web/lib/chain/` + `lib/prediction-market/`, `apps/aggregator/src/chain/`), **then ASK TREVOR for the exact implementation pattern** before writing chain logic — do not guess.
+
+## Closed 2026-05-28 (backlog reconciliation)
+Delivered in the merged local-first build (MR !40). Verified present in the merged code.

@@ -1,7 +1,7 @@
 ---
 id: 9
 title: "Per-persona token budgets via the approval engine"
-status: in-progress
+status: closed
 priority: high
 type: feature
 source: planning
@@ -19,3 +19,6 @@ approvalAmounts per address, ResetTimeIntervals, transferTimes). Protocol-enforc
 - Set a per-persona spend cap on-chain
 - Spend within cap succeeds; over-cap is rejected by the chain
 - Rolling-window reset works
+
+## Closed 2026-05-28 (backlog reconciliation)
+Superseded by #44 (per-persona daily/weekly/monthly LLM-cost budgets, app-side). The approval-engine framing was dropped.

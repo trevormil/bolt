@@ -1,7 +1,7 @@
 ---
 id: 21
 title: "Langfuse observability/tracing (reuse AgentForge creds)"
-status: in-progress
+status: closed
 priority: high
 type: feature
 source: planning
@@ -26,3 +26,6 @@ the start.
 
 ## Phase
 0/1 — cross-cutting (wire early)
+
+## Closed 2026-05-28 (backlog reconciliation)
+Delivered in the merged local-first build (MR !40). Verified present in the merged code.

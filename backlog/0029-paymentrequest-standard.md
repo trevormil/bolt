@@ -26,3 +26,6 @@ requests are first-class on-chain objects rather than app-tracked rows.
 - If adopted: agent creates the on-chain request; human fulfils via the standard
 - Funding still lands in the global balance + ledger; behaviour parity with today
 - Decide explicitly if the app-side bank-send realization is good enough (close as won't-do)
+
+## Note 2026-05-28 (reconciliation — stays open)
+App-side PaymentRequest (#14) shipped instead. Adopting the on-chain BitBadges PaymentRequest standard is still deferred.

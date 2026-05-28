@@ -1,7 +1,7 @@
 ---
 id: 27
 title: "Web: connect Keplr (human wallet) for user-signed txs"
-status: open
+status: closed
 priority: high
 type: feature
 source: planning
@@ -40,3 +40,6 @@ USDC-only (the `VELLUM_DENOM` IBC denom), consistent with the rest of Vellum.
 Reference the **Meridian** repo first (`~/CompSci/gauntlet/meridian/apps/web/lib/chain/`
 + wallet connect components) for the exact Keplr suggest-chain + signing pattern
 on this chain, **then confirm with Trevor** before finalizing chain-specific glue.
+
+## Closed 2026-05-28 (backlog reconciliation)
+Delivered in the merged local-first build (MR !40). Verified present in the merged code.

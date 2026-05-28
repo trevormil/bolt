@@ -29,3 +29,6 @@ full local-first onboarding wizard (terminal + web halves over the same flow).
   (#31)
 - Nothing hosted — only OpenRouter is contacted; works fully offline-of-cloud
 - Terminal wizard + matching web onboarding screen, both driving the same setup
+
+## Note 2026-05-28 (reconciliation — stays open)
+quickstart.sh + daemon:install (#31) + PWA (#38) + onboarding flow (#15) landed. A single polished sub-minute install wizard remains.
