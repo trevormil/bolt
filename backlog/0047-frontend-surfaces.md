@@ -1,7 +1,7 @@
 ---
 id: 47
 title: "Frontend surfaces for the overnight features (model, budgets, observability, escrow, tasks)"
-status: open
+status: closed
 priority: high
 type: ux
 source: post-overnight-audit
@@ -25,3 +25,6 @@ unchanged, so none of it is usable in the UI. This MR wires the frontend:
 - Each overnight feature has a usable UI surface; no curl-only features.
 - Matches the existing @vellum/ui design system + tab pattern.
 - Tests for the new api client methods + tasks routes; build green.
+
+## Closed 2026-05-28
+Delivered in the squashed local-first build, merged to `main` via MR !40 (superseded per-ticket MRs !26–!39).

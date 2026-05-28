@@ -1,7 +1,7 @@
 ---
 id: 31
 title: "Local background daemon + autostart (no hosting)"
-status: open
+status: closed
 priority: medium
 type: dx
 source: planning
@@ -30,3 +30,6 @@ state, so the daemon and CLI coordinate over one local DB.
 - Loopback bind by default; exposing beyond loopback requires VELLUM_API_TOKEN
   (already enforced)
 - No container, no cloud, no hosted URL
+
+## Closed 2026-05-28
+Delivered in the squashed local-first build, merged to `main` via MR !40 (superseded per-ticket MRs !26–!39).

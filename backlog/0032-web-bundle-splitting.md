@@ -1,7 +1,7 @@
 ---
 id: 32
 title: "Web bundle code-splitting (first-load perf)"
-status: open
+status: closed
 priority: low
 type: performance
 source: planning
@@ -21,3 +21,6 @@ e.g. lazy-load the Keplr/signing path (only needed when the human acts) and the
 - Main chunk under the 500 KB warning threshold (or justified)
 - Keplr/signing + `/pay` route loaded on demand (dynamic import)
 - No regression in connect/fund/pay/vault flows
+
+## Closed 2026-05-28
+Delivered in the squashed local-first build, merged to `main` via MR !40 (superseded per-ticket MRs !26–!39).
