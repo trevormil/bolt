@@ -1,13 +1,13 @@
 ---
 id: 7
 title: "Orchestrator routes messages to personas (bounded)"
-status: in-progress
+status: closed
 priority: high
 type: feature
 source: planning
 created: 2026-05-26
 updated: 2026-05-27
-prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/9"]
+prs: []
 refs: ["ARCHITECTURE.md"]
 ---
 

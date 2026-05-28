@@ -1,12 +1,14 @@
 import { Database } from "bun:sqlite";
 import { runAgent, type ToolInvoker, type ToolSpec } from "@vellum/agent";
-import type { ChatMessage, Meter } from "@vellum/llm";
+import { completeWithTools, type ChatMessage, type Meter } from "@vellum/llm";
 import {
   renderSoul,
+  readPersonaMarkdown,
   type Persona,
   type PersonaStore,
   type RetrievalHit,
 } from "@vellum/persona";
+import { NOOP_SPAN, type TraceSpan } from "@vellum/trace";
 import { createLogger } from "@vellum/shared";
 
 const log = createLogger("router");
@@ -35,12 +37,27 @@ export type RunLoop = (input: {
   messages: ChatMessage[];
   tools: ToolSpec[];
   invoke: ToolInvoker;
+  trace: TraceSpan;
 }) => Promise<{ text: string; meters: Meter[] }>;
 
-const defaultRunLoop: RunLoop = async ({ messages, tools, invoke }) => {
-  const run = await runAgent({ messages, tools, invoke });
-  return { text: run.text, meters: run.meters };
-};
+// Per-persona model override (#43): if modelFor returns a model id for this
+// persona, every LLM round-trip in the agent loop uses that exact model;
+// otherwise the OpenRouter tier router picks (env LLM_MODEL_CHEAP/FRONTIER).
+export function makeDefaultRunLoop(
+  modelFor?: (personaId: string) => string | null,
+): RunLoop {
+  return async ({ persona, messages, tools, invoke, trace }) => {
+    const model = modelFor?.(persona.id) ?? undefined;
+    const run = await runAgent({
+      messages,
+      tools,
+      invoke,
+      trace,
+      chat: (m, t) => completeWithTools(m, t, model ? { model } : undefined),
+    });
+    return { text: run.text, meters: run.meters };
+  };
+}
 
 const SWITCH = /^\/(?:switch|use)\s+(\S+)/i;
 
@@ -49,6 +66,12 @@ export interface OrchestratorOptions {
   dbPath?: string; // routing/binding table (own table; not persona memory)
   maxDepth?: number; // dispatch depth bound (default 1 — no nested routing)
   recallK?: number; // memory hits injected into persona context (default 5)
+  // Always-on persona markdown (#41); injectable for tests. Default reads
+  // ~/.vellum global + per-persona PERSONA.md fresh each turn.
+  readPersonaMarkdown?: (personaId: string) => string;
+  // Per-persona model override (#43); when set + a default runLoop is in use,
+  // the agent loop pins every round-trip to this model (else tier-routed).
+  modelFor?: (personaId: string) => string | null;
 }
 
 export class Orchestrator {
@@ -58,17 +81,21 @@ export class Orchestrator {
   private maxDepth: number;
   private recallK: number;
   private runLoop: RunLoop;
+  private readMarkdown: (personaId: string) => string;
 
   constructor(
     store: PersonaStore,
     opts: OrchestratorOptions,
-    runLoop: RunLoop = defaultRunLoop,
+    runLoop?: RunLoop,
   ) {
     this.store = store;
     this.defaultPersonaId = opts.defaultPersonaId;
     this.maxDepth = opts.maxDepth ?? 1;
     this.recallK = opts.recallK ?? 5;
-    this.runLoop = runLoop;
+    // Explicit runLoop wins (tests). Otherwise build the default runLoop with
+    // the modelFor hook so per-persona model overrides (#43) take effect.
+    this.runLoop = runLoop ?? makeDefaultRunLoop(opts.modelFor);
+    this.readMarkdown = opts.readPersonaMarkdown ?? readPersonaMarkdown;
     this.db = new Database(opts.dbPath ?? ":memory:");
     this.db.run(
       "CREATE TABLE IF NOT EXISTS routing (conversation_id TEXT PRIMARY KEY, persona_id TEXT NOT NULL, updated INTEGER NOT NULL)",
@@ -137,7 +164,7 @@ export class Orchestrator {
   async handle(
     conversationId: string,
     message: string,
-    opts: { tools?: ToolSpec[]; invoke?: ToolInvoker } = {},
+    opts: { tools?: ToolSpec[]; invoke?: ToolInvoker; trace?: TraceSpan } = {},
     depth = 1,
   ): Promise<HandleResult> {
     if (depth > this.maxDepth) {
@@ -160,12 +187,18 @@ export class Orchestrator {
       message,
       this.recallK,
     );
-    const messages = buildContext(dec.persona, recalled, message);
+    const messages = buildContext(
+      dec.persona,
+      recalled,
+      message,
+      this.readMarkdown(dec.persona.id),
+    );
     const { text, meters } = await this.runLoop({
       persona: dec.persona,
       messages,
       tools: opts.tools ?? [],
       invoke: opts.invoke ?? (async () => ""),
+      trace: opts.trace ?? NOOP_SPAN,
     });
     return { routed: "message", persona: dec.persona, reply: text, meters };
   }
@@ -181,8 +214,12 @@ function buildContext(
   persona: Persona,
   recalled: RetrievalHit[],
   message: string,
+  personaMarkdown = "",
 ): ChatMessage[] {
+  // Compose order (#41): SOUL system prompt → always-on PERSONA.md (global then
+  // per-persona, user-authored steering) → the persona's own recalled memory.
   let system = renderSoul(persona.soul);
+  if (personaMarkdown) system += `\n\n${personaMarkdown}`;
   if (recalled.length) {
     const mem = recalled.map((h) => `- ${h.record.text}`).join("\n");
     system += `\n\nRelevant memory (yours only):\n${mem}`;

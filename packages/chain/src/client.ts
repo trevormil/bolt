@@ -1,5 +1,4 @@
 import { DirectSecp256k1HdWallet } from "@cosmjs/proto-signing";
-import { stringToPath } from "@cosmjs/crypto";
 import {
   SigningStargateClient,
   StargateClient,
@@ -9,6 +8,10 @@ import {
 } from "@cosmjs/stargate";
 import { env, createLogger } from "@vellum/shared";
 
+// Accepted advisory: `bun audit` reports a LOW `elliptic <=6.6.1` (GHSA-848j-6mx2-7j84)
+// via @cosmjs/crypto. 6.6.1 is the latest release — no patched version exists yet —
+// and this is a devnet-only path, so it's accepted until cosmjs ships a fixed dep.
+//
 // BitBadges is a Cosmos SDK chain → standard cosmjs works for x/bank + queries.
 // Tokenization-module messages (vaults, approvals) layer on via the bitbadges
 // SDK / bb CLI in later tickets. This module is the signing/broadcast/confirm
@@ -21,6 +24,21 @@ const log = createLogger("chain");
 
 export type { Coin };
 
+/**
+ * Thrown by confirmTx ONLY when the chain definitively rejected the tx (nonzero
+ * code). Distinct from timeout/network errors (plain Error) so callers can treat
+ * a not-yet-observed tx as still-pending/reconcilable rather than failed (0023).
+ */
+export class TxRevertedError extends Error {
+  constructor(
+    message: string,
+    readonly code: number,
+  ) {
+    super(message);
+    this.name = "TxRevertedError";
+  }
+}
+
 /** Derive a secp256k1 HD wallet (bb-prefixed) from a mnemonic. */
 export function walletFromMnemonic(
   mnemonic: string,
@@ -31,31 +49,6 @@ export function walletFromMnemonic(
 /** Resolve the `bb1...` address for a mnemonic. */
 export async function addressOf(mnemonic: string): Promise<string> {
   const [account] = await (await walletFromMnemonic(mnemonic)).getAccounts();
-  if (!account) throw new Error("wallet produced no account");
-  return account.address;
-}
-
-/**
- * Derive a distinct bb-prefixed HD wallet at BIP-44 account `index` from one
- * master mnemonic (path m/44'/118'/0'/0/index — Cosmos coin type 118). This is
- * how each persona gets its own wallet from a single committed-nowhere secret.
- */
-export function walletAtIndex(
-  mnemonic: string,
-  index: number,
-): Promise<DirectSecp256k1HdWallet> {
-  return DirectSecp256k1HdWallet.fromMnemonic(mnemonic, {
-    prefix: PREFIX,
-    hdPaths: [stringToPath(`m/44'/118'/0'/0/${index}`)],
-  });
-}
-
-/** Resolve the `bb1...` address for a master mnemonic at HD account `index`. */
-export async function addressAt(
-  mnemonic: string,
-  index: number,
-): Promise<string> {
-  const [account] = await (await walletAtIndex(mnemonic, index)).getAccounts();
   if (!account) throw new Error("wallet produced no account");
   return account.address;
 }
@@ -114,6 +107,31 @@ export async function sendCoins(
 }
 
 /**
+ * Claim devnet USDC from the Meridian faucet (10 USDC/request) to a bb1 address.
+ * Dev convenience for funding persona wallets — devnet only.
+ */
+export async function claimFaucet(
+  address: string,
+): Promise<{ txHash?: string; amount?: string; denom?: string }> {
+  const res = await fetch(`${env.VELLUM_FAUCET_URL}/api/v0/faucet/claim`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ address }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!res.ok) {
+    throw new Error(
+      `faucet ${res.status}: ${(await res.text()).slice(0, 200)}`,
+    );
+  }
+  return (await res.json()) as {
+    txHash?: string;
+    amount?: string;
+    denom?: string;
+  };
+}
+
+/**
  * Confirm a tx by polling the LCD until it is committed (or timeout).
  * Returns the confirmed height — the seed of the chain-state reconciliation
  * invariant (ticket 0023): truth comes from the chain, not the broadcast return.
@@ -144,7 +162,10 @@ export async function confirmTx(
       const tx = body.tx_response;
       if (tx && tx.code !== undefined) {
         if (tx.code !== 0)
-          throw new Error(`tx ${hash.slice(0, 10)} reverted: ${tx.raw_log}`);
+          throw new TxRevertedError(
+            `tx ${hash.slice(0, 10)} reverted: ${tx.raw_log}`,
+            tx.code,
+          );
         return { height: Number(tx.height ?? 0), code: tx.code };
       }
     }

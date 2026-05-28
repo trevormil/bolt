@@ -1,13 +1,13 @@
 ---
 id: 12
 title: "Smart vault create — agent creates, human is manager"
-status: open
+status: in-progress
 priority: critical
 type: feature
 source: planning
 created: 2026-05-26
-updated: 2026-05-26
-prs: []
+updated: 2026-05-27
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/14"]
 refs: ["ARCHITECTURE.md"]
 ---
 

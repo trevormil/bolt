@@ -9,20 +9,21 @@ afterEach(() => {
 });
 
 describe("createLogger", () => {
-  test("info() emits a line with scope and message", () => {
-    const log = spyOn(console, "log").mockImplementation(() => {});
+  // All levels write to stderr (console.error) so stdout stays clean for data.
+  test("info() emits a line with scope and message (on stderr)", () => {
+    const err = spyOn(console, "error").mockImplementation(() => {});
     createLogger("agent").info("scaffold ready");
-    expect(log).toHaveBeenCalledTimes(1);
-    const line = log.mock.calls[0]?.[0] as string;
+    expect(err).toHaveBeenCalledTimes(1);
+    const line = err.mock.calls[0]?.[0] as string;
     expect(line).toContain("[agent]");
     expect(line).toContain("scaffold ready");
     expect(line).toContain("INFO");
   });
 
   test("debug() is suppressed at the default info threshold", () => {
-    const log = spyOn(console, "log").mockImplementation(() => {});
+    const err = spyOn(console, "error").mockImplementation(() => {});
     createLogger("agent").debug("noisy");
-    expect(log).not.toHaveBeenCalled();
+    expect(err).not.toHaveBeenCalled();
   });
 
   test("error() routes to console.error", () => {
@@ -32,9 +33,16 @@ describe("createLogger", () => {
     expect(err.mock.calls[0]?.[0] as string).toContain("ERROR");
   });
 
+  test("nothing is written to stdout", () => {
+    const out = spyOn(console, "log").mockImplementation(() => {});
+    createLogger("agent").info("x");
+    createLogger("agent").warn("y");
+    expect(out).not.toHaveBeenCalled();
+  });
+
   test("passes meta through when provided", () => {
-    const log = spyOn(console, "log").mockImplementation(() => {});
+    const err = spyOn(console, "error").mockImplementation(() => {});
     createLogger("agent").info("with meta", { a: 1 });
-    expect(log.mock.calls[0]?.[1]).toEqual({ a: 1 });
+    expect(err.mock.calls[0]?.[1]).toEqual({ a: 1 });
   });
 });

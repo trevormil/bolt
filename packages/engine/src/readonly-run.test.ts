@@ -1,0 +1,70 @@
+import { describe, expect, test } from "bun:test";
+import { generateWallet } from "@vellum/chain";
+import type { ToolSpec } from "@vellum/agent";
+import { chat, createEngine, grantDefaultCapabilities } from "./index.ts";
+
+// Capture the tool set the agent loop was offered, so we can assert the
+// value-moving vault tools are withheld in a read-only run (T-13).
+async function engCapturingTools() {
+  let offered: ToolSpec[] = [];
+  const m = (await generateWallet()).mnemonic;
+  const engine = createEngine({
+    dbPath: ":memory:",
+    embedder: null,
+    mnemonic: m,
+    runLoop: async ({ tools }) => {
+      offered = tools;
+      return { text: "done", meters: [] };
+    },
+  });
+  return { engine, names: () => offered.map((t) => t.name) };
+}
+
+describe("read-only proactive runs (#24 / T-13)", () => {
+  test("readOnly chat withholds the vault (value-moving) tools", async () => {
+    const { engine, names } = await engCapturingTools();
+    grantDefaultCapabilities(engine.capabilities, "p");
+    engine.store.createPersona("p", "Pat", {
+      name: "Pat",
+      role: "t",
+      voice: "v",
+    });
+    await engine.wallets.ensureWallet("p");
+
+    await chat(engine, {
+      conversationId: "c",
+      personaId: "p",
+      message: "status?",
+      readOnly: true,
+    });
+    const ro = names();
+    expect(ro).not.toContain("create_vault");
+    expect(ro).not.toContain("withdraw_from_vault");
+
+    await chat(engine, {
+      conversationId: "c",
+      personaId: "p",
+      message: "status?",
+    });
+    const full = names();
+    expect(full).toContain("create_vault");
+    expect(full).toContain("withdraw_from_vault");
+  });
+
+  test("tasks default to read-only (armed=false); armed is opt-in", async () => {
+    const { engine } = await engCapturingTools();
+    const unarmed = engine.tasks.create({
+      personaId: "p",
+      prompt: "check in",
+      intervalMs: 60_000,
+    });
+    expect(unarmed.armed).toBe(false);
+    const armed = engine.tasks.create({
+      personaId: "p",
+      prompt: "pay rent",
+      intervalMs: 60_000,
+      armed: true,
+    });
+    expect(armed.armed).toBe(true);
+  });
+});

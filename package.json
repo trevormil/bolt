@@ -6,6 +6,13 @@
     "packages/*"
   ],
   "scripts": {
+    "setup": "bash scripts/quickstart.sh",
+    "start": "bun run --filter @vellum/web build && bun packages/web/src/server.ts",
+    "vellum": "bun packages/cli/src/cli.ts",
+    "daemon": "bun packages/daemon/src/daemon.ts",
+    "daemon:install": "bash scripts/install-daemon.sh install",
+    "daemon:uninstall": "bash scripts/install-daemon.sh uninstall",
+    "demo": "bun scripts/demo.ts",
     "dev": "bun run --filter '@vellum/*' dev",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
@@ -14,9 +21,14 @@
   "devDependencies": {
     "@types/bun": "1.1.14",
     "prettier": "3.3.3",
-    "typescript": "5.5.4"
+    "typescript": "5.5.4",
+    "@vellum/chain": "workspace:*",
+    "@vellum/engine": "workspace:*",
+    "@vellum/shared": "workspace:*",
+    "@vellum/tokenization": "workspace:*"
   },
   "overrides": {
-    "protobufjs": "7.6.1"
+    "protobufjs": "7.6.1",
+    "ws": "8.20.1"
   }
 }

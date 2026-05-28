@@ -1,13 +1,13 @@
 ---
 id: 26
 title: "Web UI component library (Dusk design system)"
-status: in-progress
+status: closed
 priority: high
 type: feature
 source: planning
 created: 2026-05-27
 updated: 2026-05-27
-prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/6"]
+prs: []
 refs: ["ARCHITECTURE.md"]
 ---
 

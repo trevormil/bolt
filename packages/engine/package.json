@@ -1,0 +1,28 @@
+{
+  "name": "@vellum/engine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "bun run src/index.ts"
+  },
+  "dependencies": {
+    "@vellum/agent": "workspace:*",
+    "@vellum/capabilities": "workspace:*",
+    "@vellum/chain": "workspace:*",
+    "@vellum/ledger": "workspace:*",
+    "@vellum/llm": "workspace:*",
+    "@vellum/orchestrator": "workspace:*",
+    "@vellum/persona": "workspace:*",
+    "@vellum/settings": "workspace:*",
+    "@vellum/shared": "workspace:*",
+    "@vellum/tokenization": "workspace:*",
+    "@vellum/tx": "workspace:*",
+    "@vellum/wallet": "workspace:*",
+    "@vellum/trace": "workspace:*",
+    "@vellum/observability": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "zod": "3.23.8"
+  }
+}

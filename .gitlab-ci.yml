@@ -1,0 +1,41 @@
+# Vellum CI. The labs.gauntletai.com instance has no shared runners — only the
+# laptop runner (tag `laptop-eval`), a shell executor (bun is put on PATH in
+# the default before_script).
+#
+# `quality` runs on every push/MR (fast, free). `evals` is MANUAL by design:
+# real-LLM eval runs cost money, so the full golden suite is never run on every
+# commit (0022 budget guardrail) — trigger it from the pipeline view when ready.
+stages:
+  - quality
+  - eval
+
+default:
+  tags:
+    - laptop-eval
+  before_script:
+    # The shell runner's non-login shell doesn't inherit the interactive PATH,
+    # so bun (installed under ~/.bun or Homebrew) isn't found by default. Prepend
+    # the usual locations and fail loudly if it's still missing.
+    - export PATH="$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+    - bun --version
+    - bun install --frozen-lockfile
+
+quality:
+  stage: quality
+  script:
+    - bun run format:check
+    - bun run typecheck
+    - bun test
+    - bun run --filter @vellum/web build
+
+evals:
+  stage: eval
+  when: manual
+  # Blocking when triggered: the CLI exits non-zero on any failing case, which
+  # must fail the job so a regression in the gated suite is a real signal (not a
+  # green pipeline). Manual + a separate stage is the budget guardrail — it just
+  # doesn't run on every commit.
+  script:
+    # Needs OPENROUTER_API_KEY and AGENT_SIGNER_MNEMONIC as masked CI/CD
+    # variables. Pass-rate is in the log.
+    - bun run --filter @vellum/evals dev --all

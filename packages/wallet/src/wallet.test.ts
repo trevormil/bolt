@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, test } from "bun:test";
+import { unlinkSync } from "node:fs";
 import { generateWallet, type Coin } from "@vellum/chain";
 import { PersonaWallets } from "./index.ts";
 
@@ -117,5 +118,35 @@ describe("PersonaWallets", () => {
       "AGENT_SIGNER_MNEMONIC",
     );
     w.close();
+  });
+
+  test("signerFor returns a signer whose address matches the stored row", async () => {
+    const w = fresh();
+    await w.ensureWallet("atlas");
+    const signer = await w.signerFor("atlas");
+    expect(signer.address).toBe(w.addressFor("atlas")!);
+    w.close();
+  });
+
+  test("signerFor refuses a row whose stored address predates the current path", async () => {
+    const dbPath = `/tmp/vellum-wallet-${Date.now()}-${Math.random().toString(36).slice(2)}.db`;
+    try {
+      // One mnemonic provisions the row…
+      const w1 = new PersonaWallets({ mnemonic: MNEMONIC, dbPath });
+      await w1.ensureWallet("atlas");
+      w1.close();
+      // …a different master mnemonic on the SAME db derives a different key for
+      // index 0, so the persisted address no longer matches — signing must
+      // refuse loudly rather than sign as the wrong key.
+      const other = (await generateWallet()).mnemonic;
+      const w2 = new PersonaWallets({ mnemonic: other, dbPath });
+      await expect(w2.signerFor("atlas")).rejects.toThrow("address mismatch");
+      w2.close();
+    } finally {
+      for (const s of ["", "-shm", "-wal"])
+        try {
+          unlinkSync(dbPath + s);
+        } catch {}
+    }
   });
 });
