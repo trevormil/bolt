@@ -2,6 +2,7 @@ import type { TraceSpan } from "@vellum/trace";
 import type { Engine } from "./engine.ts";
 import { vaultTools } from "./agent-tools.ts";
 import { combineTools, filesystemTools } from "./fs-tools.ts";
+import { scheduleTools } from "./schedule-tools.ts";
 import { llmBudget } from "./budgets.ts";
 
 export interface ChatInput {
@@ -45,6 +46,7 @@ export async function chat(
   const { tools, invoke } = combineTools(
     vaultTools(engine, personaId),
     filesystemTools(engine, personaId),
+    scheduleTools(engine, personaId),
   );
   const res = await engine.orchestrator.handle(conversationId, message, {
     trace,

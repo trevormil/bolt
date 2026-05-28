@@ -10,6 +10,8 @@ export {
 } from "./vaults.ts";
 export { vaultTools } from "./agent-tools.ts";
 export { filesystemTools, combineTools } from "./fs-tools.ts";
+export { scheduleTools } from "./schedule-tools.ts";
+export { TaskStore, type Task } from "./tasks.ts";
 export { chat, type ChatInput, type ChatResult } from "./chat.ts";
 export { llmBudget, type LlmBudget } from "./budgets.ts";
 // Re-export capability helpers so surfaces wire grants/approval without a direct

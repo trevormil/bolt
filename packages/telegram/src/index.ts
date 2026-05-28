@@ -5,7 +5,7 @@ import {
   migrateLegacyDb,
 } from "@vellum/shared";
 import { createEngine } from "@vellum/engine";
-import { CheckInScheduler } from "@vellum/scheduler";
+import { CheckInScheduler, TaskScheduler } from "@vellum/scheduler";
 import { buildBot } from "./bot.ts";
 import { Recipients } from "./recipients.ts";
 
@@ -43,6 +43,16 @@ if (!env.TELEGRAM_BOT_TOKEN) {
     },
   });
   scheduler.start();
+
+  // Agent-settable scheduled tasks (#36): run due tasks + deliver to all chats.
+  const deliverToAll = async (_personaId: string, message: string) => {
+    for (const chatId of recipients.all()) {
+      await bot.api
+        .sendMessage(chatId, message)
+        .catch((e) => log.warn(`task delivery failed: ${e}`));
+    }
+  };
+  new TaskScheduler({ engine, deliver: deliverToAll }).start();
 
   log.info("starting bot (long polling)…");
   void bot.start({

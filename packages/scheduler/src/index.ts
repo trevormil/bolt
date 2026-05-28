@@ -12,3 +12,4 @@ export {
   type SchedulerDeps,
   type Deliver,
 } from "./scheduler.ts";
+export { TaskScheduler, type TaskSchedulerDeps } from "./task-scheduler.ts";
