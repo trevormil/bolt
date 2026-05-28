@@ -10,6 +10,11 @@ export interface ChatInput {
   personaId: string;
   message: string;
   trace?: TraceSpan;
+  // Read-only run (#24 / T-13): omit the value-moving vault tools, so a
+  // proactive/scheduled run can observe + reply but cannot create or withdraw
+  // from vaults unless explicitly armed. Filesystem stays capability-gated
+  // either way (default-deny). Interactive chats default to full tools.
+  readOnly?: boolean;
 }
 export interface ChatResult {
   reply: string;
@@ -28,7 +33,7 @@ export async function chat(
   engine: Engine,
   input: ChatInput,
 ): Promise<ChatResult> {
-  const { conversationId, personaId, message, trace } = input;
+  const { conversationId, personaId, message, trace, readOnly } = input;
   const t0 = Date.now();
   // chat_in (#42): one event per user turn; summary is truncated, never the
   // raw body — that stays in persona memory only.
@@ -55,11 +60,18 @@ export async function chat(
   engine.orchestrator.resolve(conversationId, `/switch ${personaId}`);
   // Vault tools + capability-gated filesystem tools (#35). Both share the
   // persona's compartment; the FS tools enforce grants via engine.authorizer.
-  const { tools, invoke } = combineTools(
-    vaultTools(engine, personaId),
-    filesystemTools(engine, personaId),
-    scheduleTools(engine, personaId),
-  );
+  // In a read-only run (T-13) the value-moving vault tools are withheld entirely
+  // — the agent simply has no create/withdraw tool to call.
+  const { tools, invoke } = readOnly
+    ? combineTools(
+        filesystemTools(engine, personaId),
+        scheduleTools(engine, personaId),
+      )
+    : combineTools(
+        vaultTools(engine, personaId),
+        filesystemTools(engine, personaId),
+        scheduleTools(engine, personaId),
+      );
   const res = await engine.orchestrator.handle(conversationId, message, {
     trace,
     tools,

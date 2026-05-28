@@ -31,6 +31,9 @@ export class TaskScheduler {
           conversationId: `task:${t.id}`,
           personaId: t.personaId,
           message: t.prompt,
+          // T-13: proactive runs are read-only unless the task is armed, so an
+          // unattended schedule can't move money without explicit opt-in.
+          readOnly: !t.armed,
         });
         await this.deps.deliver(
           t.personaId,

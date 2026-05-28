@@ -17,6 +17,10 @@ export interface Task {
   intervalMs: number;
   nextRun: number;
   enabled: boolean;
+  // Armed (#24 / T-13): a scheduled run is read-only (no value-moving vault
+  // tools) UNLESS armed. Default false — the human opts a recurring task into
+  // money-moving authority explicitly.
+  armed: boolean;
   created: number;
 }
 
@@ -27,6 +31,7 @@ interface Row {
   interval_ms: number;
   next_run: number;
   enabled: number;
+  armed: number;
   created: number;
 }
 const toTask = (r: Row): Task => ({
@@ -36,6 +41,7 @@ const toTask = (r: Row): Task => ({
   intervalMs: r.interval_ms,
   nextRun: r.next_run,
   enabled: r.enabled === 1,
+  armed: r.armed === 1,
   created: r.created,
 });
 
@@ -51,21 +57,31 @@ export class TaskStore {
       interval_ms INTEGER NOT NULL,
       next_run INTEGER NOT NULL,
       enabled INTEGER NOT NULL DEFAULT 1,
+      armed INTEGER NOT NULL DEFAULT 0,
       created INTEGER NOT NULL)`);
+    // Migrate pre-#24 DBs that lack the `armed` column (default 0 = read-only).
+    const cols = this.db.query("PRAGMA table_info(tasks)").all() as {
+      name: string;
+    }[];
+    if (!cols.some((c) => c.name === "armed"))
+      this.db.run(
+        "ALTER TABLE tasks ADD COLUMN armed INTEGER NOT NULL DEFAULT 0",
+      );
   }
 
   create(input: {
     personaId: string;
     prompt: string;
     intervalMs: number;
+    armed?: boolean;
     now?: number;
   }): Task {
     const id = randomUUID();
     const now = input.now ?? Date.now();
     this.db
       .query(
-        `INSERT INTO tasks (id, persona_id, prompt, interval_ms, next_run, enabled, created)
-         VALUES (?, ?, ?, ?, ?, 1, ?)`,
+        `INSERT INTO tasks (id, persona_id, prompt, interval_ms, next_run, enabled, armed, created)
+         VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
       )
       .run(
         id,
@@ -73,6 +89,7 @@ export class TaskStore {
         input.prompt,
         input.intervalMs,
         now + input.intervalMs,
+        input.armed ? 1 : 0,
         now,
       );
     return this.get(id)!;

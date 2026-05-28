@@ -13,12 +13,17 @@ export function scheduleTools(
     {
       name: "create_task",
       description:
-        "Schedule a recurring task: a prompt re-run on an interval (in minutes). Requires the 'schedule' capability.",
+        "Schedule a recurring task: a prompt re-run on an interval (in minutes). Requires the 'schedule' capability. Runs are read-only (cannot move money) unless 'armed' is true.",
       parameters: {
         type: "object",
         properties: {
           prompt: { type: "string", description: "What to do each run" },
           everyMinutes: { type: "number", description: "Interval in minutes" },
+          armed: {
+            type: "boolean",
+            description:
+              "If true, the scheduled run may move money (create/withdraw vaults). Default false (read-only).",
+          },
         },
         required: ["prompt", "everyMinutes"],
       },
@@ -50,12 +55,14 @@ export function scheduleTools(
         summary: `schedule every ${everyMinutes}m: ${prompt.slice(0, 60)}`,
       });
       if (!ok) return "Denied: no permission to schedule tasks.";
+      const armed = args.armed === true;
       const t = engine.tasks.create({
         personaId,
         prompt,
         intervalMs: Math.round(everyMinutes * 60_000),
+        armed,
       });
-      return `Scheduled task ${t.id.slice(0, 8)} · every ${everyMinutes}m.`;
+      return `Scheduled task ${t.id.slice(0, 8)} · every ${everyMinutes}m${armed ? " · armed (can move money)" : " · read-only"}.`;
     }
     if (name === "list_tasks") {
       const ts = engine.tasks.list(personaId);
