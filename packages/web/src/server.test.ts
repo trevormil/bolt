@@ -389,6 +389,56 @@ describe("security headers (#24 / T-11)", () => {
   });
 });
 
+describe("scheduled tasks routes (#47 FE / #36)", () => {
+  test("create (armed + read-only) → list → cancel", async () => {
+    await post("/api/personas", { name: "Atlas" });
+    const created = await post("/api/personas/atlas/tasks", {
+      prompt: "summarize my vaults",
+      everyMinutes: 30,
+      armed: false,
+    });
+    expect(created.status).toBe(201);
+    const task = (await created.json()) as { id: string; armed: boolean };
+    expect(task.armed).toBe(false);
+
+    const armed = await post("/api/personas/atlas/tasks", {
+      prompt: "pay rent",
+      everyMinutes: 1440,
+      armed: true,
+    });
+    expect(((await armed.json()) as { armed: boolean }).armed).toBe(true);
+
+    const list = (await (
+      await app.request("/api/personas/atlas/tasks")
+    ).json()) as { tasks: { id: string }[] };
+    expect(list.tasks).toHaveLength(2);
+
+    const del = await app.request(`/api/personas/atlas/tasks/${task.id}`, {
+      method: "DELETE",
+    });
+    expect(del.status).toBe(200);
+    const after = (await (
+      await app.request("/api/personas/atlas/tasks")
+    ).json()) as { tasks: unknown[] };
+    expect(after.tasks).toHaveLength(1);
+  });
+
+  test("rejects missing prompt / non-positive interval", async () => {
+    await post("/api/personas", { name: "Atlas" });
+    expect(
+      (await post("/api/personas/atlas/tasks", { everyMinutes: 30 })).status,
+    ).toBe(400);
+    expect(
+      (
+        await post("/api/personas/atlas/tasks", {
+          prompt: "x",
+          everyMinutes: 0,
+        })
+      ).status,
+    ).toBe(400);
+  });
+});
+
 describe("per-persona spend budgets (#44)", () => {
   test("GET /budget returns evaluation + limits; PUT sets per-persona limits", async () => {
     await post("/api/personas", { name: "Atlas" });

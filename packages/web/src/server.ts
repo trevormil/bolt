@@ -342,6 +342,53 @@ export function buildApp(
     return c.json(BudgetLimits.get(engine.settings, id));
   });
 
+  // Scheduled tasks (#36) over HTTP so the SPA can manage them (they were
+  // agent-tool-only). create is capability-gated ("schedule"); armed=false
+  // means the run is read-only (#24/T-13) — can't move money.
+  app.get("/api/personas/:id/tasks", (c) => {
+    const id = c.req.param("id");
+    if (!engine.store.getPersona(id))
+      return c.json({ error: "unknown persona" }, 404);
+    return c.json({ tasks: engine.tasks.list(id) });
+  });
+  app.post("/api/personas/:id/tasks", async (c) => {
+    const id = c.req.param("id");
+    if (!engine.store.getPersona(id))
+      return c.json({ error: "unknown persona" }, 404);
+    const body = (await c.req.json().catch(() => ({}))) as {
+      prompt?: string;
+      everyMinutes?: number;
+      armed?: boolean;
+    };
+    const prompt = body.prompt?.trim();
+    const everyMinutes = Number(body.everyMinutes);
+    if (!prompt || !(everyMinutes > 0))
+      return c.json({ error: "prompt and everyMinutes > 0 required" }, 400);
+    if (
+      !(await engine.authorizer.authorize(id, {
+        capability: "schedule",
+        summary: `schedule every ${everyMinutes}m: ${prompt.slice(0, 60)}`,
+      }))
+    )
+      return c.json({ error: "denied: persona lacks 'schedule'" }, 403);
+    const t = engine.tasks.create({
+      personaId: id,
+      prompt,
+      intervalMs: Math.round(everyMinutes * 60_000),
+      armed: body.armed === true,
+    });
+    return c.json(t, 201);
+  });
+  app.delete("/api/personas/:id/tasks/:taskId", (c) => {
+    const id = c.req.param("id");
+    if (!engine.store.getPersona(id))
+      return c.json({ error: "unknown persona" }, 404);
+    const t = engine.tasks.get(c.req.param("taskId"));
+    if (!t || t.personaId !== id) return c.json({ error: "unknown task" }, 404);
+    engine.tasks.delete(t.id);
+    return c.json({ ok: true });
+  });
+
   // Per-persona OpenRouter model override (#43). GET returns {value, source};
   // PUT body { model: string | null } — null clears the override (inherit).
   app.get("/api/personas/:id/model", (c) => {

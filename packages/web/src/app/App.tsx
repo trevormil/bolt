@@ -4,10 +4,13 @@ import { api, type Persona } from "./api.ts";
 import { Chat } from "./Chat.tsx";
 import { LedgerView } from "./Ledger.tsx";
 import { VaultsView } from "./Vaults.tsx";
+import { ActivityView } from "./Activity.tsx";
+import { SettingsView } from "./Settings.tsx";
 import { WalletPanel } from "./WalletPanel.tsx";
 import { useWallet } from "./wallet-context.tsx";
 
-type Tab = "chat" | "vaults" | "ledger";
+type Tab = "chat" | "vaults" | "ledger" | "activity" | "settings";
+const TABS: Tab[] = ["chat", "vaults", "ledger", "activity", "settings"];
 
 export function App() {
   const [personas, setPersonas] = useState<Persona[]>([]);
@@ -122,7 +125,7 @@ export function App() {
               <div className="flex items-center gap-3">
                 <KeplrButton />
                 <div className="flex gap-1 rounded-lg bg-surface p-1">
-                  {(["chat", "vaults", "ledger"] as Tab[]).map((t) => (
+                  {TABS.map((t) => (
                     <button
                       key={t}
                       onClick={() => setTab(t)}
@@ -148,6 +151,10 @@ export function App() {
                   <Chat persona={selected} />
                 ) : tab === "vaults" ? (
                   <VaultsView personaId={selected.id} />
+                ) : tab === "activity" ? (
+                  <ActivityView personaId={selected.id} />
+                ) : tab === "settings" ? (
+                  <SettingsView personaId={selected.id} />
                 ) : (
                   <LedgerView personaId={selected.id} />
                 )}

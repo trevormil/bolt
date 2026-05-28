@@ -1,0 +1,337 @@
+import { useEffect, useState } from "react";
+import { Badge, Button, Card, Input } from "@vellum/ui";
+import { api, type BudgetResponse, type Resolved, type Task } from "./api.ts";
+
+// A few common OpenRouter ids as quick picks (#43). Empty = inherit the tier
+// router (cheap by default, frontier on long context).
+const MODEL_PRESETS = [
+  "",
+  "anthropic/claude-3.5-sonnet",
+  "anthropic/claude-3-haiku",
+  "openai/gpt-4o",
+  "openai/gpt-4o-mini",
+  "google/gemini-2.0-flash-001",
+];
+
+export function SettingsView({ personaId }: { personaId: string }) {
+  return (
+    <div className="h-full space-y-6 overflow-y-auto p-6">
+      <ModelSection personaId={personaId} />
+      <BudgetSection personaId={personaId} />
+      <TasksSection personaId={personaId} />
+    </div>
+  );
+}
+
+// ── #43 per-persona model ────────────────────────────────────────────────────
+function ModelSection({ personaId }: { personaId: string }) {
+  const [resolved, setResolved] = useState<Resolved<string | null> | null>(
+    null,
+  );
+  const [value, setValue] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    api.getModel(personaId).then((r) => {
+      if (!live) return;
+      setResolved(r);
+      setValue(r.value ?? "");
+    });
+    return () => {
+      live = false;
+    };
+  }, [personaId]);
+
+  async function save(v: string) {
+    const r = await api.setModel(personaId, v.trim() || null);
+    setResolved(r);
+    setValue(r.value ?? "");
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1500);
+  }
+
+  return (
+    <Card className="p-4">
+      <SectionHead
+        title="Model"
+        hint="OpenRouter model this persona uses. Blank = inherit the tier router."
+      />
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Input
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="(inherit tier router)"
+          className="min-w-[18rem] flex-1 font-mono text-sm"
+          list="model-presets"
+        />
+        <datalist id="model-presets">
+          {MODEL_PRESETS.filter(Boolean).map((m) => (
+            <option key={m} value={m} />
+          ))}
+        </datalist>
+        <Button size="sm" onClick={() => void save(value)}>
+          {saved ? "Saved" : "Save"}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => void save("")}>
+          Reset
+        </Button>
+      </div>
+      {resolved && (
+        <p className="mt-2 text-xs text-soft">
+          Active:{" "}
+          <span className="text-muted">{resolved.value ?? "tier router"}</span>{" "}
+          <Badge tone={resolved.source === "persona" ? "accent" : "default"}>
+            {resolved.source}
+          </Badge>
+        </p>
+      )}
+    </Card>
+  );
+}
+
+// ── #44 per-persona budgets (daily/weekly/monthly) ───────────────────────────
+function BudgetSection({ personaId }: { personaId: string }) {
+  const [budget, setBudget] = useState<BudgetResponse | null>(null);
+  const [daily, setDaily] = useState("");
+  const [weekly, setWeekly] = useState("");
+  const [monthly, setMonthly] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  function hydrate(b: BudgetResponse) {
+    setBudget(b);
+    const l = b.limits.value;
+    setDaily(l.dailyUsd != null ? String(l.dailyUsd) : "");
+    setWeekly(l.weeklyUsd != null ? String(l.weeklyUsd) : "");
+    setMonthly(l.monthlyUsd != null ? String(l.monthlyUsd) : "");
+  }
+  useEffect(() => {
+    let live = true;
+    api.budget(personaId).then((b) => live && hydrate(b));
+    return () => {
+      live = false;
+    };
+  }, [personaId]);
+
+  async function save() {
+    const limits: Record<string, number> = {};
+    if (Number(daily) > 0) limits.dailyUsd = Number(daily);
+    if (Number(weekly) > 0) limits.weeklyUsd = Number(weekly);
+    if (Number(monthly) > 0) limits.monthlyUsd = Number(monthly);
+    await api.setBudgetLimits(personaId, limits);
+    const b = await api.budget(personaId);
+    hydrate(b);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1500);
+  }
+
+  const w = budget?.evaluation.windows;
+  return (
+    <Card className="p-4">
+      <SectionHead
+        title="LLM budget"
+        hint="Per-window USD caps on OpenRouter spend. Blank = no cap for that window."
+      />
+      <div className="mt-3 grid grid-cols-3 gap-3">
+        <LimitField
+          label="Daily $"
+          value={daily}
+          onChange={setDaily}
+          burn={w?.daily}
+        />
+        <LimitField
+          label="Weekly $"
+          value={weekly}
+          onChange={setWeekly}
+          burn={w?.weekly}
+        />
+        <LimitField
+          label="Monthly $"
+          value={monthly}
+          onChange={setMonthly}
+          burn={w?.monthly}
+        />
+      </div>
+      <div className="mt-3">
+        <Button size="sm" onClick={() => void save()}>
+          {saved ? "Saved" : "Save limits"}
+        </Button>
+        {budget && (
+          <span className="ml-3 text-xs text-soft">
+            source: {budget.limits.source}
+          </span>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function LimitField({
+  label,
+  value,
+  onChange,
+  burn,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  burn?: { spentUsd: number; capUsd: number; ok: boolean };
+}) {
+  const pct =
+    burn && burn.capUsd > 0
+      ? Math.min(100, (burn.spentUsd / burn.capUsd) * 100)
+      : 0;
+  return (
+    <label className="block">
+      <span className="mb-1 block text-xs uppercase tracking-wide text-soft">
+        {label}
+      </span>
+      <Input
+        type="number"
+        min="0"
+        step="0.5"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="—"
+      />
+      {burn && (
+        <>
+          <div className="mt-1 h-1 overflow-hidden rounded bg-surface-3">
+            <div
+              className={`h-full ${burn.ok ? "bg-accent" : "bg-danger"}`}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          <span className="text-[10px] text-soft">
+            ${burn.spentUsd.toFixed(4)} / ${burn.capUsd.toFixed(2)}
+          </span>
+        </>
+      )}
+    </label>
+  );
+}
+
+// ── #36 scheduled tasks + #24/T-13 armed toggle ──────────────────────────────
+function TasksSection({ personaId }: { personaId: string }) {
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [prompt, setPrompt] = useState("");
+  const [everyMinutes, setEveryMinutes] = useState("60");
+  const [armed, setArmed] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function reload() {
+    setTasks(await api.tasks(personaId));
+  }
+  useEffect(() => {
+    let live = true;
+    api.tasks(personaId).then((t) => live && setTasks(t));
+    return () => {
+      live = false;
+    };
+  }, [personaId]);
+
+  async function create() {
+    if (!prompt.trim() || !(Number(everyMinutes) > 0)) return;
+    setError(null);
+    try {
+      await api.createTask(personaId, {
+        prompt: prompt.trim(),
+        everyMinutes: Number(everyMinutes),
+        armed,
+      });
+      setPrompt("");
+      setArmed(false);
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  return (
+    <Card className="p-4">
+      <SectionHead
+        title="Scheduled tasks"
+        hint="Recurring prompts run on an interval. Read-only unless armed (can't move money)."
+      />
+      <div className="mt-3 space-y-2">
+        <Input
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          placeholder="e.g. Summarize my vault balances"
+        />
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-sm text-muted">
+            every
+            <Input
+              type="number"
+              min="1"
+              value={everyMinutes}
+              onChange={(e) => setEveryMinutes(e.target.value)}
+              className="w-20"
+            />
+            min
+          </label>
+          <label className="flex items-center gap-2 text-sm text-muted">
+            <input
+              type="checkbox"
+              checked={armed}
+              onChange={(e) => setArmed(e.target.checked)}
+            />
+            armed (can move money)
+          </label>
+          <Button
+            size="sm"
+            onClick={() => void create()}
+            disabled={!prompt.trim()}
+          >
+            Add task
+          </Button>
+        </div>
+        {error && <p className="text-sm text-danger">{error}</p>}
+      </div>
+
+      <div className="mt-4 space-y-2">
+        {tasks.length === 0 ? (
+          <p className="text-sm text-soft">No scheduled tasks.</p>
+        ) : (
+          tasks.map((t) => (
+            <div
+              key={t.id}
+              className="flex items-center justify-between gap-3 rounded-md border border-border p-2"
+            >
+              <div className="min-w-0">
+                <div className="truncate text-sm">{t.prompt}</div>
+                <div className="text-xs text-soft">
+                  every {Math.round(t.intervalMs / 60000)}m
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <Badge tone={t.armed ? "danger" : "default"}>
+                  {t.armed ? "armed" : "read-only"}
+                </Badge>
+                <button
+                  onClick={async () => {
+                    await api.cancelTask(personaId, t.id);
+                    await reload();
+                  }}
+                  className="text-xs text-soft hover:text-danger"
+                >
+                  cancel
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function SectionHead({ title, hint }: { title: string; hint: string }) {
+  return (
+    <div>
+      <h3 className="text-sm font-medium text-fg">{title}</h3>
+      <p className="text-xs text-soft">{hint}</p>
+    </div>
+  );
+}

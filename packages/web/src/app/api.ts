@@ -114,15 +114,56 @@ export const api = {
     }).then((r) => json<ChatReply>(r)),
 
   budget: (id: string) =>
-    fetch(`/api/personas/${id}/budget`).then((r) =>
-      json<{
-        llm: {
-          spentUsd: number;
-          capUsd: number;
-          remainingUsd: number;
-          ok: boolean;
-        };
-      }>(r),
+    fetch(`/api/personas/${id}/budget`).then((r) => json<BudgetResponse>(r)),
+
+  setBudgetLimits: (id: string, limits: BudgetLimits) =>
+    fetch(`/api/personas/${id}/budget-limits`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(limits),
+    }).then((r) => json<Resolved<BudgetLimits>>(r)),
+
+  // Per-persona model override (#43).
+  getModel: (id: string) =>
+    fetch(`/api/personas/${id}/model`).then((r) =>
+      json<Resolved<string | null>>(r),
+    ),
+  setModel: (id: string, model: string | null) =>
+    fetch(`/api/personas/${id}/model`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model }),
+    }).then((r) => json<Resolved<string | null>>(r)),
+
+  // Observability event timeline + window summary (#42).
+  events: (id: string, limit = 100) =>
+    fetch(`/api/personas/${id}/events?limit=${limit}`).then((r) =>
+      json<{ summary: EventSummary; events: EventItem[] }>(r),
+    ),
+
+  // Vault escrow — locked backing balance (#45).
+  vaultEscrow: (id: string, collectionId: string) =>
+    fetch(`/api/personas/${id}/vaults/${collectionId}/escrow`).then((r) =>
+      json<EscrowInfo>(r),
+    ),
+
+  // Scheduled tasks (#36) over HTTP.
+  tasks: (id: string) =>
+    fetch(`/api/personas/${id}/tasks`)
+      .then((r) => json<{ tasks: Task[] }>(r))
+      .then((b) => b.tasks),
+  createTask: (
+    id: string,
+    input: { prompt: string; everyMinutes: number; armed: boolean },
+  ) =>
+    fetch(`/api/personas/${id}/tasks`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    }).then((r) => json<Task>(r)),
+  cancelTask: (id: string, taskId: string) =>
+    fetch(`/api/personas/${id}/tasks/${taskId}`, { method: "DELETE" }).then(
+      (r) => json<{ ok: boolean }>(r),
     ),
 
   listVaults: (id: string) =>
@@ -199,5 +240,77 @@ export interface Vault {
   withdrawApprovalId: string;
   symbol: string;
   name: string;
+  created: number;
+}
+
+// A resolved setting value + where it came from (#40).
+export interface Resolved<T> {
+  value: T;
+  source: "persona" | "global" | "default";
+}
+
+// Per-persona budget limits (#44) — any subset; absent = no cap for that window.
+export interface BudgetLimits {
+  dailyUsd?: number;
+  weeklyUsd?: number;
+  monthlyUsd?: number;
+}
+export interface BudgetWindow {
+  spentUsd: number;
+  capUsd: number;
+  remainingUsd: number;
+  ok: boolean;
+}
+export interface BudgetResponse {
+  llm: BudgetWindow;
+  evaluation: {
+    windows: Partial<Record<"daily" | "weekly" | "monthly", BudgetWindow>>;
+    ok: boolean;
+    breached?: "daily" | "weekly" | "monthly";
+  };
+  limits: Resolved<BudgetLimits>;
+}
+
+// Observability events (#42).
+export interface EventItem {
+  id: number;
+  ts: number;
+  kind: string;
+  summary: string;
+  latencyMs: number;
+  costUsd: number;
+  tokens: number;
+  ok: boolean;
+  meta: Record<string, unknown>;
+}
+export interface EventSummaryWindow {
+  events: number;
+  costUsd: number;
+  tokens: number;
+  errors: number;
+}
+export interface EventSummary {
+  byKind: Record<string, number>;
+  last24h: EventSummaryWindow;
+  last7d: EventSummaryWindow;
+  last30d: EventSummaryWindow;
+}
+
+export interface EscrowInfo {
+  collectionId: string;
+  backingAddress: string;
+  denom: string;
+  escrowedMicro: string;
+}
+
+// Scheduled task (#36) — armed=false runs read-only (#24/T-13).
+export interface Task {
+  id: string;
+  personaId: string;
+  prompt: string;
+  intervalMs: number;
+  nextRun: number;
+  enabled: boolean;
+  armed: boolean;
   created: number;
 }

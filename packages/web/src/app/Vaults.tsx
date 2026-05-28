@@ -128,6 +128,23 @@ function VaultRow({
   const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState<"withdraw" | "deposit" | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [escrowMicro, setEscrowMicro] = useState<string | null>(null);
+
+  // Escrow = the locked backing balance (#45). NOTE: the backing address is
+  // per-DENOM (shared across USDC vaults), so this is the shared reserve, not
+  // strictly this vault's slice — see ticket #45 (per-vault needs token supply).
+  async function reloadEscrow() {
+    try {
+      const e = await api.vaultEscrow(personaId, vault.collectionId);
+      setEscrowMicro(e.escrowedMicro);
+    } catch {
+      setEscrowMicro(null);
+    }
+  }
+  useEffect(() => {
+    void reloadEscrow();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [personaId, vault.collectionId]);
 
   // Agent withdraws within the vault's on-chain rule (server-signed).
   async function withdraw() {
@@ -142,6 +159,7 @@ function VaultRow({
         String(Math.round(usdc * 1e6)),
       );
       setNote(`Withdrawal ${r.status} (${r.hash.slice(0, 10)}…)`);
+      void reloadEscrow();
       setAmount("");
     } catch (e) {
       setNote(e instanceof Error ? e.message : String(e));
@@ -176,6 +194,7 @@ function VaultRow({
       );
       setNote(`Escrow funded (${txHash.slice(0, 10)}…)`);
       setAmount("");
+      void reloadEscrow();
     } catch (e) {
       setNote(e instanceof Error ? e.message : String(e));
     } finally {
@@ -195,6 +214,15 @@ function VaultRow({
             collection {vault.collectionId} · backing{" "}
             {vault.backingAddress.slice(0, 10)}…
           </div>
+          {escrowMicro !== null && (
+            <div className="mt-1 text-xs text-muted">
+              escrow reserve:{" "}
+              <span className="text-fg">
+                {(Number(escrowMicro) / 1e6).toFixed(2)} USDC
+              </span>{" "}
+              <span className="text-soft">(shared denom reserve)</span>
+            </div>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Input
