@@ -94,3 +94,51 @@ describe("vaultTransferMsg — 0013 back/unback (validated live)", () => {
     expect(t.prioritizedApprovals[0].approvalId).toBe("vault-deposit");
   });
 });
+
+describe("vault gating compiler (#45 slice 2)", () => {
+  const findWithdraw = (msg: { value: Record<string, any> }) =>
+    msg.value.collectionApprovals.find((a: any) =>
+      a.approvalId.startsWith("vault-withdraw"),
+    );
+
+  test("amount + period → per-initiated approvalAmounts with the right reset interval", () => {
+    const msg = buildVaultMsg(AGENT, {
+      ...INPUT,
+      dailyWithdrawLimit: undefined,
+      gating: { amount: { limitUsd: 25, period: "weekly" } },
+    });
+    const wd = findWithdraw(msg);
+    const aa = wd.approvalCriteria.approvalAmounts;
+    expect(aa.perInitiatedByAddressApprovalAmount).toBe("25000000"); // 25 USDC µ
+    expect(aa.amountTrackerId).toBe("withdrawal-weekly");
+    expect(aa.resetTimeIntervals.intervalLength).toBe("604800000"); // 7d ms
+  });
+
+  test("time.unlockAt → withdrawal transferTimes start at the unlock", () => {
+    const unlockAt = 2_000_000_000_000;
+    const msg = buildVaultMsg(AGENT, {
+      ...INPUT,
+      dailyWithdrawLimit: undefined,
+      gating: { time: { unlockAt } },
+    });
+    const wd = findWithdraw(msg);
+    expect(wd.transferTimes[0].start).toBe(String(unlockAt));
+    expect(wd.transferTimes[0].end).toBe("18446744073709551615");
+  });
+
+  test("gating supersedes the legacy dailyWithdrawLimit (no SDK daily cap)", () => {
+    // With gating set, the SDK's daily cap must NOT also be applied.
+    const msg = buildVaultMsg(AGENT, {
+      ...INPUT,
+      dailyWithdrawLimit: 5,
+      gating: { amount: { limitUsd: 100, period: "monthly" } },
+    });
+    const wd = findWithdraw(msg);
+    expect(wd.approvalCriteria.approvalAmounts.amountTrackerId).toBe(
+      "withdrawal-monthly",
+    );
+    expect(
+      wd.approvalCriteria.approvalAmounts.perInitiatedByAddressApprovalAmount,
+    ).toBe("100000000");
+  });
+});

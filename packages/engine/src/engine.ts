@@ -54,7 +54,11 @@ export interface EngineOptions {
   mnemonic?: string; // test seam — wallet derivation (else env.AGENT_SIGNER_MNEMONIC)
   vault?: Pick<
     VaultServiceDeps,
-    "createVault" | "confirmTx" | "fetchTx" | "defaultManager"
+    | "createVault"
+    | "confirmTx"
+    | "fetchTx"
+    | "defaultManager"
+    | "fetchTokenBalance"
   >; // vault test seams
   approve?: Approver; // capability approval prompt (#37); surfaces inject. Default fail-closed.
 }
@@ -118,9 +122,8 @@ export function createEngine(opts: EngineOptions = {}): Engine {
     // the surface gates. Throws CapabilityDeniedError; callers catch it.
     authorize: (personaId, action) =>
       authorizer.authorizeOrThrow(personaId, action),
-    // Escrow tracking (#45) reuses the same balance-read seam as wallets, so
-    // tests inject one source of truth; prod falls back to the chain LCD.
-    fetchBalances: opts.getBalances,
+    // Escrow tracking (#45): fetchTokenBalance defaults to the LCD get_balance
+    // query; tests inject it via opts.vault.
     ...opts.vault,
   });
   const tasks = new TaskStore(dbPath);

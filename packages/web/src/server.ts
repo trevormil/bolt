@@ -22,6 +22,7 @@ import {
   isApprovedModel,
   type Engine,
 } from "@vellum/engine";
+import type { VaultGating, GatingPeriod } from "@vellum/tokenization";
 import { PaymentRequests } from "./payment-requests.ts";
 
 // Built SPA dir, resolved from this file (cwd-independent) so the server can be
@@ -91,6 +92,38 @@ async function verifyCredit(
 
 export const isLoopback = (host: string): boolean =>
   host === "127.0.0.1" || host === "localhost" || host === "::1";
+
+const GATING_PERIODS: GatingPeriod[] = ["daily", "weekly", "monthly"];
+
+// Validate a vault gating policy from request JSON (#45 slice 2). Returns the
+// parsed policy, `undefined` (no gating), or "invalid". Pure — exported for tests.
+export function parseGating(raw: unknown): VaultGating | undefined | "invalid" {
+  if (raw == null) return undefined;
+  if (typeof raw !== "object") return "invalid";
+  const g = raw as { amount?: unknown; time?: unknown };
+  const out: VaultGating = {};
+  if (g.amount != null) {
+    const a = g.amount as { limitUsd?: unknown; period?: unknown };
+    if (
+      typeof a.limitUsd !== "number" ||
+      !(a.limitUsd > 0) ||
+      typeof a.period !== "string" ||
+      !GATING_PERIODS.includes(a.period as GatingPeriod)
+    )
+      return "invalid";
+    out.amount = { limitUsd: a.limitUsd, period: a.period as GatingPeriod };
+  }
+  if (g.time != null) {
+    const t = g.time as { unlockAt?: unknown };
+    if (
+      t.unlockAt != null &&
+      (typeof t.unlockAt !== "number" || t.unlockAt < 0)
+    )
+      return "invalid";
+    out.time = { unlockAt: t.unlockAt as number | undefined };
+  }
+  return Object.keys(out).length ? out : undefined;
+}
 
 // Routes safe to serve without auth: liveness, public chain config, and the
 // share-link pay endpoints (a PaymentRequest link is opened by anyone the human
@@ -519,16 +552,21 @@ export function buildApp(
       symbol?: string;
       description?: string;
       dailyWithdrawLimit?: number;
+      gating?: VaultGating;
     };
     if (!body.name?.trim() || !body.symbol?.trim()) {
       return c.json({ error: "name and symbol are required" }, 400);
     }
+    const gating = parseGating(body.gating);
+    if (gating === "invalid")
+      return c.json({ error: "invalid gating policy" }, 400);
     try {
       const vault = await engine.vaults.create(id, {
         name: body.name.trim(),
         symbol: body.symbol.trim(),
         description: body.description?.trim(),
         dailyWithdrawLimit: body.dailyWithdrawLimit,
+        gating,
       });
       return c.json(vault, 201);
     } catch (e) {

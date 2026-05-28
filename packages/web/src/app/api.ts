@@ -185,7 +185,12 @@ export const api = {
 
   createVault: (
     id: string,
-    input: { name: string; symbol: string; dailyWithdrawLimit?: number },
+    input: {
+      name: string;
+      symbol: string;
+      dailyWithdrawLimit?: number;
+      gating?: VaultGating;
+    },
   ) =>
     fetch(`/api/personas/${id}/vaults`, {
       method: "POST",
@@ -245,6 +250,14 @@ export interface PaymentRequest {
   created: number;
 }
 
+// Vault withdrawal gating (#45 slice 2): amount cap per rolling period + a time
+// unlock. (Multi-sig via votingChallenges is slice 3.)
+export type GatingPeriod = "daily" | "weekly" | "monthly";
+export interface VaultGating {
+  amount?: { limitUsd: number; period: GatingPeriod };
+  time?: { unlockAt?: number }; // epoch ms
+}
+
 export interface Vault {
   personaId: string;
   collectionId: string;
@@ -252,6 +265,7 @@ export interface Vault {
   withdrawApprovalId: string;
   symbol: string;
   name: string;
+  gating: VaultGating | null;
   created: number;
 }
 

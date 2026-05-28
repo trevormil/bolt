@@ -30,9 +30,7 @@ const fakeCreateTxEvents = {
 };
 
 async function eng(
-  fetchBalances: (
-    a: string,
-  ) => Promise<readonly { denom: string; amount: string }[]>,
+  fetchTokenBalance: (collectionId: string, address: string) => Promise<string>,
 ) {
   const m = (await generateWallet()).mnemonic;
   return createEngine({
@@ -40,43 +38,45 @@ async function eng(
     embedder: null,
     mnemonic: m,
     runLoop: async () => ({ text: "", meters: [] }),
-    // Wallet balance reads (the test seam VaultService.escrow also reads).
-    getBalances: fetchBalances,
     vault: {
       defaultManager: "bb1human000000000000000000000000000000000",
       createVault: async () => ({ txHash: "VAULTCREATE1" }),
       confirmTx: async () => ({ height: 9, code: 0 }),
       fetchTx: async () => fakeCreateTxEvents,
+      // Per-vault escrow = the agent's holding of the collection's tokens.
+      fetchTokenBalance,
     },
   });
 }
 
-describe("vault escrow tracking (#45, ADR-0003 slice 1)", () => {
-  test("escrow() reads the BACKING address balance, not the agent wallet", async () => {
-    // Distinct balances per address prove escrow targets the backing address.
-    const byAddress: Record<string, string> = { bb1backing: "4200000" };
-    const e = await eng(async (addr) => [
-      { denom: env.VELLUM_DENOM, amount: byAddress[addr] ?? "0" },
-    ]);
-    grantDefaultCapabilities(e.capabilities, "p");
-    e.store.createPersona("p", "Pat", {
-      name: "Pat",
-      role: "t",
-      voice: "v",
+describe("vault escrow tracking (#45, ADR-0003 rev)", () => {
+  test("escrow() reads the AGENT's per-collection token balance (not the shared backing)", async () => {
+    // The seam is keyed on (collectionId, holderAddress) — assert escrow queries
+    // collection 777 against the persona's own agent wallet.
+    let qCollection = "";
+    let qAddress = "";
+    const e = await eng(async (collectionId, address) => {
+      qCollection = collectionId;
+      qAddress = address;
+      return "3000000"; // agent holds 3 vUSDC of this vault
     });
-    await e.wallets.ensureWallet("p");
+    grantDefaultCapabilities(e.capabilities, "p");
+    e.store.createPersona("p", "Pat", { name: "Pat", role: "t", voice: "v" });
+    const agent = await e.wallets.ensureWallet("p");
 
     const vault = await e.vaults.create("p", { name: "Rent", symbol: "vRENT" });
     expect(vault.backingAddress).toBe("bb1backing");
 
     const escrow = await e.vaults.escrow("p", vault.collectionId);
-    expect(escrow.backingAddress).toBe("bb1backing");
-    expect(escrow.escrowedMicro).toBe("4200000"); // the backing address's USDC
+    expect(escrow.escrowedMicro).toBe("3000000");
+    expect(escrow.holderAddress).toBe(agent.address); // the AGENT wallet
+    expect(qCollection).toBe("777");
+    expect(qAddress).toBe(agent.address);
     expect(escrow.denom).toBe(env.VELLUM_DENOM);
   });
 
   test("escrow() on an unknown vault throws", async () => {
-    const e = await eng(async () => []);
+    const e = await eng(async () => "0");
     e.store.createPersona("p", "Pat", { name: "Pat", role: "t", voice: "v" });
     await expect(e.vaults.escrow("p", "999")).rejects.toThrow("no vault");
   });
