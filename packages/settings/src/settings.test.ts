@@ -25,6 +25,18 @@ describe("SettingsStore.resolve — persona → global → default", () => {
     s.close();
   });
 
+  test("persona literally named 'global' does NOT collide with global defaults (!29)", () => {
+    const s = new SettingsStore(":memory:");
+    s.setGlobal("k", 7); // global bucket
+    s.set("global", "k", 99); // persona id happens to be the string "global"
+    // The "global" persona sees its own override, and the global default is
+    // still 7 (not overwritten by the persona's set), because the sentinel is
+    // a non-slug character that no real personaId can be.
+    expect(s.resolve("global", "k", 42).value).toBe(99);
+    expect(s.resolve("other", "k", 42)).toEqual({ value: 7, source: "global" });
+    s.close();
+  });
+
   test("clear reverts a persona to inherit", () => {
     const s = new SettingsStore(":memory:");
     s.setGlobal("k", 7);

@@ -6,7 +6,10 @@ import { Database } from "bun:sqlite";
 // JSON KV at two scopes; typed accessors (settings.ts) layer validation on top.
 // Persisted in ~/.vellum so the CLI, daemon, and web share one config.
 
-export const GLOBAL = "global"; // reserved scope id for global defaults
+// Reserved scope id for global defaults. Deliberately a non-slug character ("*")
+// so it CANNOT collide with a real personaId — a persona named "global" would
+// otherwise corrupt the global defaults bucket (!29 MEDIUM).
+export const GLOBAL = "*";
 
 export type SettingSource = "persona" | "global" | "default";
 export interface Resolved<T> {
