@@ -5,6 +5,7 @@ export {
   createVault,
   buildVaultMsg,
   applyGating,
+  VAULT_WITHDRAW_PROPOSAL_ID,
   vaultWithdraw,
   vaultDeposit,
   vaultTransferMsg,
