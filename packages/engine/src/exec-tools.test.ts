@@ -103,6 +103,24 @@ describe("run_command exec tool (#52)", () => {
     expect(out).not.toContain("a".repeat(200));
   });
 
+  test("an infinite-output flood is byte-capped, not OOM'd or timed out", async () => {
+    // `yes` floods stdout forever. The capped read must stop at the byte limit
+    // and return promptly — well before the timeout — instead of buffering it all.
+    setRuntimeEnv({
+      VELLUM_EXEC_MAX_OUTPUT: 100,
+      VELLUM_EXEC_TIMEOUT_MS: 3000,
+    });
+    const e = eng();
+    grantExec(e);
+    const t0 = Date.now();
+    const out = await execTools(e, "p").invoke("run_command", {
+      command: "yes",
+    });
+    const elapsed = Date.now() - t0;
+    expect(out).toContain("truncated");
+    expect(elapsed).toBeLessThan(2000); // capped fast, did NOT ride out the 3s timeout
+  });
+
   test("a command exceeding the timeout is killed and reported", async () => {
     setRuntimeEnv({ VELLUM_EXEC_TIMEOUT_MS: 300 });
     const e = eng();

@@ -68,17 +68,47 @@ function catastrophicReason(command: string): string | null {
   return null;
 }
 
-const truncate = (s: string, max: number): string =>
-  s.length > max ? s.slice(0, max) + `\n…(truncated, ${s.length} chars)` : s;
+// Read a stream to a string but STOP after maxBytes, then cancel — so a flooding
+// command (`yes`, `cat /dev/zero`) can't balloon daemon memory before the timeout
+// kills it (the full-buffer `Response(stream).text()` would OOM first). Appends a
+// truncation marker when it caps.
+async function readCapped(
+  stream: ReadableStream<Uint8Array>,
+  maxBytes: number,
+): Promise<string> {
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  let capped = false;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      chunks.push(value);
+      total += value.length;
+      if (total >= maxBytes) {
+        capped = true;
+        break;
+      }
+    }
+  } finally {
+    reader.cancel().catch(() => {}); // closes our end; the child SIGPIPEs/gets killed
+  }
+  const text = Buffer.concat(chunks).subarray(0, maxBytes).toString("utf8");
+  return capped ? `${text}\n…(truncated at ${maxBytes} bytes)` : text;
+}
 
 // Run `command` under the system shell with cwd pinned to the workspace. Bun's
 // spawn with a string array would skip the shell; we want shell semantics
 // (pipes, &&) like a dev terminal, so we invoke `sh -c`. The timeout races a
-// kill against process exit so a hung command can't block the loop.
+// kill against process exit so a hung command can't block the loop; reads are
+// byte-capped so a flood can't blow up memory either.
 async function runInWorkspace(
   command: string,
   cwd: string,
   timeoutMs: number,
+  maxOutput: number,
 ): Promise<{
   stdout: string;
   stderr: string;
@@ -102,8 +132,8 @@ async function runInWorkspace(
 
   try {
     const [stdout, stderr] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
+      readCapped(proc.stdout, maxOutput),
+      readCapped(proc.stderr, maxOutput),
     ]);
     const exitCode = await proc.exited;
     return { stdout, stderr, exitCode, timedOut };
@@ -200,19 +230,19 @@ export function execTools(
       command,
       workspace,
       env.VELLUM_EXEC_TIMEOUT_MS,
+      env.VELLUM_EXEC_MAX_OUTPUT,
     );
     execEvent(command, !timedOut && exitCode === 0, {
       exitCode,
       timedOut,
     });
 
-    const max = env.VELLUM_EXEC_MAX_OUTPUT;
     const parts = [
       timedOut
         ? `timed out after ${env.VELLUM_EXEC_TIMEOUT_MS}ms (killed); exit ${exitCode}`
         : `exit ${exitCode}`,
-      `stdout:\n${truncate(stdout, max) || "(empty)"}`,
-      `stderr:\n${truncate(stderr, max) || "(empty)"}`,
+      `stdout:\n${stdout || "(empty)"}`,
+      `stderr:\n${stderr || "(empty)"}`,
     ];
     return parts.join("\n\n");
   };
