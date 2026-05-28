@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { generateWallet, addressOf } from "@vellum/chain";
+import { env } from "@vellum/shared";
 import { runSetup } from "./setup.ts";
 
 // The interactive install + onboarding wizard (#19) — the I/O shell over the
@@ -81,6 +82,7 @@ export async function initWizard(
 
   // 5) Optional background daemon (macOS launchd). Cross-platform later.
   console.log("\n5) Background daemon (runs Vellum at login).");
+  let daemonRunning = false;
   if (yesno("   Install the background daemon now?")) {
     if (process.platform !== "darwin") {
       console.log(
@@ -91,17 +93,36 @@ export async function initWizard(
         ["bash", join(process.cwd(), "scripts/install-daemon.sh"), "install"],
         { stdout: "inherit", stderr: "inherit" },
       );
-      if (r.exitCode === 0)
-        console.log(`   ✓ daemon installed · http://127.0.0.1:8787`);
-      else
+      if (r.exitCode === 0) {
+        daemonRunning = true;
+        console.log("   ✓ daemon installed and running");
+      } else {
         console.log(
-          "   ! daemon install failed — run `bun run daemon` manually instead.",
+          "   ! daemon install failed — start it yourself with `bun run daemon`.",
         );
+      }
     }
-  } else {
-    console.log("\n  Start Vellum:");
-    console.log("    vellum                # terminal REPL");
-    console.log("    bun run daemon        # web + schedulers (open :8787)");
   }
+
+  // Land the user IN the product (#25): where it's running + what to try first,
+  // using the real configured port (not a hardcoded one).
+  const url = `http://127.0.0.1:${env.WEB_PORT}`;
+  console.log("\n  You're set 🎉");
+  if (daemonRunning) {
+    console.log(`   Vellum is running → open ${url}`);
+  } else {
+    console.log("   Start Vellum, then open the dashboard:");
+    console.log("     bun run daemon        # web + schedulers");
+    console.log(`     open ${url}`);
+    console.log("   …or stay in the terminal:  vellum   (interactive chat)");
+  }
+  console.log(`\n  First things to try with ${res.personaId}:`);
+  console.log('   • Chat — ask anything, or "remember …" to teach it.');
+  console.log(
+    "   • Vaults → create one with a spending limit; watch the gating badges + escrow.",
+  );
+  console.log(
+    "   • Activity — every action lands on the timeline with its cost + tx hash.",
+  );
   console.log("");
 }
