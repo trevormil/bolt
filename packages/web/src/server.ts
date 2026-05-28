@@ -427,6 +427,19 @@ export function buildApp(
     return c.json({ ok: true });
   });
 
+  // Reveal the agent's master mnemonic for backup/recovery (#57). The onboarding
+  // never shows it (it's the agent's key); the user exports it here deliberately
+  // (Settings → Export). Same trust boundary as POST /api/setup: NOT public, so it
+  // stays behind the Host/Origin guard + token auth, and the route itself is
+  // additionally loopback-only — the phrase never crosses a network boundary.
+  app.get("/api/agent/mnemonic", (c) => {
+    if (!isLoopback(auth.host ?? "127.0.0.1"))
+      return c.json({ error: "seed export is loopback-only" }, 403);
+    if (!env.AGENT_SIGNER_MNEMONIC)
+      return c.json({ error: "no agent wallet configured" }, 404);
+    return c.json({ mnemonic: env.AGENT_SIGNER_MNEMONIC });
+  });
+
   app.get("/api/personas", (c) => {
     const personas = engine.store.listPersonas().map((p) => ({
       ...p,

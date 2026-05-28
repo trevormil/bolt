@@ -1083,3 +1083,47 @@ describe("first-run web setup (/api/setup)", () => {
     expect(applied).toHaveLength(0);
   });
 });
+
+describe("agent seed export (/api/agent/mnemonic)", () => {
+  const savedMnemonic = env.AGENT_SIGNER_MNEMONIC;
+  afterEach(() => {
+    env.AGENT_SIGNER_MNEMONIC = savedMnemonic;
+  });
+
+  const app = (
+    auth: { token?: string; host?: string } = { host: "127.0.0.1" },
+  ) => buildApp(makeEngine(), new PaymentRequests(":memory:"), auth);
+
+  const get = (
+    a: ReturnType<typeof buildApp>,
+    headers: Record<string, string> = {},
+  ) => a.request("/api/agent/mnemonic", { headers });
+
+  test("reveals the configured master phrase on loopback", async () => {
+    env.AGENT_SIGNER_MNEMONIC = "alpha bravo charlie delta echo foxtrot";
+    const res = await get(app());
+    expect(res.status).toBe(200);
+    expect((await res.json()) as { mnemonic: string }).toEqual({
+      mnemonic: "alpha bravo charlie delta echo foxtrot",
+    });
+  });
+
+  test("404 when no agent wallet is configured", async () => {
+    env.AGENT_SIGNER_MNEMONIC = undefined;
+    expect((await get(app())).status).toBe(404);
+  });
+
+  test("stays behind the cross-site guard — never readable cross-origin", async () => {
+    env.AGENT_SIGNER_MNEMONIC = "alpha bravo charlie";
+    const res = await get(app(), { origin: "http://evil.example" });
+    expect(res.status).toBe(403);
+  });
+
+  test("loopback-only: refused on an exposed bind even when authed", async () => {
+    env.AGENT_SIGNER_MNEMONIC = "alpha bravo charlie";
+    const res = await get(app({ token: "secret", host: "0.0.0.0" }), {
+      authorization: "Bearer secret",
+    });
+    expect(res.status).toBe(403);
+  });
+});

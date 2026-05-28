@@ -107,6 +107,12 @@ export const api = {
       body: JSON.stringify(input),
     }).then((r) => json<{ ok: boolean }>(r)),
 
+  // Reveal the agent's master mnemonic for backup (#57). Loopback + authed; the
+  // one place the phrase travels to the browser, fetched only on a deliberate
+  // Settings → Export action.
+  agentMnemonic: () =>
+    fetch("/api/agent/mnemonic").then((r) => json<{ mnemonic: string }>(r)),
+
   listPersonas: () =>
     fetch("/api/personas")
       .then((r) => json<{ personas: Persona[] }>(r))

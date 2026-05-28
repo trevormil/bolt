@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Badge, Button, Card, Input } from "@vellum/ui";
+import { Badge, Button, Card, Icon, Input } from "@vellum/ui";
 import { api, type BudgetResponse, type Resolved, type Task } from "./api.ts";
 
 export function SettingsView({ personaId }: { personaId: string }) {
@@ -8,7 +8,107 @@ export function SettingsView({ personaId }: { personaId: string }) {
       <ModelSection personaId={personaId} />
       <BudgetSection personaId={personaId} />
       <TasksSection personaId={personaId} />
+      <RecoverySection />
     </div>
+  );
+}
+
+// ── #57 wallet recovery — deliberate seed-phrase export ──────────────────────
+// The agent's master mnemonic is never shown at onboarding; this is the one place
+// the user can reveal it (blurred until clicked) to back it up. Fetched only on
+// demand from the loopback+authed GET /api/agent/mnemonic.
+function RecoverySection() {
+  const [phrase, setPhrase] = useState<string | null>(null);
+  const [revealed, setRevealed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function load() {
+    setBusy(true);
+    setError(null);
+    try {
+      const { mnemonic } = await api.agentMnemonic();
+      setPhrase(mnemonic);
+      setRevealed(false); // shown blurred first — a second click reveals
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function copy() {
+    if (!phrase) return;
+    navigator.clipboard?.writeText(phrase);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1200);
+  }
+
+  return (
+    <Card className="p-4">
+      <SectionHead
+        title="Wallet recovery"
+        hint="The agent's master seed phrase — every persona wallet derives from it. Back it up somewhere safe; anyone who has it controls the agent's funds."
+      />
+      {!phrase ? (
+        <div className="mt-3">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => void load()}
+            disabled={busy}
+          >
+            <Icon name="eye" size={14} /> {busy ? "…" : "Export seed phrase"}
+          </Button>
+          {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+        </div>
+      ) : (
+        <div className="mt-3 space-y-3">
+          <div className="relative">
+            <div
+              className={
+                "grid grid-cols-3 gap-1.5 rounded-lg border border-border-gold bg-accent-soft/20 p-3 font-mono text-xs transition " +
+                (revealed ? "" : "select-none blur-sm")
+              }
+            >
+              {phrase.split(/\s+/).map((w, i) => (
+                <div key={i} className="flex items-baseline gap-1.5">
+                  <span className="text-soft">{i + 1}</span>
+                  <span className="text-accent-strong">{w}</span>
+                </div>
+              ))}
+            </div>
+            {!revealed && (
+              <button
+                onClick={() => setRevealed(true)}
+                className="absolute inset-0 grid place-items-center text-sm font-medium text-fg"
+              >
+                <span className="rounded-md bg-surface px-3 py-1.5 shadow-glow">
+                  Click to reveal
+                </span>
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={copy} disabled={!revealed}>
+              <Icon name={copied ? "check" : "copy"} size={13} />{" "}
+              {copied ? "Copied" : "Copy"}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setPhrase(null);
+                setRevealed(false);
+              }}
+            >
+              Hide
+            </Button>
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }
 
