@@ -74,6 +74,17 @@ function isBb1Address(addr: string): boolean {
   return /^bb1[0-9a-z]{38,}$/.test(addr);
 }
 
+// Defensive amount guard (!58): reject anything that isn't a positive integer
+// µUSDC string before a bad amount enters the durable tx lifecycle (a failed
+// encode could otherwise leave a stuck `submitting` row). The tool boundary
+// validates first; this protects direct callers of the service too.
+function assertPositiveMicro(amount: string): void {
+  if (!/^[1-9][0-9]*$/.test(amount))
+    throw new Error(
+      `amount must be a positive integer µUSDC (got "${amount}")`,
+    );
+}
+
 async function defaultFetchTx(hash: string) {
   const res = await fetch(
     `${env.BITBADGES_LCD}/cosmos/tx/v1beta1/txs/${hash}`,
@@ -319,6 +330,7 @@ export class VaultService {
       target: collectionId,
       summary: `withdraw ${amount} from vault ${collectionId}`,
     });
+    assertPositiveMicro(amount);
     const v = this.get(personaId, collectionId);
     if (!v)
       throw new Error(`no vault ${collectionId} for persona ${personaId}`);
@@ -375,6 +387,7 @@ export class VaultService {
       target: collectionId,
       summary: `pay ${amount} from vault ${collectionId} to ${to}`,
     });
+    assertPositiveMicro(amount);
     if (!isBb1Address(to))
       throw new Error(`invalid recipient address (expected bb1...): ${to}`);
     const v = this.get(personaId, collectionId);

@@ -8,6 +8,17 @@ function fmtUsdc(micro: string): string {
   return (Number(micro) / 1e6).toFixed(2);
 }
 
+// Validate + convert an LLM-supplied USDC amount to a positive integer µUSDC
+// string, or null if it's not a finite number > 0 (so 0/negative/NaN/Infinity
+// never reach the tx lifecycle — !58). The caller returns a clean tool message
+// on null rather than throwing into the agent loop.
+function microOrNull(amountUsdc: unknown): string | null {
+  const n = Number(amountUsdc);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const micro = Math.round(n * 1e6);
+  return micro > 0 ? String(micro) : null;
+}
+
 // Vault tools the persona's agent can call in chat (plain-English create/spend).
 // The agent does the heavy tx lifting; the human is the manager. Scoped to ONE
 // persona via the closure — an agent can only touch its own persona's vaults.
@@ -114,7 +125,8 @@ export function vaultTools(
           : "No vaults yet.";
       }
       if (name === "withdraw_from_vault") {
-        const micro = String(Math.round(Number(args.amountUsdc) * 1e6));
+        const micro = microOrNull(args.amountUsdc);
+        if (!micro) return "Amount must be a positive number of USDC.";
         const p = await engine.vaults.withdraw(
           personaId,
           String(args.collectionId),
@@ -124,7 +136,8 @@ export function vaultTools(
         return `Withdrawal of ${args.amountUsdc} USDC submitted (tx ${(p.hash ?? p.id).slice(0, 10)}); confirming on-chain.`;
       }
       if (name === "pay_from_vault") {
-        const micro = String(Math.round(Number(args.amountUsdc) * 1e6));
+        const micro = microOrNull(args.amountUsdc);
+        if (!micro) return "Amount must be a positive number of USDC.";
         const p = await engine.vaults.pay(
           personaId,
           String(args.collectionId),

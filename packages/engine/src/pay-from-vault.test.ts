@@ -157,6 +157,37 @@ describe("engine.vaults.pay — gated pay-from-vault-to-recipient (#51)", () => 
     expect(broadcasts.length).toBe(0); // never broadcast a malformed-recipient pay
   });
 
+  test("non-positive / non-integer amounts are rejected before any broadcast (!58)", async () => {
+    const { chain, broadcasts } = captureChain();
+    const e = eng(chain);
+    const id = await provisionVault(e);
+    for (const bad of ["0", "-1000000", "1.5", "abc"]) {
+      await expect(e.vaults.pay("p", id, bad, RECIPIENT)).rejects.toThrow(
+        /positive integer/,
+      );
+    }
+    expect(broadcasts.length).toBe(0);
+    // No durable tx row was created for any of the bad amounts.
+    expect(e.txManager.list("p").some((r) => r.to === RECIPIENT)).toBe(false);
+  });
+
+  test("pay_from_vault tool rejects 0 / negative / NaN with a clean message — no broadcast (!58)", async () => {
+    const { chain, broadcasts } = captureChain();
+    const e = eng(chain);
+    const id = await provisionVault(e);
+    const tools = vaultTools(e, "p");
+    for (const bad of [0, -1, "abc", Infinity]) {
+      const out = await tools.invoke("pay_from_vault", {
+        collectionId: id,
+        amountUsdc: bad,
+        to: RECIPIENT,
+      });
+      expect(out).toMatch(/positive number/);
+    }
+    expect(broadcasts.length).toBe(0);
+    expect(e.txManager.list("p").some((r) => r.to === RECIPIENT)).toBe(false);
+  });
+
   test("pay is denied without the vault.withdraw grant (default-deny)", async () => {
     const { chain, broadcasts } = captureChain();
     const e = eng(chain);
