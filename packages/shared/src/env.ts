@@ -14,6 +14,10 @@ export const envSchema = z.object({
   AGENT_SIGNER_PRIVKEY_HEX: z.string().optional(),
 
   TELEGRAM_BOT_TOKEN: z.string().optional(),
+  // Principal chat allowlist (#28). When set, ONLY this chat id may drive the
+  // bot; when unset, the first chat to interact claims ownership (first-contact
+  // TOFU). Set this for a hardened single-owner deployment.
+  TELEGRAM_PRINCIPAL_CHAT_ID: z.coerce.number().optional(),
 
   ANTHROPIC_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),

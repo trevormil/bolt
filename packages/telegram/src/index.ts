@@ -25,8 +25,22 @@ if (!env.TELEGRAM_BOT_TOKEN) {
     .reconcile()
     .catch((e) => log.warn(`reconcile failed: ${e}`));
   const recipients = new Recipients(env.VELLUM_DB_PATH);
+  // Principal allowlist (#28): if a chat id is configured, only it may drive the
+  // bot. Otherwise the first chat to interact claims ownership (TOFU) and every
+  // later chat is refused — Vellum serves exactly one owner.
+  const configured = env.TELEGRAM_PRINCIPAL_CHAT_ID ?? null;
+  const authorizeChat = (chatId: number): boolean => {
+    if (configured !== null) return chatId === configured;
+    const principal = recipients.principal();
+    if (principal === null) {
+      recipients.record(chatId); // first contact claims ownership
+      return true;
+    }
+    return chatId === principal;
+  };
   const bot = buildBot(env.TELEGRAM_BOT_TOKEN, engine, {
     onSeen: (chatId) => recipients.record(chatId),
+    authorizeChat,
   });
 
   // Proactive output (check-ins #18, scheduled tasks #36) goes ONLY to the
