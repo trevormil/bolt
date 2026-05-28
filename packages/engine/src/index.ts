@@ -9,6 +9,7 @@ export {
   type VaultServiceDeps,
 } from "./vaults.ts";
 export { vaultTools } from "./agent-tools.ts";
+export { mcpTools } from "./mcp-tools.ts";
 export { Model } from "./model-setting.ts";
 export {
   BudgetLimits,
