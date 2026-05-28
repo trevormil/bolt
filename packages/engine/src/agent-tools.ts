@@ -1,6 +1,7 @@
 import { CapabilityDeniedError } from "@vellum/capabilities";
 import type { ToolInvoker, ToolSpec } from "@vellum/agent";
 import { isBb1Address } from "@vellum/tx";
+import type { VaultGating } from "@vellum/tokenization";
 import { env } from "@vellum/shared";
 import type { Engine } from "./engine.ts";
 
@@ -20,6 +21,45 @@ function microOrNull(amountUsdc: unknown): string | null {
   return micro > 0 ? String(micro) : null;
 }
 
+// A withdrawal period accepted by the amount-cap gating, derived from the
+// tokenization type so it can't drift ("daily" | "weekly" | "monthly").
+type GatingPeriod = NonNullable<VaultGating["amount"]>["period"];
+const PERIODS: GatingPeriod[] = ["daily", "weekly", "monthly"];
+
+// Parse a friendly date input to epoch ms: a number (ms if ≥1e12, else seconds),
+// an ISO date/datetime string (e.g. "2026-06-01"), or a relative offset like
+// "+7d" / "+24h" / "+2w". Returns null if unparseable. Runtime engine code, so
+// Date is available here (the Workflow-script Date restriction does NOT apply).
+function toEpochMs(input: unknown): number | null {
+  if (typeof input === "number" && Number.isFinite(input))
+    return input >= 1e12 ? input : input >= 1e9 ? input * 1000 : null;
+  const s = String(input).trim();
+  const rel = /^\+(\d+)\s*([hdw])$/i.exec(s);
+  if (rel) {
+    const unit = { h: 3_600_000, d: 86_400_000, w: 604_800_000 }[
+      rel[2]!.toLowerCase() as "h" | "d" | "w"
+    ];
+    return Date.now() + Number(rel[1]) * unit;
+  }
+  const t = Date.parse(s);
+  return Number.isNaN(t) ? null : t;
+}
+
+// Plain-English suffix summarizing a gating policy, for the create_vault reply.
+function describeGating(g: VaultGating): string {
+  const iso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+  const parts: string[] = [];
+  if (g.amount)
+    parts.push(`limit ${g.amount.limitUsd} USDC/${g.amount.period}`);
+  if (g.time?.unlockAt) parts.push(`unlocks ${iso(g.time.unlockAt)}`);
+  if (g.time?.expiresAt) parts.push(`expires ${iso(g.time.expiresAt)}`);
+  if (g.multisig)
+    parts.push(
+      `${g.multisig.threshold}-of-${g.multisig.signers.length} sign-off`,
+    );
+  return parts.length ? ` (${parts.join(", ")})` : "";
+}
+
 // Vault tools the persona's agent can call in chat (plain-English create/spend).
 // The agent does the heavy tx lifting; the human is the manager. Scoped to ONE
 // persona via the closure — an agent can only touch its own persona's vaults.
@@ -31,15 +71,47 @@ export function vaultTools(
     {
       name: "create_vault",
       description:
-        "Create a 1:1 USDC-backed vault for this persona. The human is the manager; you (the agent) can withdraw within the daily limit. Use for earmarking funds to a purpose.",
+        "Create a 1:1 USDC-backed vault for this persona, with optional withdrawal rules that constrain YOU (the agent) — the human is always the manager. Earmark funds to a purpose and set how you're allowed to take them out: a spend cap per period, a time window, and/or multi-sig sign-off. Omit all rules for an ungated vault.",
       parameters: {
         type: "object",
         properties: {
           name: { type: "string", description: "Vault name, e.g. 'Groceries'" },
           symbol: { type: "string", description: "Short symbol, e.g. vUSDC" },
+          withdrawLimit: {
+            type: "number",
+            description:
+              "Max USDC you may withdraw per period (a rolling cap). Pair with withdrawPeriod.",
+          },
+          withdrawPeriod: {
+            type: "string",
+            enum: ["daily", "weekly", "monthly"],
+            description: "Period for withdrawLimit. Defaults to daily.",
+          },
+          unlockAt: {
+            type: "string",
+            description:
+              "Withdrawals invalid BEFORE this time. ISO date (e.g. 2026-06-01) or a relative offset like +7d / +24h / +2w.",
+          },
+          expiresAt: {
+            type: "string",
+            description:
+              "Withdrawals invalid AFTER this time. Same formats as unlockAt.",
+          },
+          signers: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "Multi-sig: bb1 addresses that must sign off on each withdrawal. Requires threshold.",
+          },
+          threshold: {
+            type: "number",
+            description:
+              "How many of the signers must approve (the N in N-of-M). Requires signers.",
+          },
           dailyWithdrawLimit: {
             type: "number",
-            description: "Max USDC you may withdraw per day (0 = unlimited)",
+            description:
+              "Deprecated shorthand for withdrawLimit with a daily period. Prefer withdrawLimit + withdrawPeriod.",
           },
         },
         required: ["name", "symbol"],
@@ -104,16 +176,71 @@ export function vaultTools(
   const invoke: ToolInvoker = async (name, args) => {
     try {
       if (name === "create_vault") {
+        const gating: VaultGating = {};
+
+        // Amount cap. withdrawLimit + period is the full form; dailyWithdrawLimit
+        // is the legacy shorthand (→ daily). Either maps to gating.amount so it's
+        // persisted on the vault record (the record only stores `gating`).
+        const rawLimit = args.withdrawLimit ?? args.dailyWithdrawLimit;
+        if (rawLimit != null) {
+          const limitUsd = Number(rawLimit);
+          if (!Number.isFinite(limitUsd) || limitUsd <= 0)
+            return "Withdraw limit must be a positive number of USDC.";
+          const period = args.withdrawPeriod
+            ? (String(args.withdrawPeriod).toLowerCase() as GatingPeriod)
+            : "daily";
+          if (!PERIODS.includes(period))
+            return "Withdraw period must be daily, weekly, or monthly.";
+          gating.amount = { limitUsd, period };
+        }
+
+        // Time window. unlockAt = start, expiresAt = end (epoch ms).
+        const unlockAt =
+          args.unlockAt != null ? toEpochMs(args.unlockAt) : undefined;
+        if (args.unlockAt != null && unlockAt == null)
+          return "Could not parse unlockAt — use an ISO date (2026-06-01) or a relative offset like +7d.";
+        const expiresAt =
+          args.expiresAt != null ? toEpochMs(args.expiresAt) : undefined;
+        if (args.expiresAt != null && expiresAt == null)
+          return "Could not parse expiresAt — use an ISO date or a relative offset like +30d.";
+        if (unlockAt != null && expiresAt != null && unlockAt >= expiresAt)
+          return "The unlock time must be before the expiry time.";
+        if (unlockAt != null || expiresAt != null)
+          gating.time = {
+            unlockAt: unlockAt ?? undefined,
+            expiresAt: expiresAt ?? undefined,
+          };
+
+        // Multi-sig. Signer bb1 addresses + an N-of-M threshold.
+        const signers = Array.isArray(args.signers)
+          ? args.signers.map((s) => String(s).trim()).filter(Boolean)
+          : [];
+        if (signers.length) {
+          if (!signers.every((s) => s.startsWith("bb1")))
+            return "Every multi-sig signer must be a bb1 address.";
+          const threshold = Number(args.threshold);
+          if (
+            !Number.isInteger(threshold) ||
+            threshold < 1 ||
+            threshold > signers.length
+          )
+            return `Multi-sig threshold must be a whole number between 1 and ${signers.length} (the number of signers).`;
+          gating.multisig = {
+            signers: signers.map((address) => ({ address })),
+            threshold,
+          };
+        } else if (args.threshold != null) {
+          return "Provide signer addresses to use a multi-sig threshold.";
+        }
+
+        const hasGating = !!(gating.amount || gating.time || gating.multisig);
         const v = await engine.vaults.create(personaId, {
           name: String(args.name),
           symbol: String(args.symbol),
-          dailyWithdrawLimit:
-            args.dailyWithdrawLimit != null
-              ? Number(args.dailyWithdrawLimit)
-              : undefined,
+          gating: hasGating ? gating : undefined,
         });
         emitVaultTool("create_vault", true);
-        return `Created vault ${v.symbol} (collection ${v.collectionId}); the human is the manager. Fund it from your wallet to start.`;
+        return `Created vault ${v.symbol} (collection ${v.collectionId})${describeGating(gating)}; the human is the manager. Fund it from your wallet to start.`;
       }
       if (name === "list_vaults") {
         const vs = engine.vaults.list(personaId);
