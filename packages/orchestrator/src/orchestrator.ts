@@ -3,6 +3,7 @@ import { runAgent, type ToolInvoker, type ToolSpec } from "@vellum/agent";
 import type { ChatMessage, Meter } from "@vellum/llm";
 import {
   renderSoul,
+  readPersonaMarkdown,
   type Persona,
   type PersonaStore,
   type RetrievalHit,
@@ -51,6 +52,9 @@ export interface OrchestratorOptions {
   dbPath?: string; // routing/binding table (own table; not persona memory)
   maxDepth?: number; // dispatch depth bound (default 1 — no nested routing)
   recallK?: number; // memory hits injected into persona context (default 5)
+  // Always-on persona markdown (#41); injectable for tests. Default reads
+  // ~/.vellum global + per-persona PERSONA.md fresh each turn.
+  readPersonaMarkdown?: (personaId: string) => string;
 }
 
 export class Orchestrator {
@@ -60,6 +64,7 @@ export class Orchestrator {
   private maxDepth: number;
   private recallK: number;
   private runLoop: RunLoop;
+  private readMarkdown: (personaId: string) => string;
 
   constructor(
     store: PersonaStore,
@@ -71,6 +76,7 @@ export class Orchestrator {
     this.maxDepth = opts.maxDepth ?? 1;
     this.recallK = opts.recallK ?? 5;
     this.runLoop = runLoop;
+    this.readMarkdown = opts.readPersonaMarkdown ?? readPersonaMarkdown;
     this.db = new Database(opts.dbPath ?? ":memory:");
     this.db.run(
       "CREATE TABLE IF NOT EXISTS routing (conversation_id TEXT PRIMARY KEY, persona_id TEXT NOT NULL, updated INTEGER NOT NULL)",
@@ -162,7 +168,12 @@ export class Orchestrator {
       message,
       this.recallK,
     );
-    const messages = buildContext(dec.persona, recalled, message);
+    const messages = buildContext(
+      dec.persona,
+      recalled,
+      message,
+      this.readMarkdown(dec.persona.id),
+    );
     const { text, meters } = await this.runLoop({
       persona: dec.persona,
       messages,
@@ -184,8 +195,12 @@ function buildContext(
   persona: Persona,
   recalled: RetrievalHit[],
   message: string,
+  personaMarkdown = "",
 ): ChatMessage[] {
+  // Compose order (#41): SOUL system prompt → always-on PERSONA.md (global then
+  // per-persona, user-authored steering) → the persona's own recalled memory.
   let system = renderSoul(persona.soul);
+  if (personaMarkdown) system += `\n\n${personaMarkdown}`;
   if (recalled.length) {
     const mem = recalled.map((h) => `- ${h.record.text}`).join("\n");
     system += `\n\nRelevant memory (yours only):\n${mem}`;

@@ -2,6 +2,11 @@
 // hard-walled memory + hybrid retrieval, a thin global layer, and SOUL identity.
 export { PersonaStore } from "./store.ts";
 export { renderSoul } from "./soul.ts";
+export {
+  readPersonaMarkdown,
+  listPersonaDocs,
+  personaDir,
+} from "./markdown.ts";
 export { hashEmbedder, openAiEmbedder } from "./embedder.ts";
 export type {
   Persona,
