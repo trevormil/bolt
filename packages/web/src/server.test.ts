@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { readFileSync, rmSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Meter } from "@vellum/llm";
@@ -109,11 +115,56 @@ describe("web API", () => {
     });
   });
 
-  test("SPA shell is served no-cache (so a rebuild's bundles aren't stale)", async () => {
-    const res = await app.request("/");
-    // The HTML shell must always revalidate — otherwise a browser keeps loading
-    // an old hashed bundle after an update (the "still seeing old UI" bug).
+  test("SPA cache policy: shell no-cache, hashed assets immutable (#54)", async () => {
+    // Hermetic: serve a throwaway dist fixture so the assertion never depends on
+    // whatever build a checkout happens to have (a clean checkout has none).
+    const dist = mkdtempSync(join(tmpdir(), "vellum-dist-"));
+    mkdirSync(join(dist, "assets"));
+    writeFileSync(
+      join(dist, "index.html"),
+      "<!doctype html><div id=root></div>",
+    );
+    writeFileSync(join(dist, "assets", "app-abc123.js"), "export const x=1;");
+    const a = buildApp(
+      makeEngine(),
+      new PaymentRequests(":memory:"),
+      undefined,
+      {
+        distDir: dist + "/",
+      },
+    );
+    try {
+      // The shell must always revalidate, or a browser keeps loading an old
+      // hashed bundle after a rebuild (the "still seeing old UI" bug).
+      const shell = await a.request("/");
+      expect(shell.status).toBe(200);
+      expect(shell.headers.get("cache-control")).toBe("no-cache");
+      // Hashed assets are immutable — safe to cache forever.
+      const asset = await a.request("/assets/app-abc123.js");
+      expect(asset.status).toBe(200);
+      expect(asset.headers.get("cache-control")).toContain("immutable");
+      // SPA routing: an unknown path falls back to the (no-cache) shell.
+      const spa = await a.request("/some/client/route");
+      expect(spa.headers.get("cache-control")).toBe("no-cache");
+    } finally {
+      rmSync(dist, { recursive: true, force: true });
+    }
+  });
+
+  test("missing build → clear 404, still no-cache (#54)", async () => {
+    const empty = mkdtempSync(join(tmpdir(), "vellum-empty-"));
+    const a = buildApp(
+      makeEngine(),
+      new PaymentRequests(":memory:"),
+      undefined,
+      {
+        distDir: empty + "/",
+      },
+    );
+    const res = await a.request("/");
+    expect(res.status).toBe(404);
     expect(res.headers.get("cache-control")).toBe("no-cache");
+    rmSync(empty, { recursive: true, force: true });
   });
 
   test("create persona provisions a bb1 wallet", async () => {

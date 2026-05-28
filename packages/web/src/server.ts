@@ -249,11 +249,15 @@ export function buildApp(
   setup: {
     envFilePath?: string;
     applyRuntime?: (partial: Partial<typeof env>) => void;
+    // Built-SPA directory (injectable so the cache-header behavior is testable
+    // against a fixture, not whatever dist a dev checkout happens to have).
+    distDir?: string;
   } = {},
 ) {
   const app = new Hono();
   const setupEnvFilePath = setup.envFilePath ?? join(process.cwd(), ".env");
   const applyRuntimeEnv = setup.applyRuntime ?? setRuntimeEnv;
+  const distDir = setup.distDir ?? DIST;
 
   // Security headers (#24 / T-11). Defense-in-depth even though the app binds
   // loopback by default: a malicious local page must not be able to frame the
@@ -921,11 +925,15 @@ export function buildApp(
   app.get("/*", async (c) => {
     const rel =
       c.req.path === "/" ? "index.html" : c.req.path.replace(/^\/+/, "");
-    let file = Bun.file(DIST + rel);
+    let file = Bun.file(distDir + rel);
     const served = await file.exists();
-    if (!served) file = Bun.file(DIST + "index.html");
+    if (!served) file = Bun.file(distDir + "index.html");
     if (!(await file.exists())) {
-      return c.text("build the SPA first: bun run build", 404);
+      // No build present — a clear error, also no-cache (it's the shell slot, and
+      // must not be cached past a build).
+      return c.text("build the SPA first: bun run build", 404, {
+        "cache-control": "no-cache",
+      });
     }
     const type = file.type || "application/octet-stream";
     // Vite's hashed assets are immutable (the hash changes when content does), so
