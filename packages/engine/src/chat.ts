@@ -3,7 +3,7 @@ import type { Engine } from "./engine.ts";
 import { vaultTools } from "./agent-tools.ts";
 import { combineTools, filesystemTools } from "./fs-tools.ts";
 import { scheduleTools } from "./schedule-tools.ts";
-import { llmBudget } from "./budgets.ts";
+import { evaluateBudget } from "./budget-setting.ts";
 
 export interface ChatInput {
   conversationId: string;
@@ -30,10 +30,13 @@ export async function chat(
 ): Promise<ChatResult> {
   const { conversationId, personaId, message, trace } = input;
 
-  const budget = llmBudget(engine.ledger, personaId);
-  if (!budget.ok) {
+  const budget = evaluateBudget(engine, personaId);
+  if (!budget.ok && budget.breached) {
+    const w = budget.windows[budget.breached]!;
+    const which =
+      budget.breached.charAt(0).toUpperCase() + budget.breached.slice(1);
     return {
-      reply: `Daily LLM budget of $${budget.capUsd.toFixed(2)} reached (spent $${budget.spentUsd.toFixed(4)}). It resets on a rolling 24h window.`,
+      reply: `${which} LLM budget of $${w.capUsd.toFixed(2)} reached (spent $${w.spentUsd.toFixed(4)}). It resets on a rolling window.`,
       costUsd: 0,
       tokens: 0,
       budgetExceeded: true,

@@ -360,6 +360,59 @@ describe("web API", () => {
   });
 });
 
+describe("per-persona spend budgets (#44)", () => {
+  test("GET /budget returns evaluation + limits; PUT sets per-persona limits", async () => {
+    await post("/api/personas", { name: "Atlas" });
+    const initial = (await (
+      await app.request("/api/personas/atlas/budget")
+    ).json()) as { evaluation: { ok: boolean }; limits: { source: string } };
+    expect(initial.evaluation.ok).toBe(true);
+    expect(initial.limits.source).toBe("default"); // env-default daily cap
+
+    const set = await app.request("/api/personas/atlas/budget-limits", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ dailyUsd: 2, weeklyUsd: 10 }),
+    });
+    expect(set.status).toBe(200);
+    expect(await set.json()).toEqual({
+      value: { dailyUsd: 2, weeklyUsd: 10 },
+      source: "persona",
+    });
+  });
+
+  test("PUT {} resets a persona to inherit", async () => {
+    await post("/api/personas", { name: "Atlas" });
+    await app.request("/api/personas/atlas/budget-limits", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ dailyUsd: 2 }),
+    });
+    const reset = await app.request("/api/personas/atlas/budget-limits", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(((await reset.json()) as { source: string }).source).toBe("default");
+  });
+
+  test("rejects malformed limits", async () => {
+    await post("/api/personas", { name: "Atlas" });
+    const bad = await app.request("/api/personas/atlas/budget-limits", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ dailyUsd: -1 }),
+    });
+    expect(bad.status).toBe(400);
+    const stray = await app.request("/api/personas/atlas/budget-limits", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ stray: 1 }),
+    });
+    expect(stray.status).toBe(400);
+  });
+});
+
 describe("per-persona model select (#43)", () => {
   test("GET → default null, PUT string → persona override, PUT null → reset", async () => {
     await post("/api/personas", { name: "Atlas" });

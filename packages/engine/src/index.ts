@@ -10,6 +10,13 @@ export {
 } from "./vaults.ts";
 export { vaultTools } from "./agent-tools.ts";
 export { Model } from "./model-setting.ts";
+export {
+  BudgetLimits,
+  BudgetLimitsSchema,
+  evaluateBudget,
+  type BudgetWindow,
+  type BudgetEvaluation,
+} from "./budget-setting.ts";
 export { filesystemTools, combineTools } from "./fs-tools.ts";
 export { scheduleTools } from "./schedule-tools.ts";
 export { TaskStore, type Task } from "./tasks.ts";

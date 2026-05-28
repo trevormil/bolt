@@ -14,6 +14,9 @@ import {
   grantDefaultCapabilities,
   CapabilityDeniedError,
   llmBudget,
+  evaluateBudget,
+  BudgetLimits,
+  BudgetLimitsSchema,
   Model,
   type Engine,
 } from "@vellum/engine";
@@ -278,7 +281,35 @@ export function buildApp(
     const id = c.req.param("id");
     if (!engine.store.getPersona(id))
       return c.json({ error: "unknown persona" }, 404);
-    return c.json({ llm: llmBudget(engine.ledger, id) });
+    // `llm` is the legacy rolling-24h shape (existing readers). `evaluation` is
+    // the #44 per-window evaluation (daily/weekly/monthly), used by the UI.
+    return c.json({
+      llm: llmBudget(engine.ledger, id),
+      evaluation: evaluateBudget(engine, id),
+      limits: BudgetLimits.get(engine.settings, id),
+    });
+  });
+
+  // Per-persona LLM-cost budget limits (#44). PUT body is a strict subset of
+  // { dailyUsd, weeklyUsd, monthlyUsd } — omit a key to leave it unset (no cap
+  // for that window). PUT {} clears all overrides (resets to inherit/default).
+  app.put("/api/personas/:id/budget-limits", async (c) => {
+    const id = c.req.param("id");
+    if (!engine.store.getPersona(id))
+      return c.json({ error: "unknown persona" }, 404);
+    const body = (await c.req.json().catch(() => ({}))) as unknown;
+    const parsed = BudgetLimitsSchema.safeParse(body);
+    if (!parsed.success)
+      return c.json(
+        { error: "invalid limits", issues: parsed.error.issues },
+        400,
+      );
+    if (Object.keys(parsed.data).length === 0) {
+      BudgetLimits.reset(engine.settings, id);
+    } else {
+      BudgetLimits.setPersona(engine.settings, id, parsed.data);
+    }
+    return c.json(BudgetLimits.get(engine.settings, id));
   });
 
   // Per-persona OpenRouter model override (#43). GET returns {value, source};
