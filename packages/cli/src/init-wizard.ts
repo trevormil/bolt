@@ -66,7 +66,12 @@ export async function initWizard(
   );
 
   console.log("\n  Setup complete:");
-  console.log(`   • persona   ${res.personaId} · ${res.address}`);
+  console.log(
+    res.card
+      .split("\n")
+      .map((l) => `   ${l}`)
+      .join("\n"),
+  );
   console.log(`   • data dir  ${res.dataDir}`);
   console.log(`   • secrets   ${res.envPath} (${res.wroteKeys.join(", ")})`);
   if (!openRouterKey)
