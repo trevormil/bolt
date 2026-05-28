@@ -62,4 +62,41 @@ describe("TaskScheduler.runDue (#36)", () => {
     expect(await sched.runDue(1000)).toBe(1); // counted as attempted
     expect(engine.tasks.get(t.id)!.nextRun).toBe(2000); // advanced despite failure
   });
+
+  test("emits a task_run event on success (ok) with the task metadata (#42)", async () => {
+    const engine = engineWith("digest");
+    engine.store.createPersona("p", "Atlas", {
+      name: "Atlas",
+      role: "assistant",
+      voice: "terse",
+    });
+    await engine.wallets.ensureWallet("p");
+    const t = engine.tasks.create({
+      personaId: "p",
+      prompt: "summarize the day",
+      intervalMs: 1000,
+      now: 0,
+      armed: true,
+    });
+    await new TaskScheduler({ engine, deliver: () => {} }).runDue(1000);
+    const ev = engine.events.recent("p").find((x) => x.kind === "task_run");
+    expect(ev).toBeTruthy();
+    expect(ev!.ok).toBe(true);
+    expect(ev!.meta).toMatchObject({ taskId: t.id, armed: true });
+  });
+
+  test("emits a task_run event on failure (ok=false) (#42)", async () => {
+    const engine = engineWith("ok");
+    const t = engine.tasks.create({
+      personaId: "ghost", // unknown persona → chat throws
+      prompt: "x",
+      intervalMs: 1000,
+      now: 0,
+    });
+    await new TaskScheduler({ engine, deliver: () => {} }).runDue(1000);
+    const ev = engine.events.recent("ghost").find((x) => x.kind === "task_run");
+    expect(ev).toBeTruthy();
+    expect(ev!.ok).toBe(false);
+    expect(ev!.meta).toMatchObject({ taskId: t.id });
+  });
 });

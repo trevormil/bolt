@@ -77,3 +77,45 @@ describe("vaultTools capability gating (#37)", () => {
     expect(out).toContain("Denied");
   });
 });
+
+describe("vault tool_call telemetry (#42)", () => {
+  test("a successful create_vault emits a tool_call event (ok, vault source)", async () => {
+    const e = eng();
+    await e.wallets.ensureWallet("p");
+    e.capabilities.grant({
+      personaId: "p",
+      capability: "vault.create",
+      scope: null,
+      mode: "allow",
+    });
+    await vaultTools(e, "p").invoke("create_vault", {
+      name: "Rent",
+      symbol: "vRENT",
+    });
+    const ev = e.events
+      .recent("p")
+      .find(
+        (x) => x.kind === "tool_call" && x.summary === "vault:create_vault",
+      );
+    expect(ev).toBeTruthy();
+    expect(ev!.ok).toBe(true);
+    expect(ev!.meta).toMatchObject({ tool: "create_vault", source: "vault" });
+  });
+
+  test("a denied vault tool records a blocked attempt (tool_call, ok=false)", async () => {
+    const e = eng();
+    await vaultTools(e, "p").invoke("withdraw_from_vault", {
+      collectionId: "777",
+      amountUsdc: 1,
+    });
+    const ev = e.events
+      .recent("p")
+      .find(
+        (x) =>
+          x.kind === "tool_call" && x.summary === "vault:withdraw_from_vault",
+      );
+    expect(ev).toBeTruthy();
+    expect(ev!.ok).toBe(false);
+    expect(ev!.meta).toMatchObject({ source: "vault" });
+  });
+});
