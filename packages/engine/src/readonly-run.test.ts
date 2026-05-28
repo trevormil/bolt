@@ -40,6 +40,8 @@ describe("read-only proactive runs (#24 / T-13)", () => {
     const ro = names();
     expect(ro).not.toContain("create_vault");
     expect(ro).not.toContain("withdraw_from_vault");
+    expect(ro).not.toContain("pay_from_vault"); // the highest-risk tool stays withheld
+    expect(ro).toContain("check_balance"); // read-only balance tool stays exposed (#51)
 
     await chat(engine, {
       conversationId: "c",
@@ -49,6 +51,8 @@ describe("read-only proactive runs (#24 / T-13)", () => {
     const full = names();
     expect(full).toContain("create_vault");
     expect(full).toContain("withdraw_from_vault");
+    expect(full).toContain("pay_from_vault");
+    expect(full).toContain("check_balance");
   });
 
   test("readOnly chat withholds fs_write and run_command; full run exposes them (#52)", async () => {

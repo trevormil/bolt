@@ -1,6 +1,12 @@
 import { CapabilityDeniedError } from "@vellum/capabilities";
 import type { ToolInvoker, ToolSpec } from "@vellum/agent";
+import { env } from "@vellum/shared";
 import type { Engine } from "./engine.ts";
+
+// Format a µ-denom integer string as a 2dp USDC figure (6 dp denom).
+function fmtUsdc(micro: string): string {
+  return (Number(micro) / 1e6).toFixed(2);
+}
 
 // Vault tools the persona's agent can call in chat (plain-English create/spend).
 // The agent does the heavy tx lifting; the human is the manager. Scoped to ONE
@@ -46,6 +52,26 @@ export function vaultTools(
           amountUsdc: { type: "number", description: "USDC to withdraw" },
         },
         required: ["collectionId", "amountUsdc"],
+      },
+    },
+    {
+      name: "pay_from_vault",
+      description:
+        "Pay USDC from a vault DIRECTLY to a recipient address, within the vault's on-chain limits (amount cap / time lock / multi-sig). Over-limit, locked, or unsigned-off pays are rejected on-chain — money never leaves. Use this to pay a vendor/person from earmarked vault funds.",
+      parameters: {
+        type: "object",
+        properties: {
+          collectionId: {
+            type: "string",
+            description: "The vault's collectionId",
+          },
+          amountUsdc: { type: "number", description: "USDC to pay" },
+          to: {
+            type: "string",
+            description: "Recipient's bb1 wallet address",
+          },
+        },
+        required: ["collectionId", "amountUsdc", "to"],
       },
     },
   ];
@@ -97,6 +123,17 @@ export function vaultTools(
         emitVaultTool("withdraw_from_vault", true);
         return `Withdrawal of ${args.amountUsdc} USDC submitted (tx ${(p.hash ?? p.id).slice(0, 10)}); confirming on-chain.`;
       }
+      if (name === "pay_from_vault") {
+        const micro = String(Math.round(Number(args.amountUsdc) * 1e6));
+        const p = await engine.vaults.pay(
+          personaId,
+          String(args.collectionId),
+          micro,
+          String(args.to),
+        );
+        emitVaultTool("pay_from_vault", true);
+        return `Payment of ${args.amountUsdc} USDC to ${args.to} submitted (tx ${(p.hash ?? p.id).slice(0, 10)}); confirming on-chain. It is rejected if it exceeds the vault's limits.`;
+      }
       return `unknown tool: ${name}`;
     } catch (e) {
       if (e instanceof CapabilityDeniedError) {
@@ -105,6 +142,60 @@ export function vaultTools(
       }
       throw e;
     }
+  };
+
+  return { tools, invoke };
+}
+
+// Read-only balance/escrow tool (#51). The agent must know what it has before it
+// acts (pay/withdraw), so this is exposed in EVERY run — including read-only /
+// proactive runs (T-13) — because it moves no value. Reads are chain truth: the
+// persona's own wallet USDC + its per-vault escrow (the agent's holding of each
+// vault's tokens). Scoped to ONE persona via the closure.
+export function balanceTools(
+  engine: Engine,
+  personaId: string,
+): { tools: ToolSpec[]; invoke: ToolInvoker } {
+  const tools: ToolSpec[] = [
+    {
+      name: "check_balance",
+      description:
+        "Read this persona's own funds: free USDC in the wallet plus the USDC escrowed in each vault. Use before paying or withdrawing so you know what is available. Read-only.",
+      parameters: { type: "object", properties: {} },
+    },
+  ];
+
+  const invoke: ToolInvoker = async (name) => {
+    if (name !== "check_balance") return `unknown tool: ${name}`;
+    const coins = await engine.wallets.balanceFor(personaId);
+    const walletMicro =
+      coins.find((c) => c.denom === env.VELLUM_DENOM)?.amount ?? "0";
+    const vaults = engine.vaults.list(personaId);
+    const escrows = await Promise.all(
+      vaults.map(async (v) => ({
+        symbol: v.symbol,
+        collectionId: v.collectionId,
+        escrowedMicro: (await engine.vaults.escrow(personaId, v.collectionId))
+          .escrowedMicro,
+      })),
+    );
+    // tool_call telemetry (#42): record the read happened (metadata only).
+    engine.events.emit({
+      personaId,
+      kind: "tool_call",
+      summary: "balance:check_balance",
+      ok: true,
+      meta: { tool: "check_balance", source: "balance" },
+    });
+    const vaultLines = escrows.length
+      ? escrows
+          .map(
+            (e) =>
+              `${e.symbol} (collection ${e.collectionId}): ${fmtUsdc(e.escrowedMicro)} USDC escrowed`,
+          )
+          .join("; ")
+      : "no vaults";
+    return `Wallet: ${fmtUsdc(walletMicro)} USDC free. Vaults: ${vaultLines}.`;
   };
 
   return { tools, invoke };

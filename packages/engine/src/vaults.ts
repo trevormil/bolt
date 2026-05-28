@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { confirmTx as chainConfirmTx } from "@vellum/chain";
+import { bankSendMsg, confirmTx as chainConfirmTx } from "@vellum/chain";
 import {
   createVault as tokCreateVault,
   vaultRefFromTx,
@@ -65,6 +65,14 @@ export interface VaultServiceDeps {
 }
 
 const DEFAULT_IMAGE = "https://avatars.githubusercontent.com/u/0?v=4";
+
+// A bech32 bb1 recipient (the chain prefix is "bb"). Cheap structural check —
+// CheckTx is the authority, but rejecting an obviously-wrong recipient before
+// broadcast gives the agent a clean error instead of a chain revert. Mirrors the
+// pattern asserted in chain/client.test (/^bb1[0-9a-z]{38,}$/).
+function isBb1Address(addr: string): boolean {
+  return /^bb1[0-9a-z]{38,}$/.test(addr);
+}
 
 async function defaultFetchTx(hash: string) {
   const res = await fetch(
@@ -331,6 +339,69 @@ export class VaultService {
       to: v.backingAddress,
       amount,
       memo: "vellum vault withdraw",
+    });
+  }
+
+  /**
+   * Agent pays `amount` µUSDC from a vault DIRECTLY to a recipient — governed
+   * (vault_op) and bound by the SAME on-chain withdrawal guardrails as
+   * `withdraw` (amount cap / time lock / multi-sig). Over-limit, time-locked, or
+   * unsigned-off pays are rejected at CheckTx, never reaching the recipient.
+   *
+   * SECURITY CRUX (#51): a vault's withdrawal approval is hardcoded
+   * `toListId: backingAddr` (buildVault) — vault tokens can ONLY be burned back
+   * to the backing alias (releasing base USDC); there is no on-chain approval to
+   * move vault tokens to an arbitrary recipient. So a pay is ONE ATOMIC tx of two
+   * msgs:
+   *   1. the gated withdraw (vaultTransferMsg → backingAddress, prioritizing the
+   *      withdrawApprovalId) — the amount/time/multisig criteria are enforced on
+   *      THIS leg at CheckTx, identical to `withdraw`;
+   *   2. a bank-send of the freed base USDC from the agent wallet → recipient.
+   * Because both msgs are in one atomic tx, if leg 1 is rejected by the gating
+   * the whole tx reverts and NO money reaches the recipient. The recipient is
+   * NEVER named in any approval — the gating constrains the agent's spend rate,
+   * not who receives — so adding a recipient cannot widen what the agent may move.
+   */
+  async pay(
+    personaId: string,
+    collectionId: string,
+    amount: string,
+    to: string,
+  ): Promise<PendingTx> {
+    // Gate on the SAME capability as withdraw — a pay is a gated withdraw plus a
+    // bank send of the freed USDC; no separate privilege, no weaker gate.
+    await this.authorize?.(personaId, {
+      capability: "vault.withdraw",
+      target: collectionId,
+      summary: `pay ${amount} from vault ${collectionId} to ${to}`,
+    });
+    if (!isBb1Address(to))
+      throw new Error(`invalid recipient address (expected bb1...): ${to}`);
+    const v = this.get(personaId, collectionId);
+    if (!v)
+      throw new Error(`no vault ${collectionId} for persona ${personaId}`);
+    const from = this.wallets.addressFor(personaId);
+    if (!from) throw new Error(`no wallet for persona: ${personaId}`);
+    // Leg 1: gated unback to backing (releases base USDC to the agent). The
+    // withdrawal approval's amount/time/multisig criteria gate this msg.
+    const unback = vaultTransferMsg({
+      agentAddress: from,
+      collectionId,
+      from,
+      to: v.backingAddress,
+      amount,
+      approvalId: v.withdrawApprovalId,
+    });
+    // Leg 2: bank-send the freed base USDC → recipient. Same tx → atomic with
+    // leg 1: if the gating rejects leg 1, this never executes.
+    const send = bankSendMsg(from, to, amount, env.VELLUM_DENOM);
+    return this.txManager.submit({
+      personaId,
+      kind: "vault_op",
+      msgs: [unback, send],
+      to,
+      amount,
+      memo: "vellum vault pay",
     });
   }
 

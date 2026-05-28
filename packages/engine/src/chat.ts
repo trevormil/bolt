@@ -2,7 +2,7 @@ import type { TraceSpan } from "@vellum/trace";
 import type { ToolInvoker, ToolSpec } from "@vellum/agent";
 import { createLogger } from "@vellum/shared";
 import type { Engine } from "./engine.ts";
-import { vaultTools } from "./agent-tools.ts";
+import { balanceTools, vaultTools } from "./agent-tools.ts";
 import { combineTools, filesystemTools } from "./fs-tools.ts";
 import { execTools } from "./exec-tools.ts";
 import { mcpTools } from "./mcp-tools.ts";
@@ -67,13 +67,19 @@ export async function chat(
   engine.orchestrator.resolve(conversationId, `/switch ${personaId}`);
   // Vault tools + capability-gated filesystem tools (#35) + command execution
   // (#52). All share the persona's compartment and enforce grants via
-  // engine.authorizer. In a read-only run (T-13) the value-moving vault tools,
-  // the mutating fs_write tool, AND command execution are all withheld entirely
-  // — an unattended read-only run can observe disk/state but cannot modify the
-  // host or move value. fs_read/fs_list stay so it can still inspect.
+  // engine.authorizer. In a read-only run (T-13) the value-moving vault tools
+  // (create/withdraw/pay), the mutating fs_write tool, AND command execution are
+  // all withheld entirely — an unattended read-only run can observe disk/state
+  // but cannot modify the host or move value. fs_read/fs_list stay so it can
+  // still inspect. The read-only balance tool (#51) is exposed in BOTH runs — it
+  // moves no value, and the agent must know its funds before it acts.
   const sets: { tools: ToolSpec[]; invoke: ToolInvoker }[] = readOnly
-    ? [filesystemTools(engine, personaId, { readOnly: true })]
+    ? [
+        balanceTools(engine, personaId),
+        filesystemTools(engine, personaId, { readOnly: true }),
+      ]
     : [
+        balanceTools(engine, personaId),
         vaultTools(engine, personaId),
         filesystemTools(engine, personaId),
         execTools(engine, personaId),

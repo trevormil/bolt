@@ -8,7 +8,7 @@ export {
   type CreateVaultRequest,
   type VaultServiceDeps,
 } from "./vaults.ts";
-export { vaultTools } from "./agent-tools.ts";
+export { vaultTools, balanceTools } from "./agent-tools.ts";
 export { mcpTools } from "./mcp-tools.ts";
 export {
   McpServers,
