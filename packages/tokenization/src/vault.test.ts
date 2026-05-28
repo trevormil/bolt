@@ -188,3 +188,34 @@ describe("multisig gating via votingChallenges (#45 slice 3)", () => {
     expect(c.votingChallenges[0].quorumThreshold).toBe("1");
   });
 });
+
+describe("manager-admin approvals (#45 slice 4)", () => {
+  const msg = buildVaultMsg(AGENT, INPUT); // manager = HUMAN
+  const apps = (msg.value as Record<string, any>).collectionApprovals;
+  const mw = apps.find((a: any) => a.approvalId === "vault-manager-withdraw");
+  const mr = apps.find((a: any) => a.approvalId === "vault-manager-revoke");
+
+  test("both manager approvals are added, initiated ONLY by the manager", () => {
+    expect(mw).toBeDefined();
+    expect(mr).toBeDefined();
+    expect(mw.initiatedByListId).toBe(HUMAN);
+    expect(mr.initiatedByListId).toBe(HUMAN);
+  });
+
+  test("manager withdraw drains circulating tokens to backing, overriding the holder", () => {
+    expect(mw.fromListId).toBe("!Mint");
+    expect(mw.approvalCriteria.overridesFromOutgoingApprovals).toBe(true);
+    expect(mw.approvalCriteria.allowBackedMinting).toBe(true);
+  });
+
+  test("manager revoke is a forceful clawback to the manager (overrides both sides)", () => {
+    expect(mr.toListId).toBe(HUMAN);
+    expect(mr.approvalCriteria.overridesFromOutgoingApprovals).toBe(true);
+    expect(mr.approvalCriteria.overridesToIncomingApprovals).toBe(true);
+  });
+
+  test("the agent (creator) is NOT on the manager approvals' initiator list", () => {
+    expect(mw.initiatedByListId).not.toBe(AGENT);
+    expect(mr.initiatedByListId).not.toBe(AGENT);
+  });
+});

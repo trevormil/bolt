@@ -118,6 +118,75 @@ export function applyGating(
   return msg;
 }
 
+const FOREVER = [{ start: "1", end: MAX_UINT64 }];
+
+// Manager-admin approval ids (#45 slice 4).
+export const VAULT_MANAGER_WITHDRAW_APPROVAL_ID = "vault-manager-withdraw";
+export const VAULT_MANAGER_REVOKE_APPROVAL_ID = "vault-manager-revoke";
+
+/**
+ * Manager = complete admin (#45 slice 4). Adds two collection approvals that
+ * ONLY the human manager can initiate, independent of the agent's gated
+ * withdrawal (no amount/time/vote limits apply to the manager):
+ *
+ *  1. `vault-manager-withdraw` — the manager can burn ANY circulating vault
+ *     tokens back to the backing (→ release USDC), draining/"archiving" the
+ *     vault. `overridesFromOutgoingApprovals` lets it burn the agent's holdings
+ *     without the agent's consent.
+ *  2. `vault-manager-revoke` — forceful clawback: move the agent's vault tokens
+ *     to the manager, with `overridesFromOutgoingApprovals` +
+ *     `overridesToIncomingApprovals` so neither side's user approval is needed.
+ *
+ * The agent never gets these (initiatedBy is the manager address only).
+ */
+export function applyManagerAdmin(
+  msg: MsgJson,
+  managerAddress: string,
+): MsgJson {
+  const value = msg.value as {
+    collectionApprovals?: Record<string, unknown>[];
+  };
+  const backingAddr = (value.collectionApprovals ?? []).find(
+    (a) =>
+      typeof a.approvalId === "string" &&
+      (a.approvalId as string).startsWith("vault-withdraw"),
+  )?.toListId as string | undefined;
+  const base = {
+    initiatedByListId: managerAddress,
+    customData: "",
+    transferTimes: FOREVER,
+    tokenIds: FOREVER,
+    ownershipTimes: FOREVER,
+    version: "0",
+  };
+  value.collectionApprovals = [
+    ...(value.collectionApprovals ?? []),
+    {
+      ...base,
+      fromListId: "!Mint", // burn circulating tokens → backing (release USDC)
+      toListId: backingAddr,
+      approvalId: VAULT_MANAGER_WITHDRAW_APPROVAL_ID,
+      approvalCriteria: {
+        mustPrioritize: true,
+        allowBackedMinting: true,
+        overridesFromOutgoingApprovals: true,
+      },
+    },
+    {
+      ...base,
+      fromListId: "!Mint", // claw circulating tokens (the agent's) → manager
+      toListId: managerAddress,
+      approvalId: VAULT_MANAGER_REVOKE_APPROVAL_ID,
+      approvalCriteria: {
+        mustPrioritize: true,
+        overridesFromOutgoingApprovals: true,
+        overridesToIncomingApprovals: true,
+      },
+    },
+  ];
+  return msg;
+}
+
 /**
  * Build the vault-create message: a 1:1 USDC-backed Smart Token collection.
  * Agent is the creator (signer); the human is the manager. Pure — no I/O — so
@@ -147,6 +216,8 @@ export function buildVaultMsg(
   msg.value.creator = agentAddress;
   msg.value.manager = input.managerAddress;
   if (input.gating) applyGating(msg, input.gating);
+  // The manager always gets complete-admin approvals (#45 slice 4).
+  applyManagerAdmin(msg, input.managerAddress);
   return msg;
 }
 
