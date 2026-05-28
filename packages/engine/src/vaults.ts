@@ -43,6 +43,12 @@ export interface VaultServiceDeps {
     events?: { type: string; attributes: { key: string; value: string }[] }[];
   }>;
   defaultManager?: string; // fallback manager addr (engine passes env.VELLUM_PRINCIPAL_ADDRESS)
+  // Capability gate (#37) at the chokepoint — throws if the persona lacks the
+  // capability, so a direct VaultService call can't bypass the surface gates.
+  authorize?: (
+    personaId: string,
+    action: { capability: string; target?: string; summary: string },
+  ) => Promise<void>;
 }
 
 const DEFAULT_IMAGE = "https://avatars.githubusercontent.com/u/0?v=4";
@@ -73,8 +79,10 @@ export class VaultService {
   private confirmTx: typeof chainConfirmTx;
   private fetchTx: NonNullable<VaultServiceDeps["fetchTx"]>;
   private defaultManager: string | undefined;
+  private authorize: VaultServiceDeps["authorize"];
 
   constructor(deps: VaultServiceDeps) {
+    this.authorize = deps.authorize;
     this.wallets = deps.wallets;
     this.ledger = deps.ledger;
     this.txManager = deps.txManager;
@@ -97,6 +105,10 @@ export class VaultService {
     personaId: string,
     req: CreateVaultRequest,
   ): Promise<VaultRecord> {
+    await this.authorize?.(personaId, {
+      capability: "vault.create",
+      summary: `create vault ${req.symbol}`,
+    });
     const manager = req.managerAddress ?? this.defaultManager;
     if (!manager) {
       throw new Error(
@@ -179,6 +191,11 @@ export class VaultService {
     collectionId: string,
     amount: string,
   ): Promise<PendingTx> {
+    await this.authorize?.(personaId, {
+      capability: "vault.withdraw",
+      target: collectionId,
+      summary: `withdraw ${amount} from vault ${collectionId}`,
+    });
     const v = this.get(personaId, collectionId);
     if (!v)
       throw new Error(`no vault ${collectionId} for persona ${personaId}`);

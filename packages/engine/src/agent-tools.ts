@@ -1,3 +1,4 @@
+import { CapabilityDeniedError } from "@vellum/capabilities";
 import type { ToolInvoker, ToolSpec } from "@vellum/agent";
 import type { Engine } from "./engine.ts";
 
@@ -49,53 +50,46 @@ export function vaultTools(
     },
   ];
 
+  // VaultService gates create/withdraw at the chokepoint (#37) and throws
+  // CapabilityDeniedError on deny — caught here so the agent gets a clean message.
   const invoke: ToolInvoker = async (name, args) => {
-    if (name === "create_vault") {
-      if (
-        !(await engine.authorizer.authorize(personaId, {
-          capability: "vault.create",
-          summary: `create vault ${String(args.symbol)}`,
-        }))
-      )
-        return "Denied: no permission to create vaults.";
-      const v = await engine.vaults.create(personaId, {
-        name: String(args.name),
-        symbol: String(args.symbol),
-        dailyWithdrawLimit:
-          args.dailyWithdrawLimit != null
-            ? Number(args.dailyWithdrawLimit)
-            : undefined,
-      });
-      return `Created vault ${v.symbol} (collection ${v.collectionId}); the human is the manager. Fund it from your wallet to start.`;
+    try {
+      if (name === "create_vault") {
+        const v = await engine.vaults.create(personaId, {
+          name: String(args.name),
+          symbol: String(args.symbol),
+          dailyWithdrawLimit:
+            args.dailyWithdrawLimit != null
+              ? Number(args.dailyWithdrawLimit)
+              : undefined,
+        });
+        return `Created vault ${v.symbol} (collection ${v.collectionId}); the human is the manager. Fund it from your wallet to start.`;
+      }
+      if (name === "list_vaults") {
+        const vs = engine.vaults.list(personaId);
+        return vs.length
+          ? vs
+              .map(
+                (v) => `${v.symbol} — collection ${v.collectionId} (${v.name})`,
+              )
+              .join("; ")
+          : "No vaults yet.";
+      }
+      if (name === "withdraw_from_vault") {
+        const micro = String(Math.round(Number(args.amountUsdc) * 1e6));
+        const p = await engine.vaults.withdraw(
+          personaId,
+          String(args.collectionId),
+          micro,
+        );
+        return `Withdrawal of ${args.amountUsdc} USDC submitted (tx ${(p.hash ?? p.id).slice(0, 10)}); confirming on-chain.`;
+      }
+      return `unknown tool: ${name}`;
+    } catch (e) {
+      if (e instanceof CapabilityDeniedError)
+        return `Denied: ${e.action.summary}.`;
+      throw e;
     }
-    if (name === "list_vaults") {
-      const vs = engine.vaults.list(personaId);
-      return vs.length
-        ? vs
-            .map(
-              (v) => `${v.symbol} — collection ${v.collectionId} (${v.name})`,
-            )
-            .join("; ")
-        : "No vaults yet.";
-    }
-    if (name === "withdraw_from_vault") {
-      const micro = String(Math.round(Number(args.amountUsdc) * 1e6));
-      if (
-        !(await engine.authorizer.authorize(personaId, {
-          capability: "vault.withdraw",
-          target: String(args.collectionId),
-          summary: `withdraw ${args.amountUsdc} USDC from vault ${String(args.collectionId)}`,
-        }))
-      )
-        return "Denied: no permission to withdraw from vaults.";
-      const p = await engine.vaults.withdraw(
-        personaId,
-        String(args.collectionId),
-        micro,
-      );
-      return `Withdrawal of ${args.amountUsdc} USDC submitted (tx ${(p.hash ?? p.id).slice(0, 10)}); confirming on-chain.`;
-    }
-    return `unknown tool: ${name}`;
   };
 
   return { tools, invoke };

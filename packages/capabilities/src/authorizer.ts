@@ -10,6 +10,17 @@ export interface AuthAction {
   summary: string; // human-legible, shown in the approval prompt + ledger
 }
 
+// Thrown by authorizeOrThrow when a gated action is denied — lets the engine
+// chokepoints (VaultService, TxManager) enforce capabilities so a direct call
+// can't bypass the surface gates, while surfaces catch this to return a clean
+// "denied" message rather than a 500.
+export class CapabilityDeniedError extends Error {
+  constructor(readonly action: AuthAction) {
+    super(`denied: ${action.summary}`);
+    this.name = "CapabilityDeniedError";
+  }
+}
+
 export type Approver = (action: AuthAction) => boolean | Promise<boolean>;
 
 // Minimal ledger surface (avoids a hard dep on @vellum/ledger here).
@@ -68,5 +79,12 @@ export class Authorizer {
       },
     });
     return allowed;
+  }
+
+  /** authorize(), but throw CapabilityDeniedError when blocked — for engine
+   *  chokepoints that must hard-stop a denied action. */
+  async authorizeOrThrow(personaId: string, action: AuthAction): Promise<void> {
+    if (!(await this.authorize(personaId, action)))
+      throw new CapabilityDeniedError(action);
   }
 }

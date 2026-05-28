@@ -1,4 +1,4 @@
-import { chat, type Engine } from "@vellum/engine";
+import { chat, grantDefaultCapabilities, type Engine } from "@vellum/engine";
 import { env } from "@vellum/shared";
 
 // Handlers take a structural subset of grammY's Context so they're unit-testable
@@ -21,6 +21,7 @@ async function ensurePersona(engine: Engine): Promise<string> {
       voice: "warm, concise, plain-English",
     });
     await engine.wallets.ensureWallet(PERSONA_ID);
+    grantDefaultCapabilities(engine.capabilities, PERSONA_ID); // #37 baseline
   }
   return PERSONA_ID;
 }

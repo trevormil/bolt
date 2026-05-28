@@ -12,6 +12,7 @@ import {
   createEngine,
   chat,
   grantDefaultCapabilities,
+  CapabilityDeniedError,
   llmBudget,
   type Engine,
 } from "@vellum/engine";
@@ -342,21 +343,19 @@ export function buildApp(
     if (!body.name?.trim() || !body.symbol?.trim()) {
       return c.json({ error: "name and symbol are required" }, 400);
     }
-    if (
-      !(await engine.authorizer.authorize(id, {
-        capability: "vault.create",
-        summary: `create vault ${body.symbol.trim()}`,
-      }))
-    ) {
-      return c.json({ error: "denied: persona lacks 'vault.create'" }, 403);
+    try {
+      const vault = await engine.vaults.create(id, {
+        name: body.name.trim(),
+        symbol: body.symbol.trim(),
+        description: body.description?.trim(),
+        dailyWithdrawLimit: body.dailyWithdrawLimit,
+      });
+      return c.json(vault, 201);
+    } catch (e) {
+      if (e instanceof CapabilityDeniedError)
+        return c.json({ error: e.message }, 403);
+      throw e;
     }
-    const vault = await engine.vaults.create(id, {
-      name: body.name.trim(),
-      symbol: body.symbol.trim(),
-      description: body.description?.trim(),
-      dailyWithdrawLimit: body.dailyWithdrawLimit,
-    });
-    return c.json(vault, 201);
   });
 
   app.post("/api/personas/:id/vaults/:collectionId/withdraw", async (c) => {
@@ -372,16 +371,13 @@ export function buildApp(
       );
     }
     const collectionId = c.req.param("collectionId");
-    if (
-      !(await engine.authorizer.authorize(id, {
-        capability: "vault.withdraw",
-        target: collectionId,
-        summary: `withdraw ${amount} from vault ${collectionId}`,
-      }))
-    ) {
-      return c.json({ error: "denied: persona lacks 'vault.withdraw'" }, 403);
+    try {
+      return c.json(await engine.vaults.withdraw(id, collectionId, amount));
+    } catch (e) {
+      if (e instanceof CapabilityDeniedError)
+        return c.json({ error: e.message }, 403);
+      throw e;
     }
-    return c.json(await engine.vaults.withdraw(id, collectionId, amount));
   });
 
   // Payment requests (0014) — the agent/user raises a one-time funding request;

@@ -76,6 +76,12 @@ export function createEngine(opts: EngineOptions = {}): Engine {
     { defaultPersonaId: "", dbPath },
     opts.runLoop,
   );
+  // Capabilities first so the vault chokepoint can gate (#37).
+  const capabilities = new CapabilityStore(dbPath);
+  const authorizer = new Authorizer(capabilities, {
+    ledger,
+    approve: opts.approve,
+  });
   const txManager = new TxManager({
     wallets,
     ledger,
@@ -87,12 +93,11 @@ export function createEngine(opts: EngineOptions = {}): Engine {
     wallets,
     ledger,
     txManager,
+    // Gate vault create/withdraw at the chokepoint — a direct call can't bypass
+    // the surface gates. Throws CapabilityDeniedError; callers catch it.
+    authorize: (personaId, action) =>
+      authorizer.authorizeOrThrow(personaId, action),
     ...opts.vault,
-  });
-  const capabilities = new CapabilityStore(dbPath);
-  const authorizer = new Authorizer(capabilities, {
-    ledger,
-    approve: opts.approve,
   });
   const claimFaucet = opts.claimFaucet ?? chainClaimFaucet;
   log.info(`engine ready · db=${dbPath}`);

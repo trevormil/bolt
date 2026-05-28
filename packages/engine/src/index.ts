@@ -15,6 +15,7 @@ export { llmBudget, type LlmBudget } from "./budgets.ts";
 // @vellum/capabilities dep (#37).
 export {
   grantDefaultCapabilities,
+  CapabilityDeniedError,
   type Grant,
   type Approver,
 } from "@vellum/capabilities";

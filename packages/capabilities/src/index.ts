@@ -10,6 +10,7 @@ export {
 } from "./store.ts";
 export {
   Authorizer,
+  CapabilityDeniedError,
   type AuthAction,
   type Approver,
   type AuthLedger,
