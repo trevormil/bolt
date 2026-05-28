@@ -125,30 +125,3 @@ function Field({
     </label>
   );
 }
-
-function Choice({
-  active,
-  onClick,
-  title,
-  sub,
-}: {
-  active: boolean;
-  onClick: () => void;
-  title: string;
-  sub: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={
-        "flex-1 rounded-lg border-2 px-3 py-2 text-left transition-colors " +
-        (active
-          ? "border-accent bg-accent-soft/50 text-fg shadow-glow"
-          : "border-border text-muted hover:border-accent/60 hover:text-fg")
-      }
-    >
-      <div className="text-sm font-medium">{title}</div>
-      <div className="text-[11px] text-soft">{sub}</div>
-    </button>
-  );
-}
