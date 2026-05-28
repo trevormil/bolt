@@ -4,7 +4,6 @@ import { confirmTx } from "@vellum/chain";
 import { tracer } from "@vellum/trace";
 import {
   createLogger,
-  dataDir,
   env,
   ensureDataDir,
   migrateLegacyDb,
@@ -334,8 +333,9 @@ export function buildApp(
   );
 
   // Onboarding setup status (#19) — what's configured, so the web onboarding can
-  // guide a from-scratch user to the terminal wizard for secrets. Booleans only;
-  // never the key/mnemonic values themselves.
+  // guide a from-scratch user to the terminal wizard for secrets. Booleans/counts
+  // ONLY: never the key/mnemonic values, and never the local data-dir path
+  // (unauthenticated route — no local filesystem disclosure; !48 review).
   app.get("/api/setup-status", (c) =>
     c.json({
       hasLlmKey: !!(
@@ -346,7 +346,6 @@ export function buildApp(
       hasWallet: !!env.AGENT_SIGNER_MNEMONIC,
       personaCount: engine.store.listPersonas().length,
       daemonExposed: !isLoopback(env.WEB_HOST),
-      dataDir: dataDir(),
     }),
   );
 

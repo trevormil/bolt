@@ -942,9 +942,10 @@ describe("setup status (#19)", () => {
     expect(s).toHaveProperty("hasLlmKey");
     expect(s).toHaveProperty("hasWallet");
     expect(s).toHaveProperty("personaCount");
-    expect(s).toHaveProperty("dataDir");
-    // Never leak the actual secrets.
+    // Never leak secrets OR local path material (!48 review) — booleans/counts only.
+    expect(s).not.toHaveProperty("dataDir");
     expect(JSON.stringify(s)).not.toContain("mnemonic");
+    expect(JSON.stringify(s)).not.toContain("/");
     expect(s.personaCount).toBe(0);
     await post("/api/personas", { name: "Atlas" });
     const after = (await (await app.request("/api/setup-status")).json()) as {

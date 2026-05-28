@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdtempSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { upsertEnvFile } from "./env-file.ts";
@@ -42,6 +48,13 @@ describe("upsertEnvFile (#19)", () => {
     const text = readFileSync(path, "utf8");
     expect(text).toContain("WEB_PORT=8787");
     expect(text).toContain("VELLUM_API_TOKEN=tok123");
+  });
+
+  test("tightens an existing world-readable file to owner-only 0600 (!48 HIGH)", () => {
+    const path = tmpEnv("OPENROUTER_API_KEY=old\n");
+    chmodSync(path, 0o644); // pre-existing permissive file (editor / cp)
+    upsertEnvFile(path, { AGENT_SIGNER_MNEMONIC: "a b c" });
+    expect(statSync(path).mode & 0o777).toBe(0o600);
   });
 
   test("is idempotent — re-applying the same value leaves one line", () => {

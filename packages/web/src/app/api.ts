@@ -347,13 +347,13 @@ export interface EventSummary {
   last30d: EventSummaryWindow;
 }
 
-// Onboarding setup status (#19). Booleans only — never the secret values.
+// Onboarding setup status (#19). Booleans/counts only — never secret values or
+// local path material (the route is unauthenticated).
 export interface SetupStatus {
   hasLlmKey: boolean;
   hasWallet: boolean;
   personaCount: number;
   daemonExposed: boolean;
-  dataDir: string;
 }
 
 export interface EscrowInfo {

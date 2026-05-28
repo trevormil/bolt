@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 
 // Minimal .env reader/writer for the install wizard (#19). The wizard persists
 // secrets (OpenRouter key, agent mnemonic, optional API token) to the repo .env
@@ -46,6 +46,11 @@ export function upsertEnvFile(
 
   let text = out.join("\n");
   if (!text.endsWith("\n")) text += "\n";
-  writeFileSync(path, text, { mode: 0o600 }); // secrets — owner-only
+  writeFileSync(path, text, { mode: 0o600 });
+  // `mode` only applies when the file is CREATED — an existing .env (e.g. from an
+  // editor or `cp .env.example`) keeps its old, possibly group/world-readable
+  // perms. Always tighten to owner-only since we just wrote secrets into it.
+  // (!48 HIGH.)
+  chmodSync(path, 0o600);
   return Object.keys(updates);
 }
