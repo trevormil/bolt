@@ -34,6 +34,7 @@ import {
   type GatingPeriod,
 } from "@vellum/tokenization";
 import { PaymentRequests } from "./payment-requests.ts";
+import { DepositRequests } from "./deposit-requests.ts";
 
 // Built SPA dir, resolved from this file (cwd-independent) so the server can be
 // launched from the repo root (where .env loads) or from packages/web alike.
@@ -211,6 +212,19 @@ export function isPublicRoute(method: string, path: string): boolean {
     /^\/api\/payment-requests\/[^/]+\/confirm$/.test(path)
   )
     return true;
+  // Vault deposit-request share links (#62) — same trust posture as the pay
+  // links: the /deposit/:id page is opened by anyone the funder shares it with,
+  // and reads the request + confirms (deletes) it after the funder signs. The
+  // confirm is a bare delete-by-id (no on-chain verification, unlike the payment
+  // confirm), so the worst a stranger can do is dismiss a pending UI prompt — no
+  // funds are at risk because the deposit IS the funder's own on-chain tx.
+  if (method === "GET" && /^\/api\/deposit-requests\/[^/]+$/.test(path))
+    return true;
+  if (
+    method === "POST" &&
+    /^\/api\/deposit-requests\/[^/]+\/confirm$/.test(path)
+  )
+    return true;
   // Vault sign-off info is public (collectionId + signers are on-chain) — the
   // third-party sign-off page (#45 slice 3) reads it without a persona session.
   if (method === "GET" && /^\/api\/vaults\/[^/]+\/signoff$/.test(path))
@@ -239,6 +253,8 @@ export function buildApp(
   // Injectable so tests get an isolated store; prod shares the engine's sqlite
   // file (own table). Defaults to the configured DB path.
   paymentRequests = new PaymentRequests(env.VELLUM_DB_PATH),
+  // Vault deposit requests (#62) — parallel to paymentRequests, own table.
+  depositRequests = new DepositRequests(env.VELLUM_DB_PATH),
   // Auth config (injectable for tests). Defaults to env.
   auth: { token?: string; host?: string } = {
     token: env.VELLUM_API_TOKEN,
@@ -906,6 +922,87 @@ export function buildApp(
     const r = paymentRequests.get(c.req.param("reqId"));
     if (!r) return c.json({ error: "unknown payment request" }, 404);
     paymentRequests.delete(r.id);
+    return c.json({ ok: true });
+  });
+
+  // Vault deposit requests (#62) — the "fund this vault" analog of payment
+  // requests. The agent/user raises a one-time deposit request for a specific
+  // vault; the funder opens the /deposit/:id link and signs `vaultDepositMsg` to
+  // fund the vault's escrow from their own Keplr wallet (the minted vault tokens
+  // go to the persona agent, who later withdraws within the vault's rules).
+  app.post("/api/personas/:id/deposit-requests", async (c) => {
+    const id = c.req.param("id");
+    if (!engine.store.getPersona(id))
+      return c.json({ error: "unknown persona" }, 404);
+    const agentAddress = engine.wallets.addressFor(id);
+    if (!agentAddress) return c.json({ error: "persona has no wallet" }, 400);
+    const body = (await c.req.json().catch(() => ({}))) as {
+      collectionId?: string;
+      amountUsdc?: number;
+      memo?: string;
+    };
+    const collectionId = body.collectionId?.trim();
+    if (!collectionId)
+      return c.json({ error: "collectionId is required" }, 400);
+    const vault = engine.vaults.getByCollection(collectionId);
+    // The vault must belong to this persona — a deposit request always targets
+    // one of the persona's own vaults.
+    if (!vault || vault.personaId !== id)
+      return c.json({ error: "unknown vault for this persona" }, 404);
+    const usd = Number(body.amountUsdc);
+    if (!Number.isFinite(usd) || usd <= 0)
+      return c.json({ error: "amountUsdc must be a number > 0" }, 400);
+    const req = depositRequests.create({
+      personaId: id,
+      collectionId: vault.collectionId,
+      vaultSymbol: vault.symbol,
+      vaultName: vault.name,
+      backingAddress: vault.backingAddress,
+      agentAddress,
+      denom: env.VELLUM_DENOM,
+      amount: String(Math.round(usd * 1e6)),
+      memo: body.memo?.trim() || `Fund ${vault.symbol} vault`,
+    });
+    return c.json(req, 201);
+  });
+
+  app.get("/api/personas/:id/deposit-requests", (c) => {
+    const id = c.req.param("id");
+    if (!engine.store.getPersona(id))
+      return c.json({ error: "unknown persona" }, 404);
+    return c.json({ requests: depositRequests.listForPersona(id) });
+  });
+
+  // Public — the deposit page fetches this without persona context.
+  app.get("/api/deposit-requests/:reqId", (c) => {
+    const r = depositRequests.get(c.req.param("reqId"));
+    if (!r) return c.json({ error: "unknown deposit request" }, 404);
+    const persona = engine.store.getPersona(r.personaId);
+    return c.json({
+      request: r,
+      personaName: persona?.soul.name ?? r.personaId,
+    });
+  });
+
+  // The funder signed + broadcast `vaultDepositMsg` client-side (inline, or via
+  // the /deposit link). Unlike the payment-request confirm — which verifies the
+  // on-chain credit before deleting — this is intentionally LIGHT: a bare
+  // delete-by-id. The deposit IS the funder's own on-chain tx (the permanent
+  // trail is on-chain escrow), so there's nothing to record in the ledger and a
+  // premature delete only removes a pending UI prompt — no funds at risk. (#62)
+  app.post("/api/deposit-requests/:reqId/confirm", (c) => {
+    const r = depositRequests.get(c.req.param("reqId"));
+    // Already fulfilled (or never existed) — the deposit, if any, is on-chain.
+    if (!r) return c.json({ error: "unknown or already-filled request" }, 404);
+    depositRequests.delete(r.id);
+    return c.json({ ok: true });
+  });
+
+  // Dismiss a pending deposit request without funding it.
+  app.delete("/api/deposit-requests/:reqId", (c) => {
+    const r = depositRequests.get(c.req.param("reqId"));
+    if (!r) return c.json({ error: "unknown deposit request" }, 404);
+    depositRequests.delete(r.id);
     return c.json({ ok: true });
   });
 

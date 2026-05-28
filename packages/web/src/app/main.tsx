@@ -2,6 +2,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App.tsx";
 import { PayPage } from "./PayPage.tsx";
+import { DepositPage } from "./DepositPage.tsx";
 import { VotePage } from "./VotePage.tsx";
 import { WalletProvider } from "./wallet-context.tsx";
 import "./styles.css";
@@ -19,10 +20,11 @@ if ("serviceWorker" in navigator && import.meta.env.PROD) {
   });
 }
 
-// Minimal path routing — standalone public routes are the pay page (/pay/:id)
-// and the multisig sign-off page (/vote/:collectionId). Everything else is the
-// single-page app. (No router dep needed.)
+// Minimal path routing — standalone public routes are the pay page (/pay/:id),
+// the vault deposit page (/deposit/:id), and the multisig sign-off page
+// (/vote/:collectionId). Everything else is the single-page app. (No router dep.)
 const payMatch = window.location.pathname.match(/^\/pay\/([^/]+)/);
+const depositMatch = window.location.pathname.match(/^\/deposit\/([^/]+)/);
 const voteMatch = window.location.pathname.match(/^\/vote\/([^/]+)/);
 
 createRoot(document.getElementById("root")!).render(
@@ -30,6 +32,8 @@ createRoot(document.getElementById("root")!).render(
     <WalletProvider>
       {payMatch ? (
         <PayPage reqId={decodeURIComponent(payMatch[1]!)} />
+      ) : depositMatch ? (
+        <DepositPage reqId={decodeURIComponent(depositMatch[1]!)} />
       ) : voteMatch ? (
         <VotePage collectionId={decodeURIComponent(voteMatch[1]!)} />
       ) : (

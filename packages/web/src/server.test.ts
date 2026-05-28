@@ -20,6 +20,7 @@ import {
   parseGating,
 } from "./server.ts";
 import { PaymentRequests } from "./payment-requests.ts";
+import { DepositRequests } from "./deposit-requests.ts";
 
 const METER: Meter = {
   model: "test",
@@ -98,7 +99,11 @@ let engine: ReturnType<typeof createEngine>;
 let app: ReturnType<typeof buildApp>;
 beforeEach(() => {
   engine = makeEngine();
-  app = buildApp(engine, new PaymentRequests(":memory:"));
+  app = buildApp(
+    engine,
+    new PaymentRequests(":memory:"),
+    new DepositRequests(":memory:"),
+  );
 });
 
 const post = (path: string, body: unknown) =>
@@ -128,6 +133,7 @@ describe("web API", () => {
     const a = buildApp(
       makeEngine(),
       new PaymentRequests(":memory:"),
+      new DepositRequests(":memory:"),
       undefined,
       {
         distDir: dist + "/",
@@ -156,6 +162,7 @@ describe("web API", () => {
     const a = buildApp(
       makeEngine(),
       new PaymentRequests(":memory:"),
+      new DepositRequests(":memory:"),
       undefined,
       {
         distDir: empty + "/",
@@ -808,9 +815,150 @@ describe("payment requests (0014)", () => {
   });
 });
 
+describe("vault deposit requests (#62)", () => {
+  // Create a persona + a vault (collectionId "777" per the fake create tx) so the
+  // deposit-request route — which targets an existing vault — has something to
+  // reference.
+  async function setupVault() {
+    await post("/api/personas", { name: "Atlas" });
+    const created = await post("/api/personas/atlas/vaults", {
+      name: "Groceries",
+      symbol: "vUSDC",
+    });
+    expect(created.status).toBe(201);
+  }
+
+  test("create → public get → list a deposit request for a vault", async () => {
+    await setupVault();
+    const created = await post("/api/personas/atlas/deposit-requests", {
+      collectionId: "777",
+      amountUsdc: 12.5,
+      memo: "top up groceries",
+    });
+    expect(created.status).toBe(201);
+    const req = (await created.json()) as {
+      id: string;
+      amount: string;
+      collectionId: string;
+      vaultSymbol: string;
+      backingAddress: string;
+      agentAddress: string;
+      memo: string;
+    };
+    expect(req.amount).toBe("12500000"); // µUSDC
+    expect(req.collectionId).toBe("777");
+    expect(req.vaultSymbol).toBe("vUSDC");
+    expect(req.backingAddress).toBe("bb1backing");
+    expect(req.agentAddress.startsWith("bb1")).toBe(true);
+    expect(req.memo).toBe("top up groceries");
+
+    // Public fetch by id (no persona context) → request + persona name.
+    const got = (await (
+      await app.request(`/api/deposit-requests/${req.id}`)
+    ).json()) as { request: { id: string }; personaName: string };
+    expect(got.request.id).toBe(req.id);
+    expect(got.personaName).toBe("Atlas");
+
+    const list = (await (
+      await app.request("/api/personas/atlas/deposit-requests")
+    ).json()) as { requests: { id: string }[] };
+    expect(list.requests.map((r) => r.id)).toContain(req.id);
+  });
+
+  test("validates amount, persona, and that the vault exists for the persona", async () => {
+    await setupVault();
+    // amount must be > 0
+    expect(
+      (
+        await post("/api/personas/atlas/deposit-requests", {
+          collectionId: "777",
+          amountUsdc: 0,
+        })
+      ).status,
+    ).toBe(400);
+    // collectionId is required
+    expect(
+      (await post("/api/personas/atlas/deposit-requests", { amountUsdc: 5 }))
+        .status,
+    ).toBe(400);
+    // unknown persona
+    expect(
+      (
+        await post("/api/personas/ghost/deposit-requests", {
+          collectionId: "777",
+          amountUsdc: 5,
+        })
+      ).status,
+    ).toBe(404);
+    // unknown vault for this persona
+    expect(
+      (
+        await post("/api/personas/atlas/deposit-requests", {
+          collectionId: "999",
+          amountUsdc: 5,
+        })
+      ).status,
+    ).toBe(404);
+    // unknown request id → 404
+    expect((await app.request("/api/deposit-requests/nope")).status).toBe(404);
+  });
+
+  test("confirm deletes the request (light, no on-chain verification)", async () => {
+    await setupVault();
+    const req = (await (
+      await post("/api/personas/atlas/deposit-requests", {
+        collectionId: "777",
+        amountUsdc: 4,
+      })
+    ).json()) as { id: string };
+
+    const confirm = await post(`/api/deposit-requests/${req.id}/confirm`, {});
+    expect(confirm.status).toBe(200);
+
+    // Gone after confirm — its share link now 404s.
+    expect((await app.request(`/api/deposit-requests/${req.id}`)).status).toBe(
+      404,
+    );
+    const after = (await (
+      await app.request("/api/personas/atlas/deposit-requests")
+    ).json()) as { requests: { id: string }[] };
+    expect(after.requests).toHaveLength(0);
+    // The deposit is the funder's own on-chain tx — nothing recorded in the ledger.
+    const led = (await (
+      await app.request("/api/personas/atlas/ledger")
+    ).json()) as { entries: { kind: string }[] };
+    expect(led.entries.some((e) => e.kind === "funding")).toBe(false);
+  });
+
+  test("dismiss deletes a pending deposit request", async () => {
+    await setupVault();
+    const req = (await (
+      await post("/api/personas/atlas/deposit-requests", {
+        collectionId: "777",
+        amountUsdc: 3,
+      })
+    ).json()) as { id: string };
+
+    const del = await app.request(`/api/deposit-requests/${req.id}`, {
+      method: "DELETE",
+    });
+    expect(del.status).toBe(200);
+
+    const after = (await (
+      await app.request("/api/personas/atlas/deposit-requests")
+    ).json()) as { requests: { id: string }[] };
+    expect(after.requests).toHaveLength(0);
+  });
+});
+
 describe("API auth", () => {
   const withAuth = (auth: { token?: string; host?: string }) =>
-    buildApp(makeEngine(), new PaymentRequests(":memory:"), auth);
+    buildApp(
+      makeEngine(),
+      new PaymentRequests(":memory:"),
+      new DepositRequests(":memory:"),
+      auth,
+    );
 
   test("public routes need no token (even when one is set)", async () => {
     const a = withAuth({ token: "secret", host: "127.0.0.1" });
@@ -818,6 +966,8 @@ describe("API auth", () => {
     expect((await a.request("/api/config")).status).toBe(200);
     // share-link pay endpoints reach their handler (404 = not auth-blocked)
     expect((await a.request("/api/payment-requests/nope")).status).toBe(404);
+    // share-link deposit endpoints are likewise public (#62)
+    expect((await a.request("/api/deposit-requests/nope")).status).toBe(404);
   });
 
   test("protected routes require the bearer token when set", async () => {
@@ -982,10 +1132,15 @@ describe("setup status (#19)", () => {
   });
 
   test("setup-status is reachable without auth (drives pre-login onboarding)", async () => {
-    const a = buildApp(makeEngine(), new PaymentRequests(":memory:"), {
-      token: "secret",
-      host: "0.0.0.0",
-    });
+    const a = buildApp(
+      makeEngine(),
+      new PaymentRequests(":memory:"),
+      new DepositRequests(":memory:"),
+      {
+        token: "secret",
+        host: "0.0.0.0",
+      },
+    );
     expect((await a.request("/api/setup-status")).status).toBe(200);
   });
 });
@@ -1017,11 +1172,17 @@ describe("first-run web setup (/api/setup)", () => {
       `vellum-setup-${Math.random().toString(36).slice(2)}.env`,
     );
     const applied: Partial<typeof env>[] = [];
-    const app = buildApp(makeEngine(), new PaymentRequests(":memory:"), auth, {
-      envFilePath,
-      applyRuntime: (p) => applied.push(p),
-      verifyKey,
-    });
+    const app = buildApp(
+      makeEngine(),
+      new PaymentRequests(":memory:"),
+      new DepositRequests(":memory:"),
+      auth,
+      {
+        envFilePath,
+        applyRuntime: (p) => applied.push(p),
+        verifyKey,
+      },
+    );
     return { app, envFilePath, applied };
   }
 
@@ -1132,7 +1293,13 @@ describe("agent seed export (/api/agent/mnemonic)", () => {
 
   const app = (
     auth: { token?: string; host?: string } = { host: "127.0.0.1" },
-  ) => buildApp(makeEngine(), new PaymentRequests(":memory:"), auth);
+  ) =>
+    buildApp(
+      makeEngine(),
+      new PaymentRequests(":memory:"),
+      new DepositRequests(":memory:"),
+      auth,
+    );
 
   const get = (
     a: ReturnType<typeof buildApp>,
@@ -1178,11 +1345,17 @@ describe("change OpenRouter key (/api/settings/openrouter-key, #60)", () => {
       tmpdir(),
       `vellum-key-${Math.random().toString(36).slice(2)}.env`,
     );
-    const app = buildApp(makeEngine(), new PaymentRequests(":memory:"), auth, {
-      envFilePath,
-      applyRuntime: (p) => applied.push(p),
-      verifyKey,
-    });
+    const app = buildApp(
+      makeEngine(),
+      new PaymentRequests(":memory:"),
+      new DepositRequests(":memory:"),
+      auth,
+      {
+        envFilePath,
+        applyRuntime: (p) => applied.push(p),
+        verifyKey,
+      },
+    );
     return { app, applied, envFilePath };
   }
   const post = (

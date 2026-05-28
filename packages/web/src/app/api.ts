@@ -262,6 +262,42 @@ export const api = {
     fetch(`/api/payment-requests/${reqId}`, { method: "DELETE" }).then((r) =>
       json<{ ok: boolean }>(r),
     ),
+
+  // Vault deposit requests (#62) — the "fund this vault" analog, mirroring the
+  // payment-request methods above.
+  createDepositRequest: (
+    id: string,
+    input: { collectionId: string; amountUsdc: number; memo?: string },
+  ) =>
+    fetch(`/api/personas/${id}/deposit-requests`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    }).then((r) => json<DepositRequest>(r)),
+
+  listDepositRequests: (id: string) =>
+    fetch(`/api/personas/${id}/deposit-requests`)
+      .then((r) => json<{ requests: DepositRequest[] }>(r))
+      .then((b) => b.requests),
+
+  getDepositRequest: (reqId: string) =>
+    fetch(`/api/deposit-requests/${reqId}`).then((r) =>
+      json<{ request: DepositRequest; personaName: string }>(r),
+    ),
+
+  // Light confirm (#62): deletes the request after the funder signs — no
+  // on-chain verification (the deposit is the funder's own tx). No txHash needed.
+  confirmDepositRequest: (reqId: string) =>
+    fetch(`/api/deposit-requests/${reqId}/confirm`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    }).then((r) => json<{ ok: boolean }>(r)),
+
+  dismissDepositRequest: (reqId: string) =>
+    fetch(`/api/deposit-requests/${reqId}`, { method: "DELETE" }).then((r) =>
+      json<{ ok: boolean }>(r),
+    ),
 };
 
 // A pending (outstanding) payment request. Filled ones are deleted — the ledger
@@ -270,6 +306,23 @@ export interface PaymentRequest {
   id: string;
   personaId: string;
   toAddress: string;
+  denom: string;
+  amount: string; // base µUSDC
+  memo: string;
+  created: number;
+}
+
+// A pending vault deposit request (#62) — the "fund this vault" analog. Carries
+// the vault context the /deposit page needs to build `vaultDepositMsg`. Filled
+// ones are deleted (the deposit is on-chain), so any request returned is pending.
+export interface DepositRequest {
+  id: string;
+  personaId: string;
+  collectionId: string;
+  vaultSymbol: string;
+  vaultName: string;
+  backingAddress: string;
+  agentAddress: string; // recipient of the minted vault tokens (the persona)
   denom: string;
   amount: string; // base µUSDC
   memo: string;

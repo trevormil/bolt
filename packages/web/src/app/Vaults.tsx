@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Badge, Button, Card, Icon, Input } from "@vellum/ui";
 import { BrandLogo } from "./BrandLogo.tsx";
-import { api, type Vault } from "./api.ts";
+import { api, type Vault, type DepositRequest } from "./api.ts";
 import {
   signAndBroadcast,
   vaultDepositMsg,
@@ -417,10 +417,14 @@ function VaultRow({
   const { wallet } = useWallet();
   const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState<
-    "withdraw" | "deposit" | "drain" | "revoke" | null
+    "withdraw" | "deposit" | "request" | "drain" | "revoke" | null
   >(null);
   const [note, setNote] = useState<string | null>(null);
   const [escrowMicro, setEscrowMicro] = useState<string | null>(null);
+  // Deposit requests (#62) — the shareable "fund this vault" links for this vault.
+  const [memo, setMemo] = useState("");
+  const [requests, setRequests] = useState<DepositRequest[]>([]);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // Escrow = the agent's holding of THIS vault's tokens (#45) — the correct
   // per-vault figure (all USDC vaults share one backing alias, so the agent's
@@ -433,8 +437,18 @@ function VaultRow({
       setEscrowMicro(null);
     }
   }
+  // Pending deposit requests are stored per-persona; show only this vault's.
+  async function reloadRequests() {
+    try {
+      const all = await api.listDepositRequests(personaId);
+      setRequests(all.filter((r) => r.collectionId === vault.collectionId));
+    } catch {
+      setRequests([]);
+    }
+  }
   useEffect(() => {
     void reloadEscrow();
+    void reloadRequests();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [personaId, vault.collectionId]);
 
@@ -536,6 +550,48 @@ function VaultRow({
     }
   }
 
+  // Raise a shareable deposit request for this vault (#62) — the deposit analog
+  // of WalletPanel's "Request" payment-request action. It appears in the pending
+  // list below; share its /deposit/:id link so anyone can fund the vault.
+  async function requestDeposit() {
+    const usd = Number(amount);
+    if (!usd) return;
+    setBusy("request");
+    setNote(null);
+    try {
+      await api.createDepositRequest(personaId, {
+        collectionId: vault.collectionId,
+        amountUsdc: usd,
+        memo: memo.trim() || undefined,
+      });
+      setAmount("");
+      setMemo("");
+      await reloadRequests();
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function dismissRequest(id: string) {
+    setBusy("request");
+    try {
+      await api.dismissDepositRequest(id);
+      await reloadRequests();
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function copyLink(id: string) {
+    navigator.clipboard?.writeText(`${window.location.origin}/deposit/${id}`);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId((c) => (c === id ? null : c)), 1200);
+  }
+
   return (
     <Card className="p-3">
       <div className="flex items-center justify-between gap-3">
@@ -621,7 +677,25 @@ function VaultRow({
           >
             {busy === "withdraw" ? "…" : "Withdraw"}
           </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={requestDeposit}
+            disabled={busy !== null || !amount}
+            title="Raise a shareable deposit request — anyone can fund this vault via the link"
+          >
+            <Icon name="link" size={13} />{" "}
+            {busy === "request" ? "…" : "Request"}
+          </Button>
         </div>
+      </div>
+      <div className="mt-2">
+        <Input
+          value={memo}
+          onChange={(e) => setMemo(e.target.value)}
+          placeholder="Deposit request memo (optional)"
+          className="text-xs"
+        />
       </div>
       {isManager && (
         <div className="mt-2 flex items-center gap-2 border-t border-border pt-2">
@@ -649,6 +723,49 @@ function VaultRow({
         </div>
       )}
       {note && <div className="mt-2 text-xs text-muted">{note}</div>}
+      {requests.length > 0 && (
+        <div className="mt-2 border-t border-border pt-2">
+          <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-soft">
+            Pending deposit requests
+          </span>
+          <div className="mt-1.5 space-y-1.5">
+            {requests.map((r) => (
+              <div
+                key={r.id}
+                className="flex items-center justify-between gap-2 rounded-md border border-border bg-surface-3 px-2.5 py-1.5"
+              >
+                <span className="flex min-w-0 items-center gap-1.5 text-xs">
+                  <BrandLogo name="usdc" size={13} />
+                  <span className="font-mono text-fg">
+                    {(Number(r.amount) / 1e6).toFixed(2)}
+                  </span>
+                  <span className="truncate text-soft">{r.memo}</span>
+                </span>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <button
+                    onClick={() => copyLink(r.id)}
+                    title="Copy /deposit link"
+                    className="grid h-7 w-7 place-items-center rounded-md border border-border text-soft hover:text-fg"
+                  >
+                    <Icon
+                      name={copiedId === r.id ? "check" : "link"}
+                      size={13}
+                    />
+                  </button>
+                  <button
+                    onClick={() => dismissRequest(r.id)}
+                    disabled={busy !== null}
+                    title="Dismiss"
+                    className="grid h-7 w-7 place-items-center rounded-md border border-border text-soft hover:text-danger"
+                  >
+                    <Icon name="trash" size={13} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </Card>
   );
 }
