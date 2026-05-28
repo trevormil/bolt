@@ -11,7 +11,7 @@ native**, messaged via **Telegram**, managed via a **companion web app**.
 ## 1. Thesis & principles
 
 - **Local-first** — Vellum runs entirely on the user's machine (the OpenClaw
-  model): local DBs, local filesystem, local scheduler, local daemon. **Nothing
+  model): local DBs, local filesystem, local daemon. **Nothing
   is hosted.** The only remote dependency is **OpenRouter** (LLM). See
   [ADR-0002](./docs/decisions/0002-local-first-terminal-native.md).
 - **Terminal-native** — the primary surface is an OpenClaw-class CLI/TUI agent;
@@ -93,10 +93,11 @@ same local state (`~/.vellum`). None requires hosting.
 
 ### Terminal (CLI/TUI) — primary (the OpenClaw experience)
 The headline surface. An interactive local agent in the terminal: chat, run
-tools (filesystem, MCP), set scheduled tasks, manage personas/vaults — with the
-capability/permission model gating filesystem + cron + spend. Approvals are
-inline prompts; signatures the human must perform open the local web sign page.
-(Tickets #34 CLI, #35 filesystem, #36 cron, #37 capabilities.)
+tools (filesystem, MCP), manage personas/vaults — with the capability/permission
+model gating filesystem + spend. Approvals are inline prompts; signatures the
+human must perform open the local web sign page. Recurring runs are scheduled
+via OS cron (#56), not an in-app scheduler.
+(Tickets #34 CLI, #35 filesystem, #37 capabilities.)
 
 ### Web app / PWA — local entrypoint (manage / onboard / approve)
 Served from localhost; **installable as a PWA** so it feels native. Where the
@@ -157,11 +158,13 @@ grants, write/spend approval, everything in the ledger):
 - **MCP client** — the extensibility path ("connect ≥1 application").
 - **Filesystem** (#35) — read/write the local FS within granted roots; writes and
   sensitive paths require human approval.
-- **Scheduled tasks / local cron** (#36) — the agent (or user) registers recurring
-  tasks that run agent work locally; generalizes the check-in scheduler (#18).
+- **Recurring runs** — scheduled via **OS cron** (#56), which re-runs the CLI
+  chat command on a schedule (see `docs/runbooks/schedule-with-cron.md`). The
+  in-app scheduler + check-ins were removed; the engine keeps a read-only run
+  mode for unattended use.
 
 All state is local under **`~/.vellum`** (XDG-aware): sqlite DBs, persona memory,
-wallet index, scheduled tasks, logs (#39).
+wallet index, logs (#39).
 
 ### LLM + cost layer
 - **Routing:** cheap model by default, escalate to a frontier model only when the
@@ -253,7 +256,7 @@ endpoint → Cosmos signing path. No IBC/Skip → no swaps/bridging (deferred).
 ## 8. Tech stack (proposed)
 
 - **Runtime:** `bun` + TypeScript, monorepo. Ships as a **local install** — no
-  hosting; a **local background daemon** (scheduler + Telegram + web) registered
+  hosting; a **local background daemon** (Telegram + web) registered
   with launchd/systemd (#31), plus the CLI as an interactive client to the same
   engine + `~/.vellum` state (#39).
 - **CLI/TUI:** the primary surface — an interactive terminal agent over
@@ -389,5 +392,5 @@ vault + spend · 0014 PaymentRequest funding · minimal 0011 ledger → Telegram
 ### Pre-mainnet hardening (deferred — devnet uses worthless tokens)
 Memory provenance + ingest scanning · second-channel confirm for high-value ·
 Langfuse scrub + key rotation · web CSRF/clickjacking headers · MCP responses as
-untrusted · proactive runs read-only by default · prod RPC redundancy · hot keys
+untrusted · read-only run mode for unattended use · prod RPC redundancy · hot keys
 off bare env. Tracked in **ticket 0024**.
