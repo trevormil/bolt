@@ -18,6 +18,8 @@ import {
   BudgetLimits,
   BudgetLimitsSchema,
   Model,
+  APPROVED_MODELS,
+  isApprovedModel,
   type Engine,
 } from "@vellum/engine";
 import { PaymentRequests } from "./payment-requests.ts";
@@ -160,6 +162,22 @@ export function buildApp(
   const loopback = isLoopback(auth.host ?? "127.0.0.1");
   app.use("/api/*", async (c, next) => {
     if (isPublicRoute(c.req.method, c.req.path)) return next();
+
+    // Cross-site + DNS-rebinding guard. A local app must not be drivable by a
+    // web page the user happens to visit: on loopback the API is open (no
+    // token), so a malicious site could otherwise fetch localhost and move
+    // money. (a) Reject a Host header that isn't loopback while bound locally
+    // (DNS-rebinding: attacker.com → 127.0.0.1). (b) Reject any cross-origin
+    // browser request (CSRF). Same-origin SPA requests (Origin == Host) and
+    // non-browser clients (curl/bearer, no Origin) pass.
+    const host = c.req.header("host") ?? "";
+    const hostname = host.split(":")[0];
+    if (loopback && hostname && !isLoopback(hostname))
+      return c.json({ error: "unexpected Host (possible DNS rebinding)" }, 403);
+    const origin = c.req.header("origin");
+    if (origin && origin !== `http://${host}` && origin !== `https://${host}`)
+      return c.json({ error: "cross-origin request rejected" }, 403);
+
     if (auth.token) {
       // Accept a bearer header (API clients) OR the session cookie (browser SPA,
       // set by /api/login — httpOnly, so it's never exposed to page JS).
@@ -224,6 +242,9 @@ export function buildApp(
       rpc: env.BITBADGES_RPC,
       lcd: env.BITBADGES_LCD,
       denom: env.VELLUM_DENOM,
+      // Approved per-persona models (#43) so the Settings UI can offer a vetted
+      // dropdown instead of a free-text field.
+      models: APPROVED_MODELS,
     }),
   );
 
@@ -411,7 +432,15 @@ export function buildApp(
         { error: "model must be a non-empty OpenRouter model id, or null" },
         400,
       );
-    Model.setPersona(engine.settings, id, body.model.trim());
+    const model = body.model.trim();
+    // Enforce the approved-models allowlist (#43): a persona can only be pinned
+    // to a vetted model, not an arbitrary OpenRouter id.
+    if (!isApprovedModel(model))
+      return c.json(
+        { error: "model not in the approved list", approved: APPROVED_MODELS },
+        400,
+      );
+    Model.setPersona(engine.settings, id, model);
     return c.json(Model.get(engine.settings, id));
   });
 
@@ -607,9 +636,11 @@ export function buildApp(
         400,
       );
     }
-    // recordOnchain is idempotent on txHash, so a racing double-confirm can't
-    // double-credit before the row is deleted.
-    engine.ledger.recordOnchain({
+    // recordOnchain is idempotent on txHash. `created: false` means this tx was
+    // ALREADY recorded as a funding — i.e. someone is trying to reuse one tx to
+    // confirm a second request. Reject it (don't delete this request / fake a
+    // fill) so one on-chain transfer can fund exactly one request.
+    const { created } = engine.ledger.recordOnchain({
       personaId: r.personaId,
       kind: "funding",
       summary: `funded ${(Number(r.amount) / 1e6).toFixed(2)} USDC via payment request`,
@@ -617,6 +648,11 @@ export function buildApp(
       txHash,
       meta: { paymentRequestId: r.id, amount: r.amount, denom: r.denom },
     });
+    if (!created)
+      return c.json(
+        { error: "this tx has already funded a request — one tx per request" },
+        409,
+      );
     paymentRequests.delete(r.id);
     return c.json({ ok: true, txHash, amount: r.amount });
   });

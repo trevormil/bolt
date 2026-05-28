@@ -75,6 +75,18 @@ export const api = {
       json<{ ok: boolean }>(r),
     ),
 
+  // Public chain config + the approved-models allowlist (#43) for the UI.
+  config: () =>
+    fetch("/api/config").then((r) =>
+      json<{
+        chainId: string;
+        rpc: string;
+        lcd: string;
+        denom: string;
+        models: string[];
+      }>(r),
+    ),
+
   listPersonas: () =>
     fetch("/api/personas")
       .then((r) => json<{ personas: Persona[] }>(r))

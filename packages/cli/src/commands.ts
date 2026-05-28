@@ -1,4 +1,11 @@
-import { chat, grantDefaultCapabilities, type Engine } from "@vellum/engine";
+import {
+  chat,
+  grantDefaultCapabilities,
+  Model,
+  APPROVED_MODELS,
+  isApprovedModel,
+  type Engine,
+} from "@vellum/engine";
 import { env } from "@vellum/shared";
 
 const fmtUsdc = (micro: string) => (Number(micro) / 1e6).toFixed(2);
@@ -27,6 +34,7 @@ const USAGE = `vellum — local-first agent CLI
   vellum balance <persona>        USDC balance
   vellum faucet <persona>         claim devnet USDC
   vellum ledger <persona>         recent proof-of-action entries
+  vellum model <persona> [id]     show / set the persona's model (id, "inherit", or list)
   vellum help                     this help`;
 
 /**
@@ -94,6 +102,29 @@ export async function runCommand(
             `${new Date(e.ts).toISOString().slice(0, 16)}  ${e.kind.padEnd(8)} ${e.summary} [${e.authority}]`,
         )
         .join("\n");
+    }
+
+    case "model": {
+      const id = requirePersona(engine, rest[0]);
+      const arg = rest[1]?.trim();
+      if (!arg) {
+        // Show current + the approved list.
+        const r = Model.get(engine.settings, id);
+        return [
+          `model: ${r.value ?? "(inherit tier router)"} [${r.source}]`,
+          `approved: ${APPROVED_MODELS.join(", ")}`,
+        ].join("\n");
+      }
+      if (arg === "inherit" || arg === "none" || arg === "reset") {
+        Model.reset(engine.settings, id);
+        return `model: (inherit tier router)`;
+      }
+      if (!isApprovedModel(arg))
+        throw new Error(
+          `model not approved: ${arg}\napproved: ${APPROVED_MODELS.join(", ")}`,
+        );
+      Model.setPersona(engine.settings, id, arg);
+      return `model: ${arg} [persona]`;
     }
 
     case "chat": {

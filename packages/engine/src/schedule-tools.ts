@@ -8,6 +8,10 @@ import type { Engine } from "./engine.ts";
 export function scheduleTools(
   engine: Engine,
   personaId: string,
+  // In a read-only run (#24/T-13) the agent must not be able to ARM a task —
+  // otherwise an unattended read-only run could escalate by scheduling a future
+  // money-moving task. When readOnly, create_task always lands an unarmed task.
+  opts: { readOnly?: boolean } = {},
 ): { tools: ToolSpec[]; invoke: ToolInvoker } {
   const tools: ToolSpec[] = [
     {
@@ -55,14 +59,23 @@ export function scheduleTools(
         summary: `schedule every ${everyMinutes}m: ${prompt.slice(0, 60)}`,
       });
       if (!ok) return "Denied: no permission to schedule tasks.";
-      const armed = args.armed === true;
+      // A read-only run can schedule, but can NEVER arm (no privilege escalation
+      // into a future money-moving task). Arming requires an interactive run.
+      const wantsArmed = args.armed === true;
+      const armed = wantsArmed && !opts.readOnly;
       const t = engine.tasks.create({
         personaId,
         prompt,
         intervalMs: Math.round(everyMinutes * 60_000),
         armed,
       });
-      return `Scheduled task ${t.id.slice(0, 8)} · every ${everyMinutes}m${armed ? " · armed (can move money)" : " · read-only"}.`;
+      const note =
+        wantsArmed && opts.readOnly
+          ? " · read-only (arming refused in a read-only run)"
+          : armed
+            ? " · armed (can move money)"
+            : " · read-only";
+      return `Scheduled task ${t.id.slice(0, 8)} · every ${everyMinutes}m${note}.`;
     }
     if (name === "list_tasks") {
       const ts = engine.tasks.list(personaId);

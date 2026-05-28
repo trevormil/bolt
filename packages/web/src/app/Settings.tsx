@@ -2,17 +2,6 @@ import { useEffect, useState } from "react";
 import { Badge, Button, Card, Input } from "@vellum/ui";
 import { api, type BudgetResponse, type Resolved, type Task } from "./api.ts";
 
-// A few common OpenRouter ids as quick picks (#43). Empty = inherit the tier
-// router (cheap by default, frontier on long context).
-const MODEL_PRESETS = [
-  "",
-  "anthropic/claude-3.5-sonnet",
-  "anthropic/claude-3-haiku",
-  "openai/gpt-4o",
-  "openai/gpt-4o-mini",
-  "google/gemini-2.0-flash-001",
-];
-
 export function SettingsView({ personaId }: { personaId: string }) {
   return (
     <div className="h-full space-y-6 overflow-y-auto p-6">
@@ -23,12 +12,13 @@ export function SettingsView({ personaId }: { personaId: string }) {
   );
 }
 
-// ── #43 per-persona model ────────────────────────────────────────────────────
+// ── #43 per-persona model (approved allowlist) ───────────────────────────────
 function ModelSection({ personaId }: { personaId: string }) {
   const [resolved, setResolved] = useState<Resolved<string | null> | null>(
     null,
   );
-  const [value, setValue] = useState("");
+  const [models, setModels] = useState<string[]>([]);
+  const [value, setValue] = useState(""); // "" = inherit
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -38,6 +28,7 @@ function ModelSection({ personaId }: { personaId: string }) {
       setResolved(r);
       setValue(r.value ?? "");
     });
+    api.config().then((c) => live && setModels(c.models ?? []));
     return () => {
       live = false;
     };
@@ -55,27 +46,22 @@ function ModelSection({ personaId }: { personaId: string }) {
     <Card className="p-4">
       <SectionHead
         title="Model"
-        hint="OpenRouter model this persona uses. Blank = inherit the tier router."
+        hint="OpenRouter model this persona runs on (approved list). Inherit = the tier router."
       />
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <Input
+        <select
           value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder="(inherit tier router)"
-          className="min-w-[18rem] flex-1 font-mono text-sm"
-          list="model-presets"
-        />
-        <datalist id="model-presets">
-          {MODEL_PRESETS.filter(Boolean).map((m) => (
-            <option key={m} value={m} />
+          onChange={(e) => void save(e.target.value)}
+          className="min-w-[18rem] flex-1 rounded-md border border-border bg-surface px-3 py-2 font-mono text-sm text-fg"
+        >
+          <option value="">(inherit tier router)</option>
+          {models.map((m) => (
+            <option key={m} value={m}>
+              {m}
+            </option>
           ))}
-        </datalist>
-        <Button size="sm" onClick={() => void save(value)}>
-          {saved ? "Saved" : "Save"}
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => void save("")}>
-          Reset
-        </Button>
+        </select>
+        {saved && <span className="text-xs text-accent">Saved</span>}
       </div>
       {resolved && (
         <p className="mt-2 text-xs text-soft">

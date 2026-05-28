@@ -35,13 +35,14 @@ export async function chat(
 ): Promise<ChatResult> {
   const { conversationId, personaId, message, trace, readOnly } = input;
   const t0 = Date.now();
-  // chat_in (#42): one event per user turn; summary is truncated, never the
-  // raw body — that stays in persona memory only.
+  // chat_in (#42): one event per user turn. Metadata ONLY — never the raw body
+  // (that lives in persona memory). The timeline records that a turn happened +
+  // its size, not its content.
   engine.events.emit({
     personaId,
     kind: "chat_in",
-    summary: message.length > 80 ? message.slice(0, 77) + "…" : message,
-    meta: { conversationId },
+    summary: "message received",
+    meta: { conversationId, chars: message.length },
   });
 
   const budget = evaluateBudget(engine, personaId);
@@ -65,7 +66,7 @@ export async function chat(
   const { tools, invoke } = readOnly
     ? combineTools(
         filesystemTools(engine, personaId),
-        scheduleTools(engine, personaId),
+        scheduleTools(engine, personaId, { readOnly: true }),
       )
     : combineTools(
         vaultTools(engine, personaId),
@@ -90,16 +91,17 @@ export async function chat(
   });
 
   // chat_out (#42): one event per agent turn with wall latency + LLM cost
-  // rolled up across however many steps the agent loop took.
+  // rolled up across however many steps the agent loop took. Metadata only —
+  // the reply text is never written to the timeline.
   engine.events.emit({
     personaId,
     kind: "chat_out",
-    summary: res.reply.length > 80 ? res.reply.slice(0, 77) + "…" : res.reply,
+    summary: "reply sent",
     latencyMs: Date.now() - t0,
     costUsd,
     tokens,
     ok: true,
-    meta: { conversationId, steps: res.meters.length },
+    meta: { conversationId, steps: res.meters.length, chars: res.reply.length },
   });
 
   return { reply: res.reply, costUsd, tokens, budgetExceeded: false };

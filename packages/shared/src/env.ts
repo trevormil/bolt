@@ -26,6 +26,14 @@ export const envSchema = z.object({
   // LLM routing (OpenRouter model ids): cheap by default, escalate to frontier.
   LLM_MODEL_CHEAP: z.string().default("anthropic/claude-haiku-4.5"),
   LLM_MODEL_FRONTIER: z.string().default("anthropic/claude-sonnet-4.6"),
+  // Allowlist of OpenRouter models a persona may be pinned to (#43 "approved
+  // models"). Comma-separated; override to expand. A per-persona model override
+  // is rejected unless it's in this set.
+  VELLUM_APPROVED_MODELS: z
+    .string()
+    .default(
+      "anthropic/claude-sonnet-4.6,anthropic/claude-haiku-4.5,anthropic/claude-3.5-sonnet,openai/gpt-4o,openai/gpt-4o-mini,google/gemini-2.0-flash-001",
+    ),
 
   LANGFUSE_PUBLIC_KEY: z.string().optional(),
   LANGFUSE_SECRET_KEY: z.string().optional(),

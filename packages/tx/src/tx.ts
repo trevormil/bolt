@@ -62,7 +62,8 @@ export interface SpendInput {
   personaId: string;
   to: string;
   amount: string; // base units
-  kind?: TxKind; // default "spend"
+  // No `kind` override: spend() is always kind "spend" so it always hits the
+  // capability gate. Other kinds (vault_op, funding) go through submit() directly.
   authority?: string; // who authorized — default "agent"
   trace?: TraceSpan; // optional tracing parent (no-op by default)
 }
@@ -301,9 +302,12 @@ export class TxManager {
         `insufficient USDC: have ${usdc(have.toString())}, need ${usdc(amount)}`,
       );
     }
+    // ALWAYS kind "spend" — spend() is the free-form bank-send path and must
+    // always pass the capability gate in submit(). The kind is not caller-
+    // overridable here, so a vault_op/funding label can't be used to skip it.
     return this.submit({
       personaId,
-      kind: input.kind ?? "spend",
+      kind: "spend",
       msgs: [bankSendMsg(from, to, amount, this.denom)],
       to,
       amount,

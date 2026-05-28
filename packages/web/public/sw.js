@@ -29,6 +29,14 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+function cacheCopy(req, res) {
+  if (res && res.ok && res.status === 200) {
+    const copy = res.clone();
+    caches.open(SHELL_CACHE).then((cache) => cache.put(req, copy));
+  }
+  return res;
+}
+
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return;
@@ -36,18 +44,24 @@ self.addEventListener("fetch", (event) => {
   // Never cache API responses — the local daemon is the source of truth.
   if (url.pathname.startsWith("/api/")) return;
 
-  // App shell: network-first with cache fallback (so the installed app opens
-  // even when the daemon isn't running yet).
+  // Built bundles under /assets/ are content-hashed → immutable. Cache-FIRST so
+  // the JS/CSS shell is reliably served from cache (offline-capable after one
+  // load); fall to the network + cache on a miss. This is what makes the app —
+  // not just the HTML — work offline (the precache can't name hashed files).
+  if (url.pathname.startsWith("/assets/")) {
+    event.respondWith(
+      caches
+        .match(req)
+        .then((hit) => hit ?? fetch(req).then((res) => cacheCopy(req, res))),
+    );
+    return;
+  }
+
+  // HTML / shell: network-first with cache fallback (so the app updates when
+  // online, and the installed app still opens when the daemon isn't running).
   event.respondWith(
     fetch(req)
-      .then((res) => {
-        // Cache successful static responses for offline shell.
-        if (res.ok && res.status === 200) {
-          const copy = res.clone();
-          caches.open(SHELL_CACHE).then((cache) => cache.put(req, copy));
-        }
-        return res;
-      })
+      .then((res) => cacheCopy(req, res))
       .catch(() =>
         caches.match(req).then((hit) => hit ?? caches.match("/index.html")),
       ),

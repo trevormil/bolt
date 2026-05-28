@@ -389,6 +389,74 @@ describe("security headers (#24 / T-11)", () => {
   });
 });
 
+describe("cross-site + DNS-rebind guard (review fix)", () => {
+  test("rejects a cross-origin browser request to a protected route", async () => {
+    const res = await app.request("/api/personas", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "https://evil.example",
+      },
+      body: JSON.stringify({ name: "X" }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  test("allows a same-origin request (Origin matches Host)", async () => {
+    const res = await app.request("/api/personas", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        host: "localhost",
+        origin: "http://localhost",
+      },
+      body: JSON.stringify({ name: "Atlas" }),
+    });
+    expect(res.status).toBe(201);
+  });
+
+  test("rejects a foreign Host header (DNS rebinding) while bound loopback", async () => {
+    const res = await app.request("http://attacker.com/api/personas", {
+      method: "GET",
+      headers: { host: "attacker.com" },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  test("non-browser client (no Origin) passes", async () => {
+    const res = await app.request("/api/personas");
+    expect(res.status).toBe(200);
+  });
+});
+
+describe("approved-models allowlist (#43 review fix)", () => {
+  test("rejects a model not on the allowlist; accepts one that is", async () => {
+    await post("/api/personas", { name: "Atlas" });
+    const bad = await app.request("/api/personas/atlas/model", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: "evil/backdoor-model" }),
+    });
+    expect(bad.status).toBe(400);
+    expect((await bad.json()) as unknown).toHaveProperty("approved");
+
+    const ok = await app.request("/api/personas/atlas/model", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: "anthropic/claude-3.5-sonnet" }),
+    });
+    expect(ok.status).toBe(200);
+  });
+
+  test("/api/config exposes the approved model list", async () => {
+    const cfg = (await (await app.request("/api/config")).json()) as {
+      models: string[];
+    };
+    expect(Array.isArray(cfg.models)).toBe(true);
+    expect(cfg.models).toContain("anthropic/claude-3.5-sonnet");
+  });
+});
+
 describe("scheduled tasks routes (#47 FE / #36)", () => {
   test("create (armed + read-only) → list → cancel", async () => {
     await post("/api/personas", { name: "Atlas" });

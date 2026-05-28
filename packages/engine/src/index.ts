@@ -10,7 +10,7 @@ export {
 } from "./vaults.ts";
 export { vaultTools } from "./agent-tools.ts";
 export { mcpTools } from "./mcp-tools.ts";
-export { Model } from "./model-setting.ts";
+export { Model, APPROVED_MODELS, isApprovedModel } from "./model-setting.ts";
 export {
   BudgetLimits,
   BudgetLimitsSchema,
