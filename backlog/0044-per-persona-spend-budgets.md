@@ -1,7 +1,7 @@
 ---
 id: 44
 title: "Per-persona spend budgets — daily/weekly/monthly windows"
-status: open
+status: closed
 priority: medium
 type: feature
 source: planning
@@ -29,3 +29,6 @@ default limits + per-persona override (via #40); inherit otherwise.
   resets or the human raises it
 - Dashboard (#42): burn-down per window vs limit, with projection
 - Tests: window accounting, limit enforcement at the boundary, inherit vs override
+
+## Closed 2026-05-28
+Delivered in the squashed local-first build, merged to `main` via MR !40 (superseded per-ticket MRs !26–!39).

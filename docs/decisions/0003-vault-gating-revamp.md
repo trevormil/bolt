@@ -92,3 +92,30 @@ the manager↔agent authority split.
   the manager, not the agent).
 - Escrow display is read-only truth from chain — it never gates; gating is the
   approvalCriteria. Keeps the trust boundary deterministic.
+
+## Revision 2026-05-28 (decisions from design review)
+
+Three corrections from Trevor (BitBadges author) after slice 1 + the review:
+
+1. **Escrow query — use the agent's token holding, not the backing balance.**
+   All USDC vaults share one backing alias (correct — it's all USDC), so the
+   backing balance is the whole pool. The right per-vault escrow is **how much
+   of that vault's x/tokenization tokens the AGENT WALLET holds** (alias-
+   converted, 1:1 µUSDC). Slice 1 read `getBalances(backingAddress)` — that is
+   wrong and must be replaced with a per-collection token-balance query against
+   the agent wallet. (Tracked on #45; correct it in slice 2.)
+
+2. **Multi-sig = `votingChallenges`, NOT `mustOwnTokens`.** BitBadges
+   votingChallenges ARE multi-sig: each `MsgCastVote` is, in essence, a
+   signature. A gated withdrawal carries a voting challenge; the threshold of
+   casts must be met before it executes. The third-party sign-off page (slice 3)
+   is where signers submit `MsgCastVote`. Supersedes the `mustOwnTokens`
+   approach in Decision 1's `multisig` policy above.
+
+3. **PaymentRequests stay app-side (#29 not adopted).** The internal app-side
+   PaymentRequest (#14, shipped) is sufficient; we are NOT adopting the on-chain
+   BitBadges PaymentRequest standard for now.
+
+Unchanged: amount + time gating via approvalCriteria (slice 2), manager =
+complete admin / agent never manager (slice 4), the proposal lifecycle + opaque
+shareable sign-off page (slice 3).

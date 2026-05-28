@@ -1,7 +1,7 @@
 ---
 id: 34
 title: "Terminal CLI/TUI agent surface (the OpenClaw experience)"
-status: open
+status: closed
 priority: high
 type: feature
 source: planning
@@ -25,3 +25,6 @@ new thin client alongside web + Telegram.
   ledger, schedule) so it's scriptable too
 - Shares `~/.vellum` state with the daemon (#31) — no divergent state
 - Works offline-of-cloud (only OpenRouter contacted)
+
+## Closed 2026-05-28
+Delivered in the squashed local-first build, merged to `main` via MR !40 (superseded per-ticket MRs !26–!39).

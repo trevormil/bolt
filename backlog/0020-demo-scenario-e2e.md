@@ -1,7 +1,7 @@
 ---
 id: 20
 title: "E2E demo scenario proving the thesis"
-status: open
+status: closed
 priority: high
 type: docs
 source: planning
@@ -23,3 +23,6 @@ task that spends within rules, a PaymentRequest funds it, all shown in the ledge
 **Pinned demo = Scenario C+A** (recurring payment + vault-creation moment), ~5-7
 min live on the devnet. Full script: research/audit/04-new-ideas.md §Recommended
 demo. Demo-day risks + mitigations: research/audit/03-failure-ops.md §Demo-day.
+
+## Closed 2026-05-28 (backlog reconciliation)
+Delivered in the merged local-first build (MR !40). Verified present in the merged code.

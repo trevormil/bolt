@@ -1,7 +1,7 @@
 ---
 id: 35
 title: "Local filesystem tools (scoped, human-approved)"
-status: open
+status: closed
 priority: high
 type: feature
 source: planning
@@ -25,3 +25,6 @@ guardrails.
 - Every FS action recorded in the proof-of-action ledger (path, op, persona,
   authority)
 - Tests: sandbox enforcement (escape attempts denied), approval gating, ledger entries
+
+## Closed 2026-05-28
+Delivered in the squashed local-first build, merged to `main` via MR !40 (superseded per-ticket MRs !26–!39).

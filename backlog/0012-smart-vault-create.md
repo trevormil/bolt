@@ -1,7 +1,7 @@
 ---
 id: 12
 title: "Smart vault create — agent creates, human is manager"
-status: in-progress
+status: closed
 priority: critical
 type: feature
 source: planning
@@ -32,3 +32,6 @@ research/payment-architecture.md + research/bitbadges-integration.md.
 
 ## Build-time note: BitBadges pattern
 Confirmed feasible by Trevor. **Reference the Meridian repo first** (`~/CompSci/gauntlet/meridian`: `apps/web/lib/chain/` + `lib/prediction-market/`, `apps/aggregator/src/chain/`), **then ASK TREVOR for the exact implementation pattern** before writing chain logic — do not guess.
+
+## Closed 2026-05-28 (backlog reconciliation)
+Delivered in the merged local-first build (MR !40). Verified present in the merged code.

@@ -1,7 +1,7 @@
 ---
 id: 22
 title: "Eval suite — golden sets + LLM-as-judge + CI"
-status: open
+status: closed
 priority: high
 type: testing
 source: planning
@@ -27,3 +27,6 @@ research/evaluation.md.
 
 ## Phase
 1 — cross-cutting quality (grows over phases)
+
+## Closed 2026-05-28 (backlog reconciliation)
+Delivered in the merged local-first build (MR !40). Verified present in the merged code.

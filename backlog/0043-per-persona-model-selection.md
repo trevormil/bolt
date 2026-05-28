@@ -1,7 +1,7 @@
 ---
 id: 43
 title: "Per-persona model selection (over OpenRouter)"
-status: open
+status: closed
 priority: medium
 type: feature
 source: planning
@@ -28,3 +28,6 @@ resolves the persona's selection at call time; cost/usage land in #42 per model.
 - CLI + web selector showing the approved list + current (inherited vs overridden)
 - Reject a selection not in the approved list; observability (#42) attributes
   spend/usage per model per persona
+
+## Closed 2026-05-28
+Delivered in the squashed local-first build, merged to `main` via MR !40 (superseded per-ticket MRs !26–!39).

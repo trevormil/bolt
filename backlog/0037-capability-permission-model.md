@@ -1,7 +1,7 @@
 ---
 id: 37
 title: "Local capability & permission model (FS, cron, tools, spend)"
-status: open
+status: closed
 priority: high
 type: security
 source: planning
@@ -29,3 +29,6 @@ local analog of the on-chain rules that already bound spend.
   the human (terminal/web) unless a standing grant covers them
 - All grant changes + gated actions recorded in the ledger
 - Tests: default-deny, grant scoping, approval prompts, ledger coverage
+
+## Closed 2026-05-28
+Delivered in the squashed local-first build, merged to `main` via MR !40 (superseded per-ticket MRs !26–!39).

@@ -27,3 +27,6 @@ ticket tracks the set.
 
 ## Phase
 Cross-cutting polish (a few are MVP: breadcrumb, receipt, plain-English sign)
+
+## Note 2026-05-28 (reconciliation — stays in-progress)
+Ledger/proof-of-action view + plain-English replies shipped (#11/#17). Remaining trust-UX polish (breadcrumb, per-action receipt) not yet built.

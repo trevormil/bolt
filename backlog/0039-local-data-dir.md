@@ -1,7 +1,7 @@
 ---
 id: 39
 title: "Local data dir + config (~/.vellum, XDG-aware)"
-status: open
+status: closed
 priority: medium
 type: dx
 source: planning
@@ -23,3 +23,6 @@ daemon (#31), and web all share one location regardless of cwd.
 - Config file (OpenRouter key ref, chain endpoints, permission defaults) co-located
 - `VELLUM_DB_PATH` etc. still honored as overrides (back-compat)
 - One-time migration of an existing `./vellum.db` if found
+
+## Closed 2026-05-28
+Delivered in the squashed local-first build, merged to `main` via MR !40 (superseded per-ticket MRs !26–!39).

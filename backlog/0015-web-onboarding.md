@@ -1,7 +1,7 @@
 ---
 id: 15
 title: "Web: onboarding flow"
-status: in-progress
+status: closed
 priority: high
 type: feature
 source: planning
@@ -18,3 +18,6 @@ Companion web app onboarding: connect Telegram, create the first persona, fund i
 - Link a Telegram account
 - Create a persona (wallet provisioned)
 - Initial funding flow
+
+## Closed 2026-05-28 (backlog reconciliation)
+Delivered in the merged local-first build (MR !40). Verified present in the merged code.

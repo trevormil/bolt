@@ -27,3 +27,12 @@ Devnet uses worthless tokens, so deferred from MVP — but required before mainn
 
 ## Phase
 Deferred — pre-mainnet
+
+## Progress 2026-05-28 (partial — stays open)
+Merged in !40: **T-11** (clickjacking/nosniff/referrer/frame-ancestors headers
++ the Content-Type/nosniff blank-page fix) and **T-13** (read-only proactive
+runs; armed-task opt-in, and read-only runs cannot arm). Also added a
+cross-site + DNS-rebind guard on the /api auth boundary (CSRF).
+Still open: T-02 memory provenance, T-06 second-channel confirm, T-10 Langfuse
+trace scrubbing, T-12 untrusted MCP responses (pairs with #46), T-05 keyring,
+F-05 RPC redundancy.

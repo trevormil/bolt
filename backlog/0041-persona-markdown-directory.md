@@ -1,7 +1,7 @@
 ---
 id: 41
 title: "Persona markdown directory — PERSONA.md (always-on) + referenceable docs"
-status: open
+status: closed
 priority: high
 type: feature
 source: planning
@@ -36,3 +36,6 @@ apply (global + persona) — make the compose order explicit.
   reference tool + memory-layer ingestion), NOT auto-injected
 - Editable from CLI + web; live-reloaded (next turn picks up edits)
 - Token-budget aware: always-on PERSONA.md counts toward context; warn if large
+
+## Closed 2026-05-28
+Delivered in the squashed local-first build, merged to `main` via MR !40 (superseded per-ticket MRs !26–!39).

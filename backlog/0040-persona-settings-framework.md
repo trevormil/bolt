@@ -1,7 +1,7 @@
 ---
 id: 40
 title: "Per-persona settings framework (global defaults + override + inherit)"
-status: open
+status: closed
 priority: high
 type: feature
 source: planning
@@ -29,3 +29,6 @@ from the CLI (#34) and the web app, surfaced in onboarding (#19).
 - Settings changes recorded in the observability layer (#42)
 - The four initial settings (#41 markdown, #42 observability prefs, #43 model,
   #44 budget) consume this — no bespoke per-setting config plumbing
+
+## Closed 2026-05-28
+Delivered in the squashed local-first build, merged to `main` via MR !40 (superseded per-ticket MRs !26–!39).

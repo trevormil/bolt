@@ -1,7 +1,7 @@
 ---
 id: 10
 title: "Free-form x/bank balance (capped)"
-status: in-progress
+status: closed
 priority: medium
 type: feature
 source: planning
@@ -23,3 +23,6 @@ significant value routes through vaults.
 **Hard ceiling ≤ $25/persona**, enforced by never funding above it (audit
 M4/T-01/T-05) — this tier has no on-chain rule enforcement. Surface the balance
 every turn. (Deferred from MVP, but the cap is mandatory whenever it ships.)
+
+## Closed 2026-05-28 (backlog reconciliation)
+Superseded — the free-form USDC cap was removed by product decision. Uncapped x/bank balance shipped; spending limits live ONLY in vaults.

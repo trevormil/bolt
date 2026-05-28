@@ -1,7 +1,7 @@
 ---
 id: 18
 title: "Light scheduled per-persona check-ins"
-status: open
+status: closed
 priority: medium
 type: feature
 source: planning
@@ -18,3 +18,6 @@ anything worth the human's attention in Telegram.
 ## Acceptance criteria
 - Scheduled job runs per persona
 - Surfaces a useful nudge; quiet when nothing matters
+
+## Closed 2026-05-28 (backlog reconciliation)
+Delivered in the merged local-first build (MR !40). Verified present in the merged code.

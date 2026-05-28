@@ -87,3 +87,12 @@ not the shared backing balance. Either re-point `escrow()` at the collection
 supply, or relabel the current value as "denom reserve (shared)" and add a
 separate per-vault supply read. Belongs with the gating/escrow design in
 ADR-0003. Caught by `bun scripts/demo.ts` + the running web app's escrow route.
+
+## Progress 2026-05-28 (slice 1 merged — stays open)
+Merged in !40: **slice 1 — escrow tracking** (`VaultService.escrow` + API + UI)
+and **ADR-0003** (the gating-revamp design). Slices 2–4 (gating-policy compiler,
+multi-sig proposal + third-party sign-off page, manager-admin surface) remain,
+pending ADR-0003 sign-off. See the "escrow per-denom not per-vault" finding above.
+
+## Escrow query correction (decided 2026-05-28)
+Per-vault escrow = the AGENT wallet's holding of the vault's x/tokenization tokens (alias-converted, 1:1 µUSDC) — NOT the shared backing-address balance that slice 1 reads. Fix `VaultService.escrow` in slice 2 to query the agent's per-collection token balance. (All USDC vaults share one backing alias by design; the agent's token holding is the correct per-vault figure.)

@@ -1,7 +1,7 @@
 ---
 id: 33
 title: "Verify/complete MCP — connect ≥1 real app"
-status: open
+status: closed
 priority: medium
 type: testing
 source: planning
@@ -22,3 +22,6 @@ if only the client scaffold exists.
 - A persona's agent invokes an MCP tool through the loop
 - The invocation is metered + appears in the proof-of-action ledger
 - e2e test (or documented manual walk) proving it
+
+## Closed 2026-05-28
+Delivered in the squashed local-first build, merged to `main` via MR !40 (superseded per-ticket MRs !26–!39).

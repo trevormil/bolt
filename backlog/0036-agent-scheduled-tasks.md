@@ -1,7 +1,7 @@
 ---
 id: 36
 title: "Agent-settable scheduled tasks (local cron)"
-status: open
+status: closed
 priority: high
 type: feature
 source: planning
@@ -25,3 +25,6 @@ tasks, run by the local daemon (#31).
 - **Setting/editing a task is capability-gated (#37)** and reviewable; a task that
   spends or touches the FS still hits those approval gates at run time
 - Tests: schedule fires the task (fake clock), pause/delete, survives restart
+
+## Closed 2026-05-28
+Delivered in the squashed local-first build, merged to `main` via MR !40 (superseded per-ticket MRs !26–!39).

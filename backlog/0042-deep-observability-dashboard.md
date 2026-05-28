@@ -38,3 +38,11 @@ vs tool vs chain); memory growth. Plus a global cross-persona rollup.
 - A per-persona dashboard (web) with the breakdowns above + a global rollup
 - Honors retention/verbosity settings via #40; never logs secrets/raw keys
 - Powers the budget tracking in #44 (single source of spend truth)
+
+## Progress 2026-05-28 (partial — stays open)
+Merged in !40: the observability **spine** (`@vellum/observability` event store
+— kind/latency/cost/tokens/ok/meta, metadata-only) + emit on chat in/out and
+capability decisions, the `GET /events` API, and the **Activity tab** (timeline
++ 24h/7d/30d summary cards).
+Still open (deferred follow-on): emit at the remaining seams (fs_op, task_run,
+tool_call, spend, vault_op, error) + per-step LLM metrics.

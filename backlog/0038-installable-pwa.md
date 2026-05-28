@@ -1,7 +1,7 @@
 ---
 id: 38
 title: "Installable PWA web entrypoint"
-status: open
+status: closed
 priority: low
 type: feature
 source: planning
@@ -21,3 +21,6 @@ localhost SPA.
 - App shell loads offline-of-cloud; API calls hit the local daemon
 - Connect/fund/vault/pay flows work in the installed PWA
 - Pairs with bundle code-splitting (#32) so first load is snappy
+
+## Closed 2026-05-28
+Delivered in the squashed local-first build, merged to `main` via MR !40 (superseded per-ticket MRs !26–!39).
