@@ -1,6 +1,7 @@
 import type { TraceSpan } from "@vellum/trace";
 import type { Engine } from "./engine.ts";
 import { vaultTools } from "./agent-tools.ts";
+import { combineTools, filesystemTools } from "./fs-tools.ts";
 import { llmBudget } from "./budgets.ts";
 
 export interface ChatInput {
@@ -39,7 +40,12 @@ export async function chat(
   }
 
   engine.orchestrator.resolve(conversationId, `/switch ${personaId}`);
-  const { tools, invoke } = vaultTools(engine, personaId);
+  // Vault tools + capability-gated filesystem tools (#35). Both share the
+  // persona's compartment; the FS tools enforce grants via engine.authorizer.
+  const { tools, invoke } = combineTools(
+    vaultTools(engine, personaId),
+    filesystemTools(engine, personaId),
+  );
   const res = await engine.orchestrator.handle(conversationId, message, {
     trace,
     tools,
