@@ -1,5 +1,10 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import {
+  Authorizer,
+  CapabilityStore,
+  type Approver,
+} from "@vellum/capabilities";
 import { claimFaucet as chainClaimFaucet, type Coin } from "@vellum/chain";
 import { Ledger } from "@vellum/ledger";
 import { PersonaStore, hashEmbedder, type Embedder } from "@vellum/persona";
@@ -27,6 +32,8 @@ export interface Engine {
   orchestrator: Orchestrator;
   txManager: TxManager;
   vaults: VaultService;
+  capabilities: CapabilityStore; // per-persona grants (#37)
+  authorizer: Authorizer; // the single gate for filesystem/cron/mcp/spend (#37)
   claimFaucet: FaucetClaim;
 }
 
@@ -42,6 +49,7 @@ export interface EngineOptions {
     VaultServiceDeps,
     "createVault" | "confirmTx" | "fetchTx" | "defaultManager"
   >; // vault test seams
+  approve?: Approver; // capability approval prompt (#37); surfaces inject. Default fail-closed.
 }
 
 export function createEngine(opts: EngineOptions = {}): Engine {
@@ -81,11 +89,18 @@ export function createEngine(opts: EngineOptions = {}): Engine {
     txManager,
     ...opts.vault,
   });
+  const capabilities = new CapabilityStore(dbPath);
+  const authorizer = new Authorizer(capabilities, {
+    ledger,
+    approve: opts.approve,
+  });
   const claimFaucet = opts.claimFaucet ?? chainClaimFaucet;
   log.info(`engine ready · db=${dbPath}`);
   return {
     store,
     wallets,
+    capabilities,
+    authorizer,
     ledger,
     orchestrator,
     txManager,

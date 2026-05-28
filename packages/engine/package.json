@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@vellum/agent": "workspace:*",
+    "@vellum/capabilities": "workspace:*",
     "@vellum/chain": "workspace:*",
     "@vellum/ledger": "workspace:*",
     "@vellum/llm": "workspace:*",

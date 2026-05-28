@@ -13,7 +13,8 @@ export type LedgerKind =
   | "tool_call" // a tool was invoked
   | "spend" // value left a persona wallet
   | "vault_op" // vault create/config/spend
-  | "funding"; // value entered a persona wallet
+  | "funding" // value entered a persona wallet
+  | "capability"; // a gated local action: granted, approved, or denied (#37)
 
 export interface LedgerInput {
   personaId: string;
