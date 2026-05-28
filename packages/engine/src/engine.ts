@@ -118,6 +118,9 @@ export function createEngine(opts: EngineOptions = {}): Engine {
     // the surface gates. Throws CapabilityDeniedError; callers catch it.
     authorize: (personaId, action) =>
       authorizer.authorizeOrThrow(personaId, action),
+    // Escrow tracking (#45) reuses the same balance-read seam as wallets, so
+    // tests inject one source of truth; prod falls back to the chain LCD.
+    fetchBalances: opts.getBalances,
     ...opts.vault,
   });
   const tasks = new TaskStore(dbPath);

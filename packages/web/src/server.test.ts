@@ -194,6 +194,13 @@ describe("web API", () => {
     const pending = (await wd.json()) as { kind: string; status: string };
     expect(pending.kind).toBe("vault_op");
     expect(pending.status).toBe("pending");
+
+    // Escrow tracking (#45): the locked backing balance, read from chain.
+    const escrow = (await (
+      await app.request("/api/personas/atlas/vaults/777/escrow")
+    ).json()) as { backingAddress: string; escrowedMicro: string };
+    expect(escrow.backingAddress).toBe("bb1backing");
+    expect(escrow.escrowedMicro).toBe("500"); // fake getBalances → 500 µUSDC
   });
 
   test("budget route reports the LLM-spend cap (no free-form cap)", async () => {

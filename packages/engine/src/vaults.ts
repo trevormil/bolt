@@ -1,5 +1,8 @@
 import { Database } from "bun:sqlite";
-import { confirmTx as chainConfirmTx } from "@vellum/chain";
+import {
+  confirmTx as chainConfirmTx,
+  getBalances as chainGetBalances,
+} from "@vellum/chain";
 import {
   createVault as tokCreateVault,
   vaultRefFromTx,
@@ -49,6 +52,11 @@ export interface VaultServiceDeps {
     personaId: string,
     action: { capability: string; target?: string; summary: string },
   ) => Promise<void>;
+  // Read an arbitrary address's coin balances (escrow tracking #45). Injectable
+  // for tests; defaults to the chain LCD query.
+  fetchBalances?: (
+    address: string,
+  ) => Promise<readonly { denom: string; amount: string }[]>;
 }
 
 const DEFAULT_IMAGE = "https://avatars.githubusercontent.com/u/0?v=4";
@@ -80,6 +88,7 @@ export class VaultService {
   private fetchTx: NonNullable<VaultServiceDeps["fetchTx"]>;
   private defaultManager: string | undefined;
   private authorize: VaultServiceDeps["authorize"];
+  private fetchBalances: NonNullable<VaultServiceDeps["fetchBalances"]>;
 
   constructor(deps: VaultServiceDeps) {
     this.authorize = deps.authorize;
@@ -88,6 +97,7 @@ export class VaultService {
     this.txManager = deps.txManager;
     this.createVaultFn = deps.createVault ?? tokCreateVault;
     this.confirmTx = deps.confirmTx ?? chainConfirmTx;
+    this.fetchBalances = deps.fetchBalances ?? chainGetBalances;
     this.fetchTx = deps.fetchTx ?? defaultFetchTx;
     this.defaultManager = deps.defaultManager ?? env.VELLUM_PRINCIPAL_ADDRESS;
     this.db = new Database(deps.dbPath ?? ":memory:");
@@ -182,6 +192,37 @@ export class VaultService {
     return (
       this.list(personaId).find((v) => v.collectionId === collectionId) ?? null
     );
+  }
+
+  /**
+   * Escrow tracking (#45, ADR-0003 slice 1): the locked backing balance for a
+   * vault = the USDC the backing address holds on-chain. Read-only truth from
+   * chain — it never gates (gating is the on-chain approvalCriteria); it's the
+   * "how much is actually escrowed" display the manager + agent both need.
+   * Returns base µUSDC as a string. Throws if the persona doesn't own the vault.
+   */
+  async escrow(
+    personaId: string,
+    collectionId: string,
+  ): Promise<{
+    collectionId: string;
+    backingAddress: string;
+    denom: string;
+    escrowedMicro: string;
+  }> {
+    const v = this.get(personaId, collectionId);
+    if (!v)
+      throw new Error(`no vault ${collectionId} for persona ${personaId}`);
+    const balances = await this.fetchBalances(v.backingAddress);
+    const denom = env.VELLUM_DENOM;
+    const escrowedMicro =
+      balances.find((b) => b.denom === denom)?.amount ?? "0";
+    return {
+      collectionId,
+      backingAddress: v.backingAddress,
+      denom,
+      escrowedMicro,
+    };
   }
 
   /** Agent withdraws `amount` µUSDC from a vault — governed (vault_op) + within

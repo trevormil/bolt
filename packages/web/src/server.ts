@@ -402,6 +402,24 @@ export function buildApp(
     return c.json({ vaults: engine.vaults.list(id) });
   });
 
+  // Escrow tracking (#45, ADR-0003): the locked backing balance for a vault —
+  // read-only truth from chain, distinct from the agent's wallet balance.
+  app.get("/api/personas/:id/vaults/:collectionId/escrow", async (c) => {
+    const id = c.req.param("id");
+    if (!engine.store.getPersona(id))
+      return c.json({ error: "unknown persona" }, 404);
+    try {
+      return c.json(
+        await engine.vaults.escrow(id, c.req.param("collectionId")),
+      );
+    } catch (e) {
+      return c.json(
+        { error: e instanceof Error ? e.message : "escrow lookup failed" },
+        404,
+      );
+    }
+  });
+
   app.post("/api/personas/:id/vaults", async (c) => {
     const id = c.req.param("id");
     if (!engine.store.getPersona(id))
