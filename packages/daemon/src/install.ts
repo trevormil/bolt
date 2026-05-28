@@ -17,10 +17,20 @@ const log = createLogger("daemon-install");
 // pure unit *generators* in service.ts are; this just writes them to the right
 // path and loads the OS service manager. Run via `bun packages/daemon/src/install.ts`.
 
-function run(cmd: string[]): void {
+// `required: true` for the commands that MUST succeed for autostart to actually
+// be installed (bootstrap / enable). On failure we exit non-zero so the
+// installer never reports a green install over a failed service-manager call.
+// Best-effort cleanup commands (bootout/disable/daemon-reload) stay non-fatal.
+function run(cmd: string[], opts: { required?: boolean } = {}): void {
   const p = Bun.spawnSync(cmd, { stdout: "inherit", stderr: "inherit" });
-  if (p.exitCode !== 0)
-    log.warn(`command exited ${p.exitCode}: ${cmd.join(" ")}`);
+  if (p.exitCode !== 0) {
+    const msg = `command failed (exit ${p.exitCode}): ${cmd.join(" ")}`;
+    if (opts.required) {
+      log.error(msg);
+      process.exit(1);
+    }
+    log.warn(msg);
+  }
 }
 
 function spec(): ServiceSpec {
@@ -43,8 +53,8 @@ function installMac(s: ServiceSpec): void {
   writeFileSync(plistPath, launchdPlist(s));
   // Reload: bootout (ignore if not loaded) then bootstrap.
   const domain = `gui/${process.getuid?.() ?? ""}`;
-  run(["launchctl", "bootout", domain, plistPath]);
-  run(["launchctl", "bootstrap", domain, plistPath]);
+  run(["launchctl", "bootout", domain, plistPath]); // best-effort (may not be loaded)
+  run(["launchctl", "bootstrap", domain, plistPath], { required: true });
   log.info(`installed launchd agent → ${plistPath}`);
   log.info(`logs → ${s.logFile}`);
 }
@@ -67,8 +77,10 @@ function installLinux(s: ServiceSpec): void {
   mkdirSync(dirname(s.logFile), { recursive: true });
   mkdirSync(dirname(unitPath), { recursive: true });
   writeFileSync(unitPath, systemdUnit(s));
-  run(["systemctl", "--user", "daemon-reload"]);
-  run(["systemctl", "--user", "enable", "--now", SYSTEMD_UNIT]);
+  run(["systemctl", "--user", "daemon-reload"]); // best-effort
+  run(["systemctl", "--user", "enable", "--now", SYSTEMD_UNIT], {
+    required: true,
+  });
   log.info(`installed systemd user unit → ${unitPath}`);
   log.info(`logs → ${s.logFile}`);
 }

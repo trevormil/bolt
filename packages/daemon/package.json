@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@vellum/engine": "workspace:*",
+    "@vellum/scheduler": "workspace:*",
     "@vellum/shared": "workspace:*",
     "@vellum/telegram": "workspace:*",
     "@vellum/web": "workspace:*"

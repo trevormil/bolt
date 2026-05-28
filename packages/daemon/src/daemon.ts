@@ -7,6 +7,7 @@ import {
 import { createEngine } from "@vellum/engine";
 import { buildApp, webServeOptions, isLoopback } from "@vellum/web";
 import { attachTelegram } from "@vellum/telegram";
+import { CheckInScheduler, TaskScheduler } from "@vellum/scheduler";
 
 const log = createLogger("daemon");
 
@@ -42,13 +43,23 @@ export async function startDaemon(): Promise<void> {
   Bun.serve(opts);
   log.info(`web · http://${opts.hostname}:${opts.port}`);
 
-  // Telegram surface + schedulers (only if a token is configured). The
-  // schedulers start inside attachTelegram; without a token there is no
-  // delivery channel, so they're not started (a CLI-only run uses the web UI).
+  // Schedulers (#18 check-ins, #36 tasks) ALWAYS run — keeping them alive is the
+  // daemon's whole point. When Telegram is configured, attachTelegram starts
+  // them wired to principal delivery; otherwise the daemon starts them here with
+  // a log-only delivery so scheduled tasks still execute + advance state (the
+  // web/PWA notification channel is future work).
   if (env.TELEGRAM_BOT_TOKEN) {
     attachTelegram(engine, env.TELEGRAM_BOT_TOKEN);
   } else {
     log.info("telegram · no TELEGRAM_BOT_TOKEN (web-only daemon)");
+    const logDeliver = (personaId: string, message: string) =>
+      log.info(`proactive [${personaId}] ${message.slice(0, 80)}`);
+    new CheckInScheduler({
+      engine,
+      intervalMs: env.VELLUM_CHECKIN_INTERVAL_MS,
+      deliver: logDeliver,
+    }).start();
+    new TaskScheduler({ engine, deliver: logDeliver }).start();
   }
 
   log.info(
