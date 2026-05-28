@@ -1,4 +1,4 @@
-import { chat, type Engine } from "@vellum/engine";
+import { chat, grantDefaultCapabilities, type Engine } from "@vellum/engine";
 import { env } from "@vellum/shared";
 
 const fmtUsdc = (micro: string) => (Number(micro) / 1e6).toFixed(2);
@@ -68,6 +68,7 @@ export async function runCommand(
         voice: "friendly and concise",
       });
       const w = await engine.wallets.ensureWallet(id);
+      grantDefaultCapabilities(engine.capabilities, id); // #37 baseline policy
       return `created persona ${id} · ${w.address}`;
     }
 

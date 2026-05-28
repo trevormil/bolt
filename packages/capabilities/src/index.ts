@@ -15,3 +15,4 @@ export {
   type AuthLedger,
   type AuthorizerOptions,
 } from "./authorizer.ts";
+export { grantDefaultCapabilities } from "./defaults.ts";

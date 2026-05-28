@@ -51,6 +51,13 @@ export function vaultTools(
 
   const invoke: ToolInvoker = async (name, args) => {
     if (name === "create_vault") {
+      if (
+        !(await engine.authorizer.authorize(personaId, {
+          capability: "vault.create",
+          summary: `create vault ${String(args.symbol)}`,
+        }))
+      )
+        return "Denied: no permission to create vaults.";
       const v = await engine.vaults.create(personaId, {
         name: String(args.name),
         symbol: String(args.symbol),
@@ -73,6 +80,14 @@ export function vaultTools(
     }
     if (name === "withdraw_from_vault") {
       const micro = String(Math.round(Number(args.amountUsdc) * 1e6));
+      if (
+        !(await engine.authorizer.authorize(personaId, {
+          capability: "vault.withdraw",
+          target: String(args.collectionId),
+          summary: `withdraw ${args.amountUsdc} USDC from vault ${String(args.collectionId)}`,
+        }))
+      )
+        return "Denied: no permission to withdraw from vaults.";
       const p = await engine.vaults.withdraw(
         personaId,
         String(args.collectionId),

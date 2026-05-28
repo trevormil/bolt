@@ -8,7 +8,13 @@ import {
   ensureDataDir,
   migrateLegacyDb,
 } from "@vellum/shared";
-import { createEngine, chat, llmBudget, type Engine } from "@vellum/engine";
+import {
+  createEngine,
+  chat,
+  grantDefaultCapabilities,
+  llmBudget,
+  type Engine,
+} from "@vellum/engine";
 import { PaymentRequests } from "./payment-requests.ts";
 
 // Built SPA dir, resolved from this file (cwd-independent) so the server can be
@@ -237,6 +243,7 @@ export function buildApp(
     };
     const persona = engine.store.createPersona(id, name, soul);
     const wallet = await engine.wallets.ensureWallet(id);
+    grantDefaultCapabilities(engine.capabilities, id); // #37 baseline policy
     return c.json({ persona, address: wallet.address }, 201);
   });
 
@@ -290,6 +297,18 @@ export function buildApp(
         400,
       );
     }
+    if (
+      !(await engine.authorizer.authorize(id, {
+        capability: "spend",
+        target: to,
+        summary: `spend ${amount} → ${to}`,
+      }))
+    ) {
+      return c.json(
+        { error: "denied: persona lacks the 'spend' capability" },
+        403,
+      );
+    }
     const trace = tracer.trace("spend", { personaId: id });
     const pending = await engine.txManager.spend({
       personaId: id,
@@ -323,6 +342,14 @@ export function buildApp(
     if (!body.name?.trim() || !body.symbol?.trim()) {
       return c.json({ error: "name and symbol are required" }, 400);
     }
+    if (
+      !(await engine.authorizer.authorize(id, {
+        capability: "vault.create",
+        summary: `create vault ${body.symbol.trim()}`,
+      }))
+    ) {
+      return c.json({ error: "denied: persona lacks 'vault.create'" }, 403);
+    }
     const vault = await engine.vaults.create(id, {
       name: body.name.trim(),
       symbol: body.symbol.trim(),
@@ -344,9 +371,17 @@ export function buildApp(
         400,
       );
     }
-    return c.json(
-      await engine.vaults.withdraw(id, c.req.param("collectionId"), amount),
-    );
+    const collectionId = c.req.param("collectionId");
+    if (
+      !(await engine.authorizer.authorize(id, {
+        capability: "vault.withdraw",
+        target: collectionId,
+        summary: `withdraw ${amount} from vault ${collectionId}`,
+      }))
+    ) {
+      return c.json({ error: "denied: persona lacks 'vault.withdraw'" }, 403);
+    }
+    return c.json(await engine.vaults.withdraw(id, collectionId, amount));
   });
 
   // Payment requests (0014) — the agent/user raises a one-time funding request;

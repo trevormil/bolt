@@ -11,6 +11,13 @@ export {
 export { vaultTools } from "./agent-tools.ts";
 export { chat, type ChatInput, type ChatResult } from "./chat.ts";
 export { llmBudget, type LlmBudget } from "./budgets.ts";
+// Re-export capability helpers so surfaces wire grants/approval without a direct
+// @vellum/capabilities dep (#37).
+export {
+  grantDefaultCapabilities,
+  type Grant,
+  type Approver,
+} from "@vellum/capabilities";
 
 if (import.meta.main) {
   const { createLogger } = await import("@vellum/shared");

@@ -59,6 +59,40 @@ describe("CapabilityStore.decide — default-deny + scope", () => {
     s.close();
   });
 
+  test("downgrading an unscoped grant (allow→ask) leaves no stale allow row", () => {
+    const s = store();
+    s.grant({
+      personaId: "p",
+      capability: "spend",
+      scope: null,
+      mode: "allow",
+    });
+    s.grant({ personaId: "p", capability: "spend", scope: null, mode: "ask" });
+    expect(s.decide("p", "spend")).toBe("ask"); // not stuck on the old allow
+    expect(s.list("p").filter((g) => g.capability === "spend")).toHaveLength(1);
+    s.close();
+  });
+
+  test("fs scope matching is traversal-safe (resolves ../)", () => {
+    const s = store();
+    s.grant({
+      personaId: "p",
+      capability: "fs.read",
+      scope: "/home/u/docs",
+      mode: "allow",
+    });
+    expect(s.decide("p", "fs.read", "/home/u/docs/a.txt")).toBe("allow");
+    expect(s.decide("p", "fs.read", "/home/u/docs")).toBe("allow"); // exact root
+    expect(s.decide("p", "fs.read", "/home/u/docs/../private/key")).toBe(
+      "deny",
+    ); // escapes
+    expect(s.decide("p", "fs.read", "/home/u/docs-evil")).toBe("deny"); // sibling prefix
+    expect(s.decide("p", "fs.read", "/home/u/docs/sub/../ok.txt")).toBe(
+      "allow",
+    ); // stays in
+    s.close();
+  });
+
   test("grants are per-persona; revoke removes them", () => {
     const s = store();
     s.grant({

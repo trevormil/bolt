@@ -9,7 +9,7 @@
 // PaymentRequest (0014) is the production funding path. The narrated steps map
 // 1:1 to docs/demo.md.
 import { confirmTx, getBalances } from "@vellum/chain";
-import { createEngine } from "@vellum/engine";
+import { createEngine, grantDefaultCapabilities } from "@vellum/engine";
 import { createLogger, env } from "@vellum/shared";
 import { vaultDeposit } from "@vellum/tokenization";
 
@@ -54,6 +54,7 @@ if (!engine.store.getPersona(PERSONA)) {
   });
 }
 const wallet = await engine.wallets.ensureWallet(PERSONA);
+grantDefaultCapabilities(engine.capabilities, PERSONA); // #37: allow vault ops
 console.log(`Persona "Vellum" · wallet ${wallet.address}`);
 
 beat(2, "Fund the wallet (faucet — stands in for a PaymentRequest, 0014)");
