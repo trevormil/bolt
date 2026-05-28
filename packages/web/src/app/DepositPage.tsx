@@ -51,8 +51,9 @@ export function DepositPage({ reqId }: { reqId: string }) {
         ],
         `deposit request ${req.id.slice(0, 8)}`,
       );
-      // Light confirm — delete the request now that the deposit is on-chain.
-      await api.confirmDepositRequest(req.id);
+      // The deposit is the funder's own on-chain tx — show success. The persona
+      // owner dismisses the request (authed) once the vault shows funded; there's
+      // no public delete to grief (#62).
       setDone(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

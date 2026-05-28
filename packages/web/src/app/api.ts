@@ -285,15 +285,8 @@ export const api = {
       json<{ request: DepositRequest; personaName: string }>(r),
     ),
 
-  // Light confirm (#62): deletes the request after the funder signs — no
-  // on-chain verification (the deposit is the funder's own tx). No txHash needed.
-  confirmDepositRequest: (reqId: string) =>
-    fetch(`/api/deposit-requests/${reqId}/confirm`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({}),
-    }).then((r) => json<{ ok: boolean }>(r)),
-
+  // No confirm method (#62): a third-party funder just signs the deposit; the
+  // persona owner dismisses the (authed) request once the vault shows funded.
   dismissDepositRequest: (reqId: string) =>
     fetch(`/api/deposit-requests/${reqId}`, { method: "DELETE" }).then((r) =>
       json<{ ok: boolean }>(r),

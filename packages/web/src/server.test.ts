@@ -903,7 +903,7 @@ describe("vault deposit requests (#62)", () => {
     expect((await app.request("/api/deposit-requests/nope")).status).toBe(404);
   });
 
-  test("confirm deletes the request (light, no on-chain verification)", async () => {
+  test("there is NO public confirm route — a deposit has nothing to verify (#62)", async () => {
     await setupVault();
     const req = (await (
       await post("/api/personas/atlas/deposit-requests", {
@@ -912,18 +912,16 @@ describe("vault deposit requests (#62)", () => {
       })
     ).json()) as { id: string };
 
-    const confirm = await post(`/api/deposit-requests/${req.id}/confirm`, {});
-    expect(confirm.status).toBe(200);
-
-    // Gone after confirm — its share link now 404s.
+    // An unauthenticated delete-by-id would be a griefing vector (unlike the
+    // payment-request confirm, which verifies an on-chain credit). The route is
+    // removed → a POST to it is a normal API 404; the request stays pending.
+    expect(
+      (await post(`/api/deposit-requests/${req.id}/confirm`, {})).status,
+    ).toBe(404);
     expect((await app.request(`/api/deposit-requests/${req.id}`)).status).toBe(
-      404,
+      200,
     );
-    const after = (await (
-      await app.request("/api/personas/atlas/deposit-requests")
-    ).json()) as { requests: { id: string }[] };
-    expect(after.requests).toHaveLength(0);
-    // The deposit is the funder's own on-chain tx — nothing recorded in the ledger.
+    // Deposits write no ledger entry (the escrow is on-chain truth).
     const led = (await (
       await app.request("/api/personas/atlas/ledger")
     ).json()) as { entries: { kind: string }[] };

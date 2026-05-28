@@ -212,18 +212,13 @@ export function isPublicRoute(method: string, path: string): boolean {
     /^\/api\/payment-requests\/[^/]+\/confirm$/.test(path)
   )
     return true;
-  // Vault deposit-request share links (#62) — same trust posture as the pay
-  // links: the /deposit/:id page is opened by anyone the funder shares it with,
-  // and reads the request + confirms (deletes) it after the funder signs. The
-  // confirm is a bare delete-by-id (no on-chain verification, unlike the payment
-  // confirm), so the worst a stranger can do is dismiss a pending UI prompt — no
-  // funds are at risk because the deposit IS the funder's own on-chain tx.
+  // Vault deposit-request share link (#62): the /deposit/:id page is opened by
+  // anyone the funder shares it with, so READING the request is public (like the
+  // pay link). There is deliberately NO public confirm/delete — unlike the
+  // payment-request confirm (which verifies the on-chain credit), a deposit has
+  // nothing to verify, so an unauthenticated delete would just be a griefing
+  // vector. The persona owner dismisses the request (authed) once it's funded.
   if (method === "GET" && /^\/api\/deposit-requests\/[^/]+$/.test(path))
-    return true;
-  if (
-    method === "POST" &&
-    /^\/api\/deposit-requests\/[^/]+\/confirm$/.test(path)
-  )
     return true;
   // Vault sign-off info is public (collectionId + signers are on-chain) — the
   // third-party sign-off page (#45 slice 3) reads it without a persona session.
@@ -984,21 +979,10 @@ export function buildApp(
     });
   });
 
-  // The funder signed + broadcast `vaultDepositMsg` client-side (inline, or via
-  // the /deposit link). Unlike the payment-request confirm — which verifies the
-  // on-chain credit before deleting — this is intentionally LIGHT: a bare
-  // delete-by-id. The deposit IS the funder's own on-chain tx (the permanent
-  // trail is on-chain escrow), so there's nothing to record in the ledger and a
-  // premature delete only removes a pending UI prompt — no funds at risk. (#62)
-  app.post("/api/deposit-requests/:reqId/confirm", (c) => {
-    const r = depositRequests.get(c.req.param("reqId"));
-    // Already fulfilled (or never existed) — the deposit, if any, is on-chain.
-    if (!r) return c.json({ error: "unknown or already-filled request" }, 404);
-    depositRequests.delete(r.id);
-    return c.json({ ok: true });
-  });
-
-  // Dismiss a pending deposit request without funding it.
+  // There is NO public confirm route: a deposit has nothing to verify on-chain
+  // (unlike a payment-request credit), so an unauthenticated delete would be pure
+  // griefing. The funder just signs `vaultDepositMsg`; the persona owner dismisses
+  // the request (authed) below once the vault shows funded. (#62)
   app.delete("/api/deposit-requests/:reqId", (c) => {
     const r = depositRequests.get(c.req.param("reqId"));
     if (!r) return c.json({ error: "unknown deposit request" }, 404);
