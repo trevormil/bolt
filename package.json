@@ -8,6 +8,7 @@
   "scripts": {
     "setup": "bash scripts/quickstart.sh",
     "start": "bun run --filter @vellum/web build && bun packages/web/src/server.ts",
+    "vellum": "bun packages/cli/src/cli.ts",
     "demo": "bun scripts/demo.ts",
     "dev": "bun run --filter '@vellum/*' dev",
     "typecheck": "tsc --noEmit",
