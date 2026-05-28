@@ -1,14 +1,14 @@
 ---
 id: 28
 title: "Vault manager rule-change signing (edit limits)"
-status: open
+status: closed
 priority: medium
 type: feature
 source: planning
 created: 2026-05-27
-updated: 2026-05-27
+updated: 2026-05-28
 prs: []
-refs: ["0016-web-vault-mgmt.md", "0027-keplr-human-wallet.md"]
+refs: ["0016-web-vault-mgmt.md", "0027-keplr-human-wallet.md", "0045-vault-revamp.md"]
 ---
 
 ## Description
@@ -26,3 +26,13 @@ Trevor before writing the chain logic.
 - Manager edits a rule → builds the manager-only update msg server-side
 - Human signs the update with Keplr (coin type 118); agent cannot
 - Change confirmed on devnet; reflected in the vault's on-chain approval
+
+---
+
+**Closed 2026-05-28 — superseded by design (#45 slice 4).** Trevor's call:
+"we don't need any MsgSetIsArchived or MsgUniversalUpdateCollection." Instead of
+editing a live vault's rules, the manager exercises two human-signed admin
+approvals — unlimited drain + forceful revocation of the agent's tokens
+(`overridesFromOutgoingApprovals` + `overridesToIncomingApprovals`) — which
+effectively archives the vault. The agent then re-creates a vault with the new
+rules. Rule mutation in place is intentionally not supported.
