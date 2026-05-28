@@ -4,6 +4,12 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Vellum</title>
+    <!-- PWA (#38): manifest + theme color + svg/apple touch icon make the app
+         installable. The service worker is registered from main.tsx. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#0e0f12" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="apple-touch-icon" href="/icon.svg" />
   </head>
   <body class="vellum-ui">
     <div id="root"></div>
