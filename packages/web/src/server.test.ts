@@ -933,3 +933,31 @@ describe("MCP server config API (#46)", () => {
     );
   });
 });
+
+describe("setup status (#19)", () => {
+  test("reports persona count + config booleans, no secret values", async () => {
+    const res = await app.request("/api/setup-status");
+    expect(res.status).toBe(200);
+    const s = (await res.json()) as Record<string, unknown>;
+    expect(s).toHaveProperty("hasLlmKey");
+    expect(s).toHaveProperty("hasWallet");
+    expect(s).toHaveProperty("personaCount");
+    expect(s).toHaveProperty("dataDir");
+    // Never leak the actual secrets.
+    expect(JSON.stringify(s)).not.toContain("mnemonic");
+    expect(s.personaCount).toBe(0);
+    await post("/api/personas", { name: "Atlas" });
+    const after = (await (await app.request("/api/setup-status")).json()) as {
+      personaCount: number;
+    };
+    expect(after.personaCount).toBe(1);
+  });
+
+  test("setup-status is reachable without auth (drives pre-login onboarding)", async () => {
+    const a = buildApp(makeEngine(), new PaymentRequests(":memory:"), {
+      token: "secret",
+      host: "0.0.0.0",
+    });
+    expect((await a.request("/api/setup-status")).status).toBe(200);
+  });
+});

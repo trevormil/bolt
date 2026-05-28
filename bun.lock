@@ -50,6 +50,7 @@
         "vellum": "src/cli.ts",
       },
       "dependencies": {
+        "@vellum/chain": "workspace:*",
         "@vellum/engine": "workspace:*",
         "@vellum/shared": "workspace:*",
       },

@@ -10,7 +10,7 @@ import { env } from "@vellum/shared";
 
 const fmtUsdc = (micro: string) => (Number(micro) / 1e6).toFixed(2);
 
-function slug(name: string): string {
+export function slug(name: string): string {
   return (
     name
       .toLowerCase()
@@ -27,6 +27,7 @@ async function usdcBalance(engine: Engine, personaId: string): Promise<string> {
 
 const USAGE = `vellum — local-first agent CLI
 
+  vellum init                     first-time setup wizard (LLM key, wallet, persona, daemon)
   vellum                          interactive chat (REPL)
   vellum chat <persona> <msg…>    one-shot message to a persona
   vellum personas                 list personas

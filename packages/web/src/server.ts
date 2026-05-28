@@ -4,6 +4,7 @@ import { confirmTx } from "@vellum/chain";
 import { tracer } from "@vellum/trace";
 import {
   createLogger,
+  dataDir,
   env,
   ensureDataDir,
   migrateLegacyDb,
@@ -174,6 +175,9 @@ export function parseGating(raw: unknown): VaultGating | undefined | "invalid" {
 // shares it with; the confirm is safe because it verifies the on-chain credit).
 export function isPublicRoute(method: string, path: string): boolean {
   if (path === "/api/health" || path === "/api/config") return true;
+  // Setup status drives the onboarding screen before anything is configured.
+  // No secrets — just booleans + the local data-dir path (#19).
+  if (method === "GET" && path === "/api/setup-status") return true;
   // Auth status + login/logout must be reachable to authenticate in the first place.
   if (method === "GET" && path === "/api/auth") return true;
   if (method === "POST" && (path === "/api/login" || path === "/api/logout"))
@@ -326,6 +330,23 @@ export function buildApp(
       // Approved per-persona models (#43) so the Settings UI can offer a vetted
       // dropdown instead of a free-text field.
       models: APPROVED_MODELS,
+    }),
+  );
+
+  // Onboarding setup status (#19) — what's configured, so the web onboarding can
+  // guide a from-scratch user to the terminal wizard for secrets. Booleans only;
+  // never the key/mnemonic values themselves.
+  app.get("/api/setup-status", (c) =>
+    c.json({
+      hasLlmKey: !!(
+        env.OPENROUTER_API_KEY ||
+        env.ANTHROPIC_API_KEY ||
+        env.OPENAI_API_KEY
+      ),
+      hasWallet: !!env.AGENT_SIGNER_MNEMONIC,
+      personaCount: engine.store.listPersonas().length,
+      daemonExposed: !isLoopback(env.WEB_HOST),
+      dataDir: dataDir(),
     }),
   );
 
