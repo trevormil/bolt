@@ -15,6 +15,7 @@
     "@vellum/llm": "workspace:*",
     "@vellum/orchestrator": "workspace:*",
     "@vellum/persona": "workspace:*",
+    "@vellum/settings": "workspace:*",
     "@vellum/shared": "workspace:*",
     "@vellum/tokenization": "workspace:*",
     "@vellum/tx": "workspace:*",

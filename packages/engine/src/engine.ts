@@ -11,6 +11,7 @@ import { PersonaStore, hashEmbedder, type Embedder } from "@vellum/persona";
 import { Orchestrator, type RunLoop } from "@vellum/orchestrator";
 import { TxManager, type TxChain } from "@vellum/tx";
 import { PersonaWallets } from "@vellum/wallet";
+import { SettingsStore } from "@vellum/settings";
 import { env, createLogger } from "@vellum/shared";
 import { VaultService, type VaultServiceDeps } from "./vaults.ts";
 import { TaskStore } from "./tasks.ts";
@@ -36,6 +37,7 @@ export interface Engine {
   capabilities: CapabilityStore; // per-persona grants (#37)
   authorizer: Authorizer; // the single gate for filesystem/cron/mcp/spend (#37)
   tasks: TaskStore; // agent-settable scheduled tasks (#36)
+  settings: SettingsStore; // global + per-persona settings (#40)
   claimFaucet: FaucetClaim;
 }
 
@@ -105,6 +107,7 @@ export function createEngine(opts: EngineOptions = {}): Engine {
     ...opts.vault,
   });
   const tasks = new TaskStore(dbPath);
+  const settings = new SettingsStore(dbPath);
   const claimFaucet = opts.claimFaucet ?? chainClaimFaucet;
   log.info(`engine ready · db=${dbPath}`);
   return {
@@ -113,6 +116,7 @@ export function createEngine(opts: EngineOptions = {}): Engine {
     capabilities,
     authorizer,
     tasks,
+    settings,
     ledger,
     orchestrator,
     txManager,

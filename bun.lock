@@ -65,6 +65,7 @@
         "@vellum/llm": "workspace:*",
         "@vellum/orchestrator": "workspace:*",
         "@vellum/persona": "workspace:*",
+        "@vellum/settings": "workspace:*",
         "@vellum/shared": "workspace:*",
         "@vellum/tokenization": "workspace:*",
         "@vellum/trace": "workspace:*",
@@ -127,6 +128,13 @@
       },
       "devDependencies": {
         "@vellum/chain": "workspace:*",
+      },
+    },
+    "packages/settings": {
+      "name": "@vellum/settings",
+      "version": "0.0.0",
+      "dependencies": {
+        "zod": "3.23.8",
       },
     },
     "packages/shared": {
@@ -509,6 +517,8 @@
     "@vellum/persona": ["@vellum/persona@workspace:packages/persona"],
 
     "@vellum/scheduler": ["@vellum/scheduler@workspace:packages/scheduler"],
+
+    "@vellum/settings": ["@vellum/settings@workspace:packages/settings"],
 
     "@vellum/shared": ["@vellum/shared@workspace:packages/shared"],
 
