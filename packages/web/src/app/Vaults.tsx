@@ -56,9 +56,7 @@ export function VaultsView({ personaId }: { personaId: string }) {
         : null;
   const previewParts = [
     hasAmount ? `≤ ${limit} USDC / ${period}` : null,
-    hasTime
-      ? `unlocks ${new Date(unlockDate).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`
-      : null,
+    hasTime ? `unlocks ${fmtLocalDay(unlockDate)}` : null,
     hasMultisig && !multisigError
       ? `${thresholdNum}-of-${signers.length} sign-off`
       : null,
@@ -296,6 +294,18 @@ export function VaultsView({ personaId }: { personaId: string }) {
       )}
     </div>
   );
+}
+
+// Format a yyyy-mm-dd value as a local-day label. Parsing the string directly
+// (`new Date("2026-06-01")`) is UTC midnight, which renders as the PREVIOUS day
+// for users behind UTC — so build the date from local parts (!54 LOW).
+function fmtLocalDay(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y!, m! - 1, d!).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 // Mono-caps field label wrapper — matches the Settings/onboarding form motif.
