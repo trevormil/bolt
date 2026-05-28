@@ -54,6 +54,16 @@
         "@vellum/shared": "workspace:*",
       },
     },
+    "packages/daemon": {
+      "name": "@vellum/daemon",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vellum/engine": "workspace:*",
+        "@vellum/shared": "workspace:*",
+        "@vellum/telegram": "workspace:*",
+        "@vellum/web": "workspace:*",
+      },
+    },
     "packages/engine": {
       "name": "@vellum/engine",
       "version": "0.0.0",
@@ -512,6 +522,8 @@
     "@vellum/chain": ["@vellum/chain@workspace:packages/chain"],
 
     "@vellum/cli": ["@vellum/cli@workspace:packages/cli"],
+
+    "@vellum/daemon": ["@vellum/daemon@workspace:packages/daemon"],
 
     "@vellum/engine": ["@vellum/engine@workspace:packages/engine"],
 

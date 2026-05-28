@@ -87,7 +87,7 @@ async function verifyCredit(
   );
 }
 
-const isLoopback = (host: string): boolean =>
+export const isLoopback = (host: string): boolean =>
   host === "127.0.0.1" || host === "localhost" || host === "::1";
 
 // Routes safe to serve without auth: liveness, public chain config, and the
