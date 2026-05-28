@@ -1,5 +1,6 @@
 import { join } from "node:path";
-import { generateWallet, addressOf } from "@vellum/chain";
+import { generateWallet } from "@vellum/chain";
+import { verifyOpenRouterKey } from "@vellum/llm";
 import { env } from "@vellum/shared";
 import { runSetup } from "./setup.ts";
 import {
@@ -43,30 +44,37 @@ export async function initWizard(
     "  " + dim("Nothing is hosted; only OpenRouter is ever contacted."),
   );
 
-  // 1) LLM key (optional — boots offline-of-cloud, just can't think yet).
-  console.log(step(1, "OpenRouter API key", "powers the agent's LLM"));
-  const openRouterKey =
-    ask("key " + dim("(blank to skip for now)") + ": ") || undefined;
-
-  // 2) Agent signer wallet — all persona wallets derive from one mnemonic.
-  console.log(step(2, "Agent signer wallet"));
-  let mnemonic: string;
-  if (
-    yesno(
-      "Import an existing 24-word mnemonic? " + dim("(No = generate fresh)"),
-    )
-  ) {
-    mnemonic = ask("paste mnemonic: ");
-    const addr = await addressOf(mnemonic); // throws on an invalid phrase
-    console.log(`   ${check} imported ${dim("·")} ${gold(addr)}`);
-  } else {
-    const w = await generateWallet();
-    mnemonic = w.mnemonic;
+  // 1) LLM key — REQUIRED + health-checked (#60). Chat is dead without a valid
+  // key, so block here (matches the web onboarding) rather than warn later.
+  console.log(
+    step(1, "OpenRouter API key", "powers the agent's LLM — required"),
+  );
+  let openRouterKey = "";
+  for (;;) {
+    const entered = ask("key " + dim("(openrouter.ai/keys)") + ": ");
+    if (!entered) {
+      console.log(`   ${warn} a key is required to continue.`);
+      continue;
+    }
+    console.log(`   ${dim("verifying…")}`);
+    if (await verifyOpenRouterKey(entered)) {
+      openRouterKey = entered;
+      console.log(`   ${check} key validated`);
+      break;
+    }
     console.log(
-      `   ${check} generated a new mnemonic ${dim("— saved to .env,")} ${copper("BACK IT UP")}${dim(":")}`,
+      `   ${warn} that key didn't validate — check it and try again.`,
     );
-    console.log("\n     " + gold(mnemonic) + "\n");
   }
+
+  // 2) Agent signer wallet — always generated fresh (#59, no import); all persona
+  // wallets derive from it. Back it up later via the app's Settings → Export.
+  console.log(step(2, "Agent signer wallet"));
+  const { mnemonic } = await generateWallet();
+  console.log(
+    `   ${check} generated a new mnemonic ${dim("— saved to .env,")} ${copper("BACK IT UP")}${dim(":")}`,
+  );
+  console.log("\n     " + gold(mnemonic) + "\n");
 
   // 3) First persona.
   console.log(step(3, "Your first persona"));
@@ -106,10 +114,6 @@ export async function initWizard(
   console.log(
     `   ${dim("• secrets")}   ${fg(res.envPath)} ${dim("(" + res.wroteKeys.join(", ") + ")")}`,
   );
-  if (!openRouterKey)
-    console.log(
-      `   ${warn} ${copper("no LLM key set")} ${dim("— add OPENROUTER_API_KEY to .env to enable chat.")}`,
-    );
 
   // 5) Run Bolt — seamlessly. The user shouldn't have to run any command: the
   // wizard starts the daemon for them (gated by y/n) and only ever points them at

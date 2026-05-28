@@ -13,6 +13,7 @@
   "dependencies": {
     "@vellum/chain": "workspace:*",
     "@vellum/engine": "workspace:*",
+    "@vellum/llm": "workspace:*",
     "@vellum/shared": "workspace:*"
   }
 }

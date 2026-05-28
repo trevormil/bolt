@@ -28,8 +28,9 @@ terminal wizard instead (same outcome, no server/browser needed).
 
 ## What the web setup asks
 
-1. **OpenRouter API key** — powers the agent's LLM. Optional; you can add it
-   later in `.env`/Settings, but chat won't work until one is set.
+1. **OpenRouter API key** — powers the agent's LLM. **Required + validated**: a
+   sample health check runs before setup proceeds, so an invalid key is rejected
+   up front (#60). Get one at openrouter.ai/keys; change it later in Settings.
 2. **First persona** — a name (role/voice optional); it gets its own `bb1`
    wallet + default capabilities (#37) on creation.
 
