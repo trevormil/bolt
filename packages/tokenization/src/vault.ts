@@ -102,9 +102,12 @@ export function buildVaultMsg(
     symbol: input.symbol,
     description: input.description,
     image: input.image,
-    // When a gating policy is provided it owns the amount cap (any period), so
-    // don't also let the SDK set its daily-only cap.
-    dailyWithdrawLimit: input.gating ? undefined : input.dailyWithdrawLimit,
+    // Only an explicit gating.amount supersedes the SDK's daily cap. A gating
+    // policy WITHOUT an amount (e.g. time-only) must NOT suppress the legacy
+    // dailyWithdrawLimit — otherwise the vault would be left uncapped.
+    dailyWithdrawLimit: input.gating?.amount
+      ? undefined
+      : input.dailyWithdrawLimit,
     require2fa: input.require2fa,
     emergencyRecovery: input.emergencyRecovery,
   }) as MsgJson;

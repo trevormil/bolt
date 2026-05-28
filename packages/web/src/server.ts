@@ -115,14 +115,16 @@ export function parseGating(raw: unknown): VaultGating | undefined | "invalid" {
   }
   if (g.time != null) {
     const t = g.time as { unlockAt?: unknown };
-    if (
-      t.unlockAt != null &&
-      (typeof t.unlockAt !== "number" || t.unlockAt < 0)
-    )
-      return "invalid";
-    out.time = { unlockAt: t.unlockAt as number | undefined };
+    if (t.unlockAt != null) {
+      if (typeof t.unlockAt !== "number" || t.unlockAt < 0) return "invalid";
+      // Only a real unlock makes a time policy. An empty `time: {}` is a no-op,
+      // NOT a policy — otherwise it would suppress the legacy daily cap while
+      // compiling no on-chain rule, leaving the vault uncapped.
+      out.time = { unlockAt: t.unlockAt };
+    }
   }
-  return Object.keys(out).length ? out : undefined;
+  // amount with no real content, or only an empty time, → no gating at all.
+  return out.amount || out.time ? out : undefined;
 }
 
 // Routes safe to serve without auth: liveness, public chain config, and the

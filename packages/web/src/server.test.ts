@@ -474,6 +474,10 @@ describe("vault gating parse (#45 slice 2)", () => {
     expect(parseGating({ time: { unlockAt: 123 } })).toEqual({
       time: { unlockAt: 123 },
     });
+    // Empty time / no-content policies are NOT real gating (review fix: an empty
+    // {time:{}} must not suppress the legacy daily cap → undefined, not a policy).
+    expect(parseGating({ time: {} })).toBeUndefined();
+    expect(parseGating({ amount: undefined, time: {} })).toBeUndefined();
     // invalid: bad period, non-positive limit, negative unlock
     expect(parseGating({ amount: { limitUsd: 5, period: "yearly" } })).toBe(
       "invalid",
