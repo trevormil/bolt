@@ -188,6 +188,19 @@ export class TxManager {
   }): Promise<PendingTx> {
     const { personaId, kind, msgs, to, amount } = input;
     const authority = input.authority ?? "agent";
+    // Capability chokepoint (#37): EVERY free-form spend passes through submit(),
+    // so gating here means no public entry (spend() or a direct submit()) can
+    // bypass the authorizer. Throws CapabilityDeniedError when denied; surfaces
+    // catch it → 403. vault_op is gated upstream in VaultService; funding is
+    // incoming value (not gated). Gate before acquiring the lock so a denial
+    // never holds the per-persona mutex.
+    if (kind === "spend") {
+      await this.authorize?.(personaId, {
+        capability: "spend",
+        target: to,
+        summary: `spend ${usdc(amount)} → ${to}`,
+      });
+    }
     const release = await this.acquire(personaId);
     let released = false;
     const releaseOnce = () => {
@@ -274,17 +287,8 @@ export class TxManager {
    */
   async spend(input: SpendInput): Promise<PendingTx> {
     const { personaId, to, amount } = input;
-    // Capability chokepoint (#37): a direct engine.txManager.spend(...) call
-    // can't bypass the gate. Throws CapabilityDeniedError when denied; the
-    // surface (web /spend) catches it → 403. Skipped for non-spend kinds
-    // (vault_op is gated upstream in VaultService) and when no gate is wired.
-    if ((input.kind ?? "spend") === "spend") {
-      await this.authorize?.(personaId, {
-        capability: "spend",
-        target: to,
-        summary: `spend ${usdc(amount)} → ${to}`,
-      });
-    }
+    // Note: the capability gate lives in submit() (the true chokepoint) so a
+    // direct submit({kind:"spend"}) can't bypass it either.
     const from = this.wallets.addressFor(personaId);
     if (!from) throw new Error(`no wallet for persona: ${personaId}`);
     // Friendly pre-check (CheckTx is authoritative, but this reads better).

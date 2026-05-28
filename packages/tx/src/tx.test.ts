@@ -329,6 +329,58 @@ describe("TxManager — capability chokepoint (#37)", () => {
     tm.close();
   });
 
+  test("a direct submit({kind:'spend'}) is gated too (no bypass via the public chokepoint)", async () => {
+    let broadcasts = 0;
+    const tm = new TxManager({
+      wallets,
+      ledger,
+      chain: baseChain({
+        signAndBroadcast: async () => {
+          broadcasts++;
+          return "NOPE";
+        },
+      }),
+      denom: DENOM,
+      authorize: async () => {
+        throw new Error("denied: spend");
+      },
+    });
+    await expect(
+      tm.submit({
+        personaId: "a",
+        kind: "spend",
+        msgs: [{ typeUrl: "/cosmos.bank.v1beta1.MsgSend", value: {} }],
+        to: "bb1dest",
+        amount: "1000000",
+      }),
+    ).rejects.toThrow("denied");
+    expect(broadcasts).toBe(0);
+    tm.close();
+  });
+
+  test("a non-spend submit (vault_op) is NOT gated here (gated upstream)", async () => {
+    let authorizeCalls = 0;
+    const tm = new TxManager({
+      wallets,
+      ledger,
+      chain: baseChain(),
+      denom: DENOM,
+      authorize: async () => {
+        authorizeCalls++;
+      },
+    });
+    const p = await tm.submit({
+      personaId: "a",
+      kind: "vault_op",
+      msgs: [{ typeUrl: "/tokenization.MsgTransferTokens", value: {} }],
+      to: "bb1backing",
+      amount: "1000000",
+    });
+    expect(authorizeCalls).toBe(0); // vault_op gating is upstream in VaultService
+    expect(p.status).toBe("pending");
+    tm.close();
+  });
+
   test("an allowed spend proceeds through the lifecycle", async () => {
     let authorized = false;
     const tm = new TxManager({
