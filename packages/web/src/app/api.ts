@@ -153,6 +153,20 @@ export const api = {
       json<{ summary: EventSummary; events: EventItem[] }>(r),
     ),
 
+  // PUBLIC multisig sign-off info for a vault (#45 slice 3) — for the /vote page.
+  vaultSignoff: (collectionId: string) =>
+    fetch(`/api/vaults/${collectionId}/signoff`).then((r) =>
+      json<{
+        collectionId: string;
+        name: string;
+        symbol: string;
+        approvalId: string;
+        proposalId: string;
+        threshold: number;
+        signers: { address: string; weight?: number }[];
+      }>(r),
+    ),
+
   // Vault escrow — locked backing balance (#45).
   vaultEscrow: (id: string, collectionId: string) =>
     fetch(`/api/personas/${id}/vaults/${collectionId}/escrow`).then((r) =>
@@ -256,6 +270,11 @@ export type GatingPeriod = "daily" | "weekly" | "monthly";
 export interface VaultGating {
   amount?: { limitUsd: number; period: GatingPeriod };
   time?: { unlockAt?: number }; // epoch ms
+  multisig?: {
+    signers: { address: string; weight?: number }[];
+    threshold: number;
+    challengeDelayMs?: number;
+  };
 }
 
 export interface Vault {

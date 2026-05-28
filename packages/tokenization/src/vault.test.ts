@@ -142,3 +142,49 @@ describe("vault gating compiler (#45 slice 2)", () => {
     ).toBe("100000000");
   });
 });
+
+describe("multisig gating via votingChallenges (#45 slice 3)", () => {
+  const findWithdraw = (msg: { value: Record<string, any> }) =>
+    msg.value.collectionApprovals.find((a: any) =>
+      a.approvalId.startsWith("vault-withdraw"),
+    );
+
+  test("multisig → a votingChallenge with quorum + voters + resetAfterExecution", () => {
+    const msg = buildVaultMsg(AGENT, {
+      ...INPUT,
+      dailyWithdrawLimit: undefined,
+      gating: {
+        multisig: {
+          signers: [
+            { address: "bb1signerA" },
+            { address: "bb1signerB", weight: 2 },
+          ],
+          threshold: 2,
+          challengeDelayMs: 3600000,
+        },
+      },
+    });
+    const vc = findWithdraw(msg).approvalCriteria.votingChallenges[0];
+    expect(vc.quorumThreshold).toBe("2");
+    expect(vc.resetAfterExecution).toBe(true);
+    expect(vc.delayAfterQuorum).toBe("3600000");
+    expect(vc.voters).toEqual([
+      { address: "bb1signerA", weight: "1" },
+      { address: "bb1signerB", weight: "2" },
+    ]);
+  });
+
+  test("multisig composes with an amount cap", () => {
+    const msg = buildVaultMsg(AGENT, {
+      ...INPUT,
+      dailyWithdrawLimit: undefined,
+      gating: {
+        amount: { limitUsd: 50, period: "weekly" },
+        multisig: { signers: [{ address: "bb1s" }], threshold: 1 },
+      },
+    });
+    const c = findWithdraw(msg).approvalCriteria;
+    expect(c.approvalAmounts.amountTrackerId).toBe("withdrawal-weekly");
+    expect(c.votingChallenges[0].quorumThreshold).toBe("1");
+  });
+});

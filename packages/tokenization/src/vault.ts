@@ -14,7 +14,19 @@ export type GatingPeriod = "daily" | "weekly" | "monthly";
 export interface VaultGating {
   amount?: { limitUsd: number; period: GatingPeriod };
   time?: { unlockAt?: number }; // epoch ms; withdrawals invalid before this
+  // Multi-sig (#45 slice 3) via BitBadges votingChallenges: a withdrawal needs
+  // N-of-M signer yes-weight (quorumThreshold) before it executes; each signer's
+  // MsgCastVote IS a signature. resetAfterExecution → fresh quorum per withdrawal.
+  multisig?: {
+    signers: { address: string; weight?: number }[];
+    threshold: number; // total yes-weight required (the N in N-of-M)
+    challengeDelayMs?: number; // optional timelock after quorum, before execute
+  };
 }
+
+// Deterministic proposal id for a vault's reusable withdrawal vote (one
+// challenge, re-tallied each withdrawal via resetAfterExecution).
+export const VAULT_WITHDRAW_PROPOSAL_ID = "vault-withdraw-vote";
 
 const PERIOD_MS: Record<GatingPeriod, number> = {
   daily: 86_400_000,
@@ -81,6 +93,25 @@ export function applyGating(
   if (gating.time?.unlockAt != null) {
     wd.transferTimes = [
       { start: String(gating.time.unlockAt), end: MAX_UINT64 },
+    ];
+  }
+  if (gating.multisig) {
+    // The withdrawal carries a voting challenge: it executes only once signers
+    // cast >= quorumThreshold of yes-weight. resetAfterExecution re-arms the
+    // tally so each withdrawal needs fresh sign-off.
+    criteria.votingChallenges = [
+      {
+        proposalId: VAULT_WITHDRAW_PROPOSAL_ID,
+        quorumThreshold: String(gating.multisig.threshold),
+        voters: gating.multisig.signers.map((s) => ({
+          address: s.address,
+          weight: String(s.weight ?? 1),
+        })),
+        uri: "",
+        customData: "",
+        resetAfterExecution: true,
+        delayAfterQuorum: String(gating.multisig.challengeDelayMs ?? 0),
+      },
     ];
   }
   wd.approvalCriteria = criteria;

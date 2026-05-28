@@ -22,7 +22,11 @@ import {
   isApprovedModel,
   type Engine,
 } from "@vellum/engine";
-import type { VaultGating, GatingPeriod } from "@vellum/tokenization";
+import {
+  VAULT_WITHDRAW_PROPOSAL_ID,
+  type VaultGating,
+  type GatingPeriod,
+} from "@vellum/tokenization";
 import { PaymentRequests } from "./payment-requests.ts";
 
 // Built SPA dir, resolved from this file (cwd-independent) so the server can be
@@ -100,7 +104,7 @@ const GATING_PERIODS: GatingPeriod[] = ["daily", "weekly", "monthly"];
 export function parseGating(raw: unknown): VaultGating | undefined | "invalid" {
   if (raw == null) return undefined;
   if (typeof raw !== "object") return "invalid";
-  const g = raw as { amount?: unknown; time?: unknown };
+  const g = raw as { amount?: unknown; time?: unknown; multisig?: unknown };
   const out: VaultGating = {};
   if (g.amount != null) {
     const a = g.amount as { limitUsd?: unknown; period?: unknown };
@@ -117,14 +121,50 @@ export function parseGating(raw: unknown): VaultGating | undefined | "invalid" {
     const t = g.time as { unlockAt?: unknown };
     if (t.unlockAt != null) {
       if (typeof t.unlockAt !== "number" || t.unlockAt < 0) return "invalid";
-      // Only a real unlock makes a time policy. An empty `time: {}` is a no-op,
-      // NOT a policy — otherwise it would suppress the legacy daily cap while
-      // compiling no on-chain rule, leaving the vault uncapped.
+      // An empty time:{} is a no-op (not a policy) — see !43.
       out.time = { unlockAt: t.unlockAt };
     }
   }
-  // amount with no real content, or only an empty time, → no gating at all.
-  return out.amount || out.time ? out : undefined;
+  if (g.multisig != null) {
+    const ms = g.multisig as {
+      signers?: unknown;
+      threshold?: unknown;
+      challengeDelayMs?: unknown;
+    };
+    if (!Array.isArray(ms.signers) || ms.signers.length === 0) return "invalid";
+    const signers: { address: string; weight?: number }[] = [];
+    for (const s of ms.signers) {
+      const so = s as { address?: unknown; weight?: unknown };
+      if (typeof so.address !== "string" || !so.address.startsWith("bb1"))
+        return "invalid";
+      if (
+        so.weight != null &&
+        (typeof so.weight !== "number" || so.weight <= 0)
+      )
+        return "invalid";
+      signers.push({
+        address: so.address,
+        weight: so.weight as number | undefined,
+      });
+    }
+    if (typeof ms.threshold !== "number" || ms.threshold <= 0) return "invalid";
+    // The threshold must be reachable: it can't exceed the total signer weight,
+    // or the vault's withdrawal quorum could never be met (a vault you can never
+    // withdraw from). !44 MEDIUM.
+    const totalWeight = signers.reduce((n, s) => n + (s.weight ?? 1), 0);
+    if (ms.threshold > totalWeight) return "invalid";
+    if (
+      ms.challengeDelayMs != null &&
+      (typeof ms.challengeDelayMs !== "number" || ms.challengeDelayMs < 0)
+    )
+      return "invalid";
+    out.multisig = {
+      signers,
+      threshold: ms.threshold,
+      challengeDelayMs: ms.challengeDelayMs as number | undefined,
+    };
+  }
+  return out.amount || out.time || out.multisig ? out : undefined;
 }
 
 // Routes safe to serve without auth: liveness, public chain config, and the
@@ -142,6 +182,10 @@ export function isPublicRoute(method: string, path: string): boolean {
     method === "POST" &&
     /^\/api\/payment-requests\/[^/]+\/confirm$/.test(path)
   )
+    return true;
+  // Vault sign-off info is public (collectionId + signers are on-chain) — the
+  // third-party sign-off page (#45 slice 3) reads it without a persona session.
+  if (method === "GET" && /^\/api\/vaults\/[^/]+\/signoff$/.test(path))
     return true;
   return false;
 }
@@ -543,6 +587,24 @@ export function buildApp(
         404,
       );
     }
+  });
+
+  // PUBLIC sign-off info for a multisig vault (#45 slice 3) — what the
+  // third-party /vote page needs to build a MsgCastVote. No persona session;
+  // collectionId + signers are on-chain/public. 404 unless the vault is multisig.
+  app.get("/api/vaults/:collectionId/signoff", (c) => {
+    const v = engine.vaults.getByCollection(c.req.param("collectionId"));
+    if (!v || !v.gating?.multisig)
+      return c.json({ error: "no multisig vault for this id" }, 404);
+    return c.json({
+      collectionId: v.collectionId,
+      name: v.name,
+      symbol: v.symbol,
+      approvalId: v.withdrawApprovalId,
+      proposalId: VAULT_WITHDRAW_PROPOSAL_ID,
+      threshold: v.gating.multisig.threshold,
+      signers: v.gating.multisig.signers,
+    });
   });
 
   app.post("/api/personas/:id/vaults", async (c) => {
