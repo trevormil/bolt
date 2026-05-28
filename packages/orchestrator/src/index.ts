@@ -2,6 +2,7 @@
 // routing + bounded dispatch to the persona's agent loop.
 export {
   Orchestrator,
+  makeDefaultRunLoop,
   type RouteDecision,
   type HandleResult,
   type RunLoop,

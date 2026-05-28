@@ -10,11 +10,20 @@ native**, messaged via **Telegram**, managed via a **companion web app**.
 
 ## 1. Thesis & principles
 
+- **Local-first** — Vellum runs entirely on the user's machine (the OpenClaw
+  model): local DBs, local filesystem, local scheduler, local daemon. **Nothing
+  is hosted.** The only remote dependency is **OpenRouter** (LLM). See
+  [ADR-0002](./docs/decisions/0002-local-first-terminal-native.md).
+- **Terminal-native** — the primary surface is an OpenClaw-class CLI/TUI agent;
+  the web app is a *local entrypoint* (installable PWA) and Telegram an optional
+  remote channel (long-polling, still local). All drive one engine.
 - **Payment-first** — money is a first-class primitive (vaults, budgets, funding),
   not an afterthought.
 - **Compartmentalized** — the unit is a **persona**: its own hard-walled memory,
   skills, budget, and on-chain wallet/vaults. Zero cross-persona visibility.
-- **Trust-first** — fail-closed; every action is legible and auditable.
+- **Trust-first** — fail-closed; every action is legible and auditable. Local
+  filesystem + cron + a long-running daemon make a **capability/permission model**
+  (scoped grants, approval gates, full proof-of-action ledger) load-bearing.
 - **Core UX principle:** **the agent does all the BitBadges machinery behind the
   scenes; the human's job is to verify / approve.** Humans never touch chain
   internals — they click a link and approve (or reject).
@@ -24,9 +33,11 @@ native**, messaged via **Telegram**, managed via a **companion web app**.
 
 What we take from the incumbents (OpenClaw et al.), adapt, or skip is recorded in
 [`research/differentiators.md`](./research/differentiators.md). The short version:
-**take** markdown memory + MCP tools + model routing + sub-minute install;
-**adapt** the tool-policy/Canvas ideas into payment gates + a vault/ledger UX;
-**skip** 20+ channels, voice, native mobile, marketplace, npm plugins.
+**take** the local-first terminal-native runtime + filesystem access + self-set
+cron + markdown memory + MCP tools + model routing + sub-minute install; **adapt**
+the tool-policy ideas into payment gates + a capability/permission model + a
+vault/ledger UX; the payment-first BitBadges compartments are the **differentiator**.
+**Skip** hosting (all local), bridging, marketplace.
 
 ---
 
@@ -77,21 +88,30 @@ What we take from the incumbents (OpenClaw et al.), adapt, or skip is recorded i
 
 ## 3. Surfaces
 
-### Telegram — primary (conversational)
-The entrypoint. The human talks to the agent in natural language; the agent
-replies, asks clarifying questions, and surfaces actions. Approvals appear as
-inline buttons; anything requiring a signature is sent as a **link** (see §5.5).
+All surfaces are thin clients over the one local `@vellum/engine`; they share the
+same local state (`~/.vellum`). None requires hosting.
 
-### Web app — companion (manage / onboard / approve)
-Where the financial state is *seen and managed* (chat can't do this well):
-- **Onboarding** — connect Telegram, create the first persona, fund it.
+### Terminal (CLI/TUI) — primary (the OpenClaw experience)
+The headline surface. An interactive local agent in the terminal: chat, run
+tools (filesystem, MCP), set scheduled tasks, manage personas/vaults — with the
+capability/permission model gating filesystem + cron + spend. Approvals are
+inline prompts; signatures the human must perform open the local web sign page.
+(Tickets #34 CLI, #35 filesystem, #36 cron, #37 capabilities.)
+
+### Web app / PWA — local entrypoint (manage / onboard / approve)
+Served from localhost; **installable as a PWA** so it feels native. Where the
+financial state is *seen and managed*:
+- **Onboarding** — the install wizard's GUI half: OpenRouter key, wallet, first
+  persona, permissions (#19).
 - **Vault management** — view/create vaults, see rules, request rule changes
-  (human-manager signs).
-- **Budgets & ledger** — per-persona budgets, spend, and the **trust + cost
+  (human-manager signs via Keplr).
+- **Budgets & ledger** — per-persona budget, spend, and the **trust + cost
   ledger** (proof-of-action).
-- **Streamlined sign/approve pages** — the target of the agent's links (a
-  cleaner wrapper over BitBadges signing). The **full BitBadges UI** is the
-  deep-dive fallback.
+- **Sign/approve pages** — in-site Keplr + the share-link pay pages.
+
+### Telegram — optional remote channel
+Long-polling from the local daemon (no inbound hosting), so the user can talk to
+their agent from their phone while it runs on their machine.
 
 ---
 
@@ -129,10 +149,19 @@ system — it is this retrieval layer.** Two uses, one engine: "memory of the us
 (preferences/history) and *optional* per-compartment **document ingestion**
 (ground answers in a persona's own corpus). All hard-walled per persona.
 
-### Tools / MCP
-An **MCP client** is the extensibility path (satisfies the PRD's "connect ≥1
-application"). Tools are scoped per persona; only relevant tools are loaded into
-context (a cost lever — see §4 cost).
+### Tools / MCP / local capabilities
+Tools are scoped per persona; only relevant tools load into context (a cost
+lever). Beyond the BitBadges tools, the local-first runtime adds OpenClaw-class
+capabilities — each gated by the **capability/permission model** (#37: scoped
+grants, write/spend approval, everything in the ledger):
+- **MCP client** — the extensibility path ("connect ≥1 application").
+- **Filesystem** (#35) — read/write the local FS within granted roots; writes and
+  sensitive paths require human approval.
+- **Scheduled tasks / local cron** (#36) — the agent (or user) registers recurring
+  tasks that run agent work locally; generalizes the check-in scheduler (#18).
+
+All state is local under **`~/.vellum`** (XDG-aware): sqlite DBs, persona memory,
+wallet index, scheduled tasks, logs (#39).
 
 ### LLM + cost layer
 - **Routing:** cheap model by default, escalate to a frontier model only when the
@@ -223,11 +252,16 @@ endpoint → Cosmos signing path. No IBC/Skip → no swaps/bridging (deferred).
 
 ## 8. Tech stack (proposed)
 
-- **Runtime:** `bun` + TypeScript, monorepo.
-- **Telegram:** `grammY` (modern TS bot framework).
-- **Web app:** **Vite SPA + Hono API** (bun-native, lowest-friction — decided per
-  audit M8). Hosts onboarding, vault/budget/ledger UIs, and the streamlined sign
-  pages (which decode txs to plain English — never raw hex).
+- **Runtime:** `bun` + TypeScript, monorepo. Ships as a **local install** — no
+  hosting; a **local background daemon** (scheduler + Telegram + web) registered
+  with launchd/systemd (#31), plus the CLI as an interactive client to the same
+  engine + `~/.vellum` state (#39).
+- **CLI/TUI:** the primary surface — an interactive terminal agent over
+  `@vellum/engine` (#34).
+- **Telegram:** `grammY` (long-polling from the daemon; no inbound hosting).
+- **Web app / PWA:** **Vite SPA + Hono API** (bun-native), served from localhost
+  and **installable as a PWA** (#38). Hosts onboarding, vault/budget/ledger UIs,
+  and the Keplr sign/pay pages (plain-English tx decode — never raw hex).
 - **Chain:** the `bitbadges` SDK + `cosmjs` for signing/broadcast to the Meridian
   RPC; `bitbadgeschaind` available on the droplet.
 - **Agents:** thin custom orchestrator + persona sub-agents (lean on the models;
@@ -245,15 +279,19 @@ endpoint → Cosmos signing path. No IBC/Skip → no swaps/bridging (deferred).
 
 ## 9. Scope
 
-**In v1:** Telegram + web surfaces · orchestrator + persona sub-agents ·
-hard-walled per-persona memory (= retrieval/RAG engine) · MCP tools · cost
-routing + ledger · per-persona `bb1` wallet · token budgets · **smart vaults
-(headline)** · free-form balance · PaymentRequest funding · light proactivity ·
-**Langfuse observability** · **eval suite (golden sets + CI)** · sub-minute install.
+**Shipped (the !21 milestone — web/Telegram wrapper):** orchestrator + persona
+sub-agents · hard-walled per-persona memory · MCP-ready agent loop · cost routing
++ ledger · per-persona `bb1` wallet · token budgets · **smart vaults (headline)** ·
+free-form balance · PaymentRequest funding · in-site Keplr · light proactivity ·
+Langfuse · eval suite · Telegram + web surfaces.
+
+**Local-first direction (ADR-0002, the OpenClaw target — tickets #34–#39):**
+terminal CLI/TUI as primary surface · local filesystem tools · agent-settable
+cron · capability/permission model · installable PWA · `~/.vellum` local data dir
+· local background daemon + autostart (no hosting) · full install/onboarding wizard.
 
 **Deferred (TBD later):** swaps (local + cross-chain), ETH/Solana wallets,
-Skip:Go, voice, channels beyond Telegram, a skill marketplace, BB-402
-(standard auth instead).
+Skip:Go, voice, channels beyond Telegram, a skill marketplace.
 
 ---
 
@@ -266,7 +304,14 @@ Skip:Go, voice, channels beyond Telegram, a skill marketplace, BB-402
 - **Compartment isolation** prevents one persona leaking another's data or
   spending another's budget.
 - **Proof-of-action ledger** makes everything auditable.
-- Secrets (signer keys) in env, never committed.
+- Secrets (signer keys) in env / `~/.vellum`, never committed.
+- **Local blast radius (ADR-0002):** filesystem access, agent-set cron, and a
+  long-running daemon are far more powerful than a web wrapper. The
+  **capability/permission model (#37)** is the gate — scoped FS roots, write/spend
+  approval, cron-task review, fail-closed defaults — and must land *with* those
+  capabilities, not after. The exposed-API auth boundary (bearer + httpOnly
+  session) already protects the local web/API; binding beyond loopback requires
+  a token.
 
 ---
 

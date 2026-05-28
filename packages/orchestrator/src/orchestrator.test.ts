@@ -42,6 +42,34 @@ describe("deterministic routing", () => {
     orch.close();
   });
 
+  test("always-on PERSONA.md (#41) composes into the system context after SOUL", async () => {
+    const orch = new Orchestrator(
+      store,
+      {
+        defaultPersonaId: "atlas",
+        readPersonaMarkdown: (id) => `STEER[${id}]: always use the house style`,
+      },
+      captureLoop,
+    );
+    await orch.handle("conv1", "hello");
+    const sys = systemOf(captured[0]!);
+    expect(sys).toContain("STEER[atlas]: always use the house style");
+    // SOUL first, then the markdown.
+    expect(sys.indexOf("Atlas")).toBeLessThan(sys.indexOf("STEER[atlas]"));
+    orch.close();
+  });
+
+  test("empty PERSONA.md is a no-op (default reader, no files on disk)", async () => {
+    const orch = new Orchestrator(
+      store,
+      { defaultPersonaId: "atlas", readPersonaMarkdown: () => "" },
+      captureLoop,
+    );
+    await orch.handle("conv1", "hi");
+    expect(systemOf(captured[0]!)).toContain("Atlas");
+    orch.close();
+  });
+
   test("/switch binds the conversation; later messages route there", async () => {
     const orch = new Orchestrator(
       store,

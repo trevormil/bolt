@@ -1,15 +1,22 @@
 // Public surface of @vellum/chain.
 export {
   walletFromMnemonic,
-  walletAtIndex,
   addressOf,
-  addressAt,
   generateWallet,
   getBalances,
   sendCoins,
   confirmTx,
+  claimFaucet,
+  TxRevertedError,
   type Coin,
 } from "./client.ts";
+export {
+  deriveAdapter,
+  signAndBroadcast,
+  bankSendMsg,
+  parseAccountResponse,
+  type MsgJson,
+} from "./sdk.ts";
 
 if (import.meta.main) {
   const { createLogger, env } = await import("@vellum/shared");

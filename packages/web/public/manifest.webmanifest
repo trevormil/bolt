@@ -1,0 +1,20 @@
+{
+  "name": "Vellum",
+  "short_name": "Vellum",
+  "description": "Your local-first, payment-aware AI agent — talks to localhost only, never to a hosted backend.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0e0f12",
+  "theme_color": "#0e0f12",
+  "categories": ["productivity", "finance"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any maskable"
+    }
+  ]
+}

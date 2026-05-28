@@ -10,6 +10,7 @@
   "dependencies": {
     "@vellum/llm": "workspace:*",
     "@vellum/shared": "workspace:*",
+    "@vellum/trace": "workspace:*",
     "@modelcontextprotocol/sdk": "1.29.0"
   }
 }

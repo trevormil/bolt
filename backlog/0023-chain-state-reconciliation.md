@@ -1,13 +1,13 @@
 ---
 id: 23
 title: "Chain-state reconciliation + tx lifecycle (the trust invariant)"
-status: open
+status: in-progress
 priority: critical
 type: feature
 source: audit
 created: 2026-05-26
-updated: 2026-05-26
-prs: []
+updated: 2026-05-27
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/12"]
 refs: ["ARCHITECTURE.md", "research/audit/00-summary.md"]
 ---
 

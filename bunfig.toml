@@ -1,0 +1,6 @@
+# Preload offline test env BEFORE any test module imports @vellum/shared (which
+# parses process.env once, at import). Keeps `bun test` green on a clean checkout
+# with no .env — the unit suite never needs real secrets. (The manual evals job +
+# live runs still use the real OPENROUTER_API_KEY / AGENT_SIGNER_MNEMONIC.)
+[test]
+preload = ["./test-preload.ts"]
