@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button, Card, Icon } from "@vellum/ui";
 import { api, type PaymentRequest } from "./api.ts";
+import { BrandLogo } from "./BrandLogo.tsx";
 import { bankSendMsg, signAndBroadcast } from "./keplr.ts";
 import { useWallet } from "./wallet-context.tsx";
 
@@ -51,10 +52,12 @@ export function PayPage({ reqId }: { reqId: string }) {
   return (
     <div className="grid h-full place-items-center bg-base p-4 text-fg font-sans">
       <Card className="w-[26rem] p-6">
-        <div className="flex items-center gap-2">
-          <span className="grid h-8 w-8 place-items-center rounded-md bg-accent text-accent-fg">
-            <Icon name="wallet" size={16} />
-          </span>
+        <div className="flex items-center gap-2.5">
+          <img
+            src="/logos/bolt.png"
+            alt="Bolt"
+            className="h-9 w-9 rounded-lg object-cover shadow-glow"
+          />
           <span className="font-serif text-xl">Bolt payment request</span>
         </div>
 
@@ -75,9 +78,14 @@ export function PayPage({ reqId }: { reqId: string }) {
         ) : (
           <>
             <p className="mt-5 text-sm text-muted">{req.memo}</p>
-            <div className="mt-4 font-mono text-3xl">
-              {fmtUsdc(req.amount)}{" "}
-              <span className="text-base text-muted">USDC</span>
+            <div className="mt-4 flex items-center gap-2.5">
+              <BrandLogo name="usdc" size={30} />
+              <span className="font-mono text-3xl text-accent">
+                {fmtUsdc(req.amount)}
+              </span>
+              <span className="self-end pb-1 font-mono text-xs text-soft">
+                USDC
+              </span>
             </div>
             <div className="mt-1 text-xs text-soft">
               to {personaName} · {req.toAddress.slice(0, 14)}…
@@ -96,7 +104,7 @@ export function PayPage({ reqId }: { reqId: string }) {
                   onClick={connect}
                   disabled={connecting}
                 >
-                  <Icon name="wallet" size={16} />{" "}
+                  <BrandLogo name="keplr" size={15} className="rounded-none" />
                   {connecting ? "Connecting…" : "Connect Keplr"}
                 </Button>
               ) : (

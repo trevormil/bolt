@@ -169,7 +169,7 @@ function LimitField({
       : 0;
   return (
     <label className="block">
-      <span className="mb-1 block text-xs uppercase tracking-wide text-soft">
+      <span className="mb-1 block font-mono text-[10px] uppercase tracking-[0.18em] text-soft">
         {label}
       </span>
       <Input
@@ -316,7 +316,7 @@ function TasksSection({ personaId }: { personaId: string }) {
 function SectionHead({ title, hint }: { title: string; hint: string }) {
   return (
     <div>
-      <h3 className="text-sm font-medium text-fg">{title}</h3>
+      <h3 className="font-serif text-base text-fg">{title}</h3>
       <p className="text-xs text-soft">{hint}</p>
     </div>
   );

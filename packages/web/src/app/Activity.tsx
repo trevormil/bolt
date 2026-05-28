@@ -35,7 +35,7 @@ export function ActivityView({ personaId }: { personaId: string }) {
   return (
     <div className="h-full overflow-y-auto p-6">
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-sm font-medium text-muted">Activity (last 24h)</h3>
+        <h3 className="font-serif text-xl">Activity <span className="text-sm font-sans text-soft">· last 24h</span></h3>
         <button
           onClick={() => void reload()}
           className="text-xs text-soft hover:text-fg"
@@ -76,7 +76,7 @@ export function ActivityView({ personaId }: { personaId: string }) {
         </div>
       )}
 
-      <h3 className="mb-2 mt-6 text-sm font-medium text-muted">Timeline</h3>
+      <h3 className="mb-3 mt-6 font-serif text-lg">Timeline</h3>
       {events.length === 0 ? (
         <p className="text-sm text-soft">
           No activity yet — chat, tool calls, and capability checks land here.
@@ -130,7 +130,7 @@ function Stat({
 }) {
   return (
     <Card className="p-4">
-      <div className="text-xs uppercase tracking-wide text-soft">{label}</div>
+      <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-soft">{label}</div>
       <div
         className={`mt-1 font-mono text-2xl ${danger ? "text-danger" : "text-fg"}`}
       >

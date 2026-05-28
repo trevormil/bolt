@@ -48,7 +48,7 @@ export function LedgerView({ personaId }: { personaId: string }) {
         </div>
       )}
 
-      <h3 className="mb-2 mt-6 text-sm font-medium text-muted">
+      <h3 className="mb-3 mt-6 font-serif text-lg">
         Proof-of-action ledger
       </h3>
       {entries.length === 0 ? (
@@ -94,7 +94,7 @@ export function LedgerView({ personaId }: { personaId: string }) {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <Card className="p-4">
-      <div className="text-xs uppercase tracking-wide text-soft">{label}</div>
+      <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-soft">{label}</div>
       <div className="mt-1 font-mono text-2xl text-fg">{value}</div>
     </Card>
   );

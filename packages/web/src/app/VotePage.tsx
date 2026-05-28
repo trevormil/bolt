@@ -63,11 +63,18 @@ export function VotePage({ collectionId }: { collectionId: string }) {
   return (
     <div className="grid h-full place-items-center bg-base p-4 text-fg font-sans">
       <Card className="w-[26rem] p-6">
-        <div className="flex items-center gap-2">
-          <span className="grid h-8 w-8 place-items-center rounded-md bg-accent text-accent-fg">
-            <Icon name="wallet" size={16} />
-          </span>
-          <span className="font-serif text-xl">Vault sign-off</span>
+        <div className="flex items-center gap-2.5">
+          <img
+            src="/logos/bolt.png"
+            alt="Bolt"
+            className="h-9 w-9 rounded-lg object-cover shadow-glow"
+          />
+          <div className="leading-tight">
+            <div className="font-serif text-xl">Vault sign-off</div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-soft">
+              Bolt · multisig
+            </div>
+          </div>
         </div>
 
         {loadErr ? (

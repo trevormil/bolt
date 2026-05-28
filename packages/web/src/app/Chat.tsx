@@ -67,24 +67,27 @@ export function Chat({ persona }: { persona: Persona }) {
           >
             <div
               className={cn(
-                "max-w-[80%] rounded-lg px-3.5 py-2.5 text-sm",
+                "max-w-[80%] px-4 py-2.5 text-sm leading-relaxed shadow-sm",
                 m.role === "user"
-                  ? "bg-accent text-accent-fg"
-                  : "border border-border bg-surface text-fg",
+                  ? "rounded-[18px] rounded-br-md bg-gold font-medium text-accent-fg"
+                  : "rounded-[18px] rounded-bl-md border border-border bg-surface-2 text-fg",
               )}
             >
               <div className="whitespace-pre-wrap">{m.text}</div>
               {m.role === "agent" && m.costUsd !== undefined && (
-                <div className="mt-1.5 flex items-center gap-2 text-xs text-soft">
-                  <Icon name="zap" size={12} />${m.costUsd.toFixed(6)} ·{" "}
-                  {m.tokens} tok
+                <div className="mt-2 flex items-center gap-1.5 border-t border-border pt-1.5 font-mono text-[11px] text-soft">
+                  <Icon name="zap" size={11} className="text-accent" />$
+                  {m.costUsd.toFixed(6)} · {m.tokens} tok
                 </div>
               )}
             </div>
           </div>
         ))}
         {busy && (
-          <div className="text-sm text-soft">{persona.name} is thinking…</div>
+          <div className="flex items-center gap-2 text-sm text-soft">
+            <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
+            {persona.name} is thinking…
+          </div>
         )}
         {error && <div className="text-sm text-danger">{error}</div>}
         <div ref={endRef} />
