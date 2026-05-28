@@ -76,8 +76,6 @@ export const envSchema = z.object({
   // (OpenRouter-tracked via the ledger). This is a cost guardrail, NOT a limit on
   // the user's USDC — there is no free-form spending cap; USDC limits live in vaults.
   VELLUM_LLM_BUDGET_USD: z.coerce.number().default(1),
-  // Per-persona check-in cadence (0018). Default 6h; lower it for demos.
-  VELLUM_CHECKIN_INTERVAL_MS: z.coerce.number().default(6 * 60 * 60 * 1000),
 
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 });

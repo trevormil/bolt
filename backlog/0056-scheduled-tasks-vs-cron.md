@@ -1,7 +1,7 @@
 ---
 id: 56
 title: "Reconsider in-app scheduled tasks vs. OS cron (likely remove)"
-status: open
+status: closed
 priority: low
 type: dx
 source: review
@@ -32,3 +32,13 @@ cron (`* * * * * cd <repo> && vellum chat <persona> "<prompt>"`), OR keep it.
 ## Notes
 Leaning remove (simpler; OS cron is the right primitive). The capability/armed
 gating (T-13) is the one thing cron loses — weigh that before deleting.
+
+## Closure (2026-05-28)
+Removed. Deleted the `TaskScheduler` (#36) + `CheckInScheduler` (#18) loops, the
+whole `@vellum/scheduler` package, the engine's `TaskStore` + agent schedule
+tools (`scheduleTools`), the web task routes + Settings "Scheduled tasks" UI, and
+the daemon/telegram scheduler wiring. Bolt now leans on OS cron — documented in
+`docs/runbooks/schedule-with-cron.md` (the `bun run vellum chat <persona>
+"<prompt>"` one-liner). Accepted tradeoff: a cron job is effectively always
+"armed" (can move money), so the read-only-default gating the in-app scheduler
+provided is gone — the runbook calls this out.

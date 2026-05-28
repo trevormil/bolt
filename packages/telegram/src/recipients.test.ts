@@ -22,7 +22,7 @@ describe("Recipients", () => {
     const r = new Recipients();
     r.record(101); // owner
     r.record(202); // a stranger who later /starts the bot
-    expect(r.principal()).toBe(101); // proactive output targets the owner only
+    expect(r.principal()).toBe(101); // only the owner is authorized to drive the bot
     r.close();
   });
 });

@@ -4,7 +4,6 @@ import { createLogger } from "@vellum/shared";
 import type { Engine } from "./engine.ts";
 import { vaultTools } from "./agent-tools.ts";
 import { combineTools, filesystemTools } from "./fs-tools.ts";
-import { scheduleTools } from "./schedule-tools.ts";
 import { mcpTools } from "./mcp-tools.ts";
 import { McpServers } from "./mcp-setting.ts";
 import { evaluateBudget } from "./budget-setting.ts";
@@ -16,10 +15,10 @@ export interface ChatInput {
   personaId: string;
   message: string;
   trace?: TraceSpan;
-  // Read-only run (#24 / T-13): omit the value-moving vault tools, so a
-  // proactive/scheduled run can observe + reply but cannot create or withdraw
-  // from vaults unless explicitly armed. Filesystem stays capability-gated
-  // either way (default-deny). Interactive chats default to full tools.
+  // Read-only run (#24 / T-13): omit the value-moving vault tools, so an
+  // unattended run can observe + reply but cannot create or withdraw from
+  // vaults. Filesystem stays capability-gated either way (default-deny).
+  // Interactive chats default to full tools.
   readOnly?: boolean;
 }
 export interface ChatResult {
@@ -70,18 +69,11 @@ export async function chat(
   // In a read-only run (T-13) the value-moving vault tools are withheld entirely
   // — the agent simply has no create/withdraw tool to call.
   const sets: { tools: ToolSpec[]; invoke: ToolInvoker }[] = readOnly
-    ? [
-        filesystemTools(engine, personaId),
-        scheduleTools(engine, personaId, { readOnly: true }),
-      ]
-    : [
-        vaultTools(engine, personaId),
-        filesystemTools(engine, personaId),
-        scheduleTools(engine, personaId),
-      ];
+    ? [filesystemTools(engine, personaId)]
+    : [vaultTools(engine, personaId), filesystemTools(engine, personaId)];
   // MCP servers (#46): merge the persona's configured external tools, reusing
   // the daemon's pooled connections. Withheld from read-only runs for the same
-  // reason vault tools are (T-13) — an unarmed proactive run must not reach
+  // reason vault tools are (T-13) — an unattended read-only run must not reach
   // external tools that could move value. Each server's tools stay gated on the
   // "mcp" capability scoped to the server name (#37); a server that's down is
   // simply absent from `ensure`, so chat degrades gracefully.

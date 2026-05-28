@@ -1,13 +1,12 @@
 import { useEffect, useState } from "react";
 import { Badge, Button, Card, Icon, Input } from "@vellum/ui";
-import { api, type BudgetResponse, type Resolved, type Task } from "./api.ts";
+import { api, type BudgetResponse, type Resolved } from "./api.ts";
 
 export function SettingsView({ personaId }: { personaId: string }) {
   return (
     <div className="h-full space-y-6 overflow-y-auto p-6">
       <ModelSection personaId={personaId} />
       <BudgetSection personaId={personaId} />
-      <TasksSection personaId={personaId} />
       <RecoverySection />
     </div>
   );
@@ -294,122 +293,6 @@ function LimitField({
         </>
       )}
     </label>
-  );
-}
-
-// ── #36 scheduled tasks + #24/T-13 armed toggle ──────────────────────────────
-function TasksSection({ personaId }: { personaId: string }) {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [prompt, setPrompt] = useState("");
-  const [everyMinutes, setEveryMinutes] = useState("60");
-  const [armed, setArmed] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function reload() {
-    setTasks(await api.tasks(personaId));
-  }
-  useEffect(() => {
-    let live = true;
-    api.tasks(personaId).then((t) => live && setTasks(t));
-    return () => {
-      live = false;
-    };
-  }, [personaId]);
-
-  async function create() {
-    if (!prompt.trim() || !(Number(everyMinutes) > 0)) return;
-    setError(null);
-    try {
-      await api.createTask(personaId, {
-        prompt: prompt.trim(),
-        everyMinutes: Number(everyMinutes),
-        armed,
-      });
-      setPrompt("");
-      setArmed(false);
-      await reload();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }
-
-  return (
-    <Card className="p-4">
-      <SectionHead
-        title="Scheduled tasks"
-        hint="Recurring prompts run on an interval. Read-only unless armed (can't move money)."
-      />
-      <div className="mt-3 space-y-2">
-        <Input
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          placeholder="e.g. Summarize my vault balances"
-        />
-        <div className="flex flex-wrap items-center gap-3">
-          <label className="flex items-center gap-2 text-sm text-muted">
-            every
-            <Input
-              type="number"
-              min="1"
-              value={everyMinutes}
-              onChange={(e) => setEveryMinutes(e.target.value)}
-              className="w-20"
-            />
-            min
-          </label>
-          <label className="flex items-center gap-2 text-sm text-muted">
-            <input
-              type="checkbox"
-              checked={armed}
-              onChange={(e) => setArmed(e.target.checked)}
-            />
-            armed (can move money)
-          </label>
-          <Button
-            size="sm"
-            onClick={() => void create()}
-            disabled={!prompt.trim()}
-          >
-            Add task
-          </Button>
-        </div>
-        {error && <p className="text-sm text-danger">{error}</p>}
-      </div>
-
-      <div className="mt-4 space-y-2">
-        {tasks.length === 0 ? (
-          <p className="text-sm text-soft">No scheduled tasks.</p>
-        ) : (
-          tasks.map((t) => (
-            <div
-              key={t.id}
-              className="flex items-center justify-between gap-3 rounded-md border border-border p-2"
-            >
-              <div className="min-w-0">
-                <div className="truncate text-sm">{t.prompt}</div>
-                <div className="text-xs text-soft">
-                  every {Math.round(t.intervalMs / 60000)}m
-                </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <Badge tone={t.armed ? "danger" : "default"}>
-                  {t.armed ? "armed" : "read-only"}
-                </Badge>
-                <button
-                  onClick={async () => {
-                    await api.cancelTask(personaId, t.id);
-                    await reload();
-                  }}
-                  className="text-xs text-soft hover:text-danger"
-                >
-                  cancel
-                </button>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-    </Card>
   );
 }
 

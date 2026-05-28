@@ -195,25 +195,6 @@ export const api = {
       json<EscrowInfo>(r),
     ),
 
-  // Scheduled tasks (#36) over HTTP.
-  tasks: (id: string) =>
-    fetch(`/api/personas/${id}/tasks`)
-      .then((r) => json<{ tasks: Task[] }>(r))
-      .then((b) => b.tasks),
-  createTask: (
-    id: string,
-    input: { prompt: string; everyMinutes: number; armed: boolean },
-  ) =>
-    fetch(`/api/personas/${id}/tasks`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(input),
-    }).then((r) => json<Task>(r)),
-  cancelTask: (id: string, taskId: string) =>
-    fetch(`/api/personas/${id}/tasks/${taskId}`, { method: "DELETE" }).then(
-      (r) => json<{ ok: boolean }>(r),
-    ),
-
   listVaults: (id: string) =>
     fetch(`/api/personas/${id}/vaults`)
       .then((r) => json<{ vaults: Vault[] }>(r))
@@ -378,16 +359,4 @@ export interface EscrowInfo {
   backingAddress: string;
   denom: string;
   escrowedMicro: string;
-}
-
-// Scheduled task (#36) — armed=false runs read-only (#24/T-13).
-export interface Task {
-  id: string;
-  personaId: string;
-  prompt: string;
-  intervalMs: number;
-  nextRun: number;
-  enabled: boolean;
-  armed: boolean;
-  created: number;
 }

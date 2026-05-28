@@ -15,7 +15,7 @@ const who = (ctx: { from?: { username?: string; id?: number } }) =>
  */
 export interface BotOptions {
   // Called with each AUTHORIZED interacting chat id (metadata only) so the
-  // caller can register it as a proactive check-in recipient (0018).
+  // caller can record it for the principal allowlist (#28).
   onSeen?: (chatId: number) => void;
   // Principal allowlist (#28): return false to refuse a chat. Vellum is a
   // personal single-owner agent — without this gate, anyone who finds the bot
