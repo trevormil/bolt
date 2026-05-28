@@ -1,6 +1,7 @@
 // Public surface of @vellum/shared.
 export { env, type Env } from "./env.ts";
 export { createLogger } from "./logger.ts";
+export { dataDir, dataPath, ensureDataDir, migrateLegacyDb } from "./paths.ts";
 
 // Running this package directly (bun run --filter) just validates the env.
 if (import.meta.main) {

@@ -9,3 +9,7 @@
 process.env.OPENROUTER_API_KEY ??= "test-offline-key";
 process.env.AGENT_SIGNER_MNEMONIC ??=
   "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+// Default DBs to in-memory in tests so a default VELLUM_DB_PATH (now ~/.vellum,
+// #39) never touches the real filesystem. Tests that need a file pass an explicit
+// path; most inject ":memory:" directly.
+process.env.VELLUM_DB_PATH ??= ":memory:";

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { dataPath } from "./paths.ts";
 
 // Parsed once at startup. Chain defaults to the Meridian devnet so the scaffold
 // boots without a .env; secrets are optional until their tickets wire them in.
@@ -31,7 +32,10 @@ export const envSchema = z.object({
   // require a bearer token (VELLUM_API_TOKEN); on loopback with no token set the
   // API is open for local dev, but binding beyond loopback (WEB_HOST=0.0.0.0)
   // REQUIRES a token or protected routes 401 (fail closed).
-  VELLUM_DB_PATH: z.string().default("./vellum.db"),
+  // Defaults into the local data home (~/.vellum, #39) — not cwd-relative — so
+  // the CLI, daemon, and web share one filesystem source of truth regardless of
+  // launch dir. Explicit override still honored.
+  VELLUM_DB_PATH: z.string().default(dataPath("vellum.db")),
   WEB_PORT: z.coerce.number().default(8787),
   WEB_HOST: z.string().default("127.0.0.1"),
   // Bearer token guarding state-changing API routes. Optional on loopback;

@@ -2,7 +2,12 @@ import { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { confirmTx } from "@vellum/chain";
 import { tracer } from "@vellum/trace";
-import { createLogger, env } from "@vellum/shared";
+import {
+  createLogger,
+  env,
+  ensureDataDir,
+  migrateLegacyDb,
+} from "@vellum/shared";
 import { createEngine, chat, llmBudget, type Engine } from "@vellum/engine";
 import { PaymentRequests } from "./payment-requests.ts";
 
@@ -510,6 +515,10 @@ export function webServeOptions(app: ReturnType<typeof buildApp>) {
 }
 
 if (import.meta.main) {
+  // Filesystem-first (#39): ensure ~/.vellum exists + migrate a legacy ./vellum.db.
+  ensureDataDir();
+  if (migrateLegacyDb(env.VELLUM_DB_PATH))
+    log.info("migrated legacy ./vellum.db → " + env.VELLUM_DB_PATH);
   const engine = createEngine();
   // Reconcile any PENDING txs against the chain BEFORE serving new work (§13.5).
   await engine.txManager

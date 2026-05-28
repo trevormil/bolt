@@ -1,3 +1,5 @@
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import { claimFaucet as chainClaimFaucet, type Coin } from "@vellum/chain";
 import { Ledger } from "@vellum/ledger";
 import { PersonaStore, hashEmbedder, type Embedder } from "@vellum/persona";
@@ -44,6 +46,11 @@ export interface EngineOptions {
 
 export function createEngine(opts: EngineOptions = {}): Engine {
   const dbPath = opts.dbPath ?? env.VELLUM_DB_PATH;
+  // Ensure the DB's directory exists (filesystem-first #39): the default lives
+  // under ~/.vellum, and any custom file path needs its parent. (":memory:" and
+  // other non-file paths are skipped.)
+  if (dbPath !== ":memory:" && dbPath.includes("/"))
+    mkdirSync(dirname(dbPath), { recursive: true });
   // OpenRouter is the sole remote LLM provider; OpenRouter has no embeddings
   // endpoint, so dense retrieval uses the built-in network-free hash embedder
   // (no OpenAI key needed). Pass `embedder` explicitly to opt into a semantic

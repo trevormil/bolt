@@ -1,4 +1,9 @@
-import { env, createLogger } from "@vellum/shared";
+import {
+  env,
+  createLogger,
+  ensureDataDir,
+  migrateLegacyDb,
+} from "@vellum/shared";
 import { createEngine } from "@vellum/engine";
 import { CheckInScheduler } from "@vellum/scheduler";
 import { buildBot } from "./bot.ts";
@@ -11,6 +16,10 @@ const log = createLogger("telegram");
 if (!env.TELEGRAM_BOT_TOKEN) {
   log.info("ready · no TELEGRAM_BOT_TOKEN set (add it to .env to run the bot)");
 } else {
+  // Filesystem-first (#39): ensure ~/.vellum exists + migrate a legacy ./vellum.db.
+  ensureDataDir();
+  if (migrateLegacyDb(env.VELLUM_DB_PATH))
+    log.info("migrated legacy ./vellum.db → " + env.VELLUM_DB_PATH);
   const engine = createEngine();
   await engine.txManager
     .reconcile()
