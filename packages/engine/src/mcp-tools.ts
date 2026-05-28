@@ -13,11 +13,17 @@ import type { Engine } from "./engine.ts";
  * The client is connected by the caller (stdio in prod via connectStdio, any
  * transport in tests). Returns {tools, invoke} ready to combineTools(...) into
  * chat()'s tool set alongside vault/filesystem/schedule tools.
+ *
+ * `serverName` (when supplied) is the capability scope (#37): the gate is keyed
+ * on the SERVER, so a `scope:null` "mcp" grant allows any server while a
+ * `scope:"<serverName>"` grant allows only that one. Absent a name (the bare
+ * test path) the gate falls back to the tool name.
  */
 export async function mcpTools(
   engine: Engine,
   personaId: string,
   client: McpClient,
+  serverName?: string,
 ): Promise<{ tools: ToolSpec[]; invoke: ToolInvoker }> {
   const tools = await client.listTools();
   const known = new Set(tools.map((t) => t.name));
@@ -27,8 +33,8 @@ export async function mcpTools(
     try {
       await engine.authorizer.authorizeOrThrow(personaId, {
         capability: "mcp",
-        target: name,
-        summary: `MCP tool ${name}`,
+        target: serverName ?? name,
+        summary: serverName ? `MCP ${serverName}/${name}` : `MCP tool ${name}`,
       });
     } catch (e) {
       if (e instanceof CapabilityDeniedError)

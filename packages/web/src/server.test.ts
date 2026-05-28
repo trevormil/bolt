@@ -858,3 +858,68 @@ describe("API auth", () => {
     expect(r.status).toBe(401);
   });
 });
+
+describe("MCP server config API (#46)", () => {
+  const putMcp = (id: string, body: unknown) =>
+    app.request(`/api/personas/${id}/mcp-servers`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  test("defaults to an empty list inherited from default", async () => {
+    await post("/api/personas", { name: "Atlas" });
+    const res = await app.request("/api/personas/atlas/mcp-servers");
+    expect(res.status).toBe(200);
+    expect((await res.json()) as unknown).toEqual({
+      value: [],
+      source: "default",
+    });
+  });
+
+  test("accepts a valid server list and reads it back", async () => {
+    await post("/api/personas", { name: "Atlas" });
+    const ok = await putMcp("atlas", {
+      servers: [{ name: "fs", command: "npx", args: ["-y", "server-fs"] }],
+    });
+    expect(ok.status).toBe(200);
+    const got = (await ok.json()) as {
+      value: { name: string }[];
+      source: string;
+    };
+    expect(got.value.map((s) => s.name)).toEqual(["fs"]);
+    expect(got.source).toBe("persona");
+  });
+
+  test("rejects duplicate server names and malformed entries", async () => {
+    await post("/api/personas", { name: "Atlas" });
+    const dup = await putMcp("atlas", {
+      servers: [
+        { name: "fs", command: "a" },
+        { name: "fs", command: "b" },
+      ],
+    });
+    expect(dup.status).toBe(400);
+    const bad = await putMcp("atlas", {
+      servers: [{ name: "", command: "x" }],
+    });
+    expect(bad.status).toBe(400);
+  });
+
+  test("null clears the override (inherit)", async () => {
+    await post("/api/personas", { name: "Atlas" });
+    await putMcp("atlas", { servers: [{ name: "fs", command: "x" }] });
+    const cleared = await putMcp("atlas", { servers: null });
+    expect(cleared.status).toBe(200);
+    expect((await cleared.json()) as unknown).toEqual({
+      value: [],
+      source: "default",
+    });
+  });
+
+  test("404 for an unknown persona", async () => {
+    expect((await app.request("/api/personas/ghost/mcp-servers")).status).toBe(
+      404,
+    );
+  });
+});

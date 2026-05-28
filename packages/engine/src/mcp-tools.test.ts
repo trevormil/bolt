@@ -139,4 +139,33 @@ describe("MCP end-to-end (#33)", () => {
     expect(out).toContain("Denied");
     await client.close();
   });
+
+  test("per-server capability scope (#46): a grant scoped to the server name allows it; a grant for a different server does not", async () => {
+    const e = await eng();
+    e.store.createPersona("p", "Pat", {
+      name: "Pat",
+      role: "tester",
+      voice: "plain",
+    });
+    // Grant "mcp" scoped to a DIFFERENT server — must not cover "calc".
+    e.capabilities.grant({
+      personaId: "p",
+      capability: "mcp",
+      scope: "other",
+      mode: "allow",
+    });
+    const client = await connectedClient();
+    const { invoke } = await mcpTools(e, "p", client, "calc");
+    expect(await invoke("add", { a: 1, b: 1 })).toContain("Denied");
+
+    // Now grant the matching server scope — the same tool is allowed.
+    e.capabilities.grant({
+      personaId: "p",
+      capability: "mcp",
+      scope: "calc",
+      mode: "allow",
+    });
+    expect(await invoke("add", { a: 1, b: 1 })).toBe("2");
+    await client.close();
+  });
 });

@@ -4,7 +4,7 @@ import {
   ensureDataDir,
   migrateLegacyDb,
 } from "@vellum/shared";
-import { createEngine } from "@vellum/engine";
+import { createEngine, McpServers, GLOBAL } from "@vellum/engine";
 import { buildApp, webServeOptions, isLoopback } from "@vellum/web";
 import { attachTelegram } from "@vellum/telegram";
 import { CheckInScheduler, TaskScheduler } from "@vellum/scheduler";
@@ -61,6 +61,22 @@ export async function startDaemon(): Promise<void> {
     }).start();
     new TaskScheduler({ engine, deliver: logDeliver }).start();
   }
+
+  // MCP servers (#46): warm the GLOBAL set once at startup so the connections
+  // are alive before the first chat turn (persona-specific overrides connect
+  // lazily on that persona's first turn and are then pooled too). A server that
+  // fails to connect is logged + skipped inside the manager — never fatal.
+  const globalMcp = McpServers.get(engine.settings, GLOBAL).value;
+  if (globalMcp.length) {
+    const n = await engine.mcp.warm(globalMcp);
+    log.info(`mcp · warmed ${n}/${globalMcp.length} global server(s)`);
+  }
+  // Close MCP child processes on shutdown so they don't orphan when launchd
+  // stops us. Best-effort + idempotent (closeAll clears its own state).
+  for (const sig of ["SIGTERM", "SIGINT"] as const)
+    process.once(sig, () => {
+      void engine.mcp.closeAll().finally(() => process.exit(0));
+    });
 
   log.info(
     "vellum daemon ready · scheduler + web" +

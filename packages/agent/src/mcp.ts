@@ -1,5 +1,8 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import {
+  StdioClientTransport,
+  getDefaultEnvironment,
+} from "@modelcontextprotocol/sdk/client/stdio.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { createLogger } from "@vellum/shared";
 import type { ToolSpec } from "./tools.ts";
@@ -16,9 +19,18 @@ export class McpClient {
     this.client = new Client({ name, version }, { capabilities: {} });
   }
 
-  /** Spawn an MCP server as a child process and connect over stdio. */
-  async connectStdio(command: string, args: string[] = []): Promise<void> {
-    await this.connect(new StdioClientTransport({ command, args }));
+  /** Spawn an MCP server as a child process and connect over stdio. A caller
+   *  `env` is merged OVER the SDK's safe default environment (PATH, HOME, …) so
+   *  it augments rather than replaces it — otherwise the child loses PATH. */
+  async connectStdio(
+    command: string,
+    args: string[] = [],
+    env?: Record<string, string>,
+  ): Promise<void> {
+    const merged = env ? { ...getDefaultEnvironment(), ...env } : undefined;
+    await this.connect(
+      new StdioClientTransport({ command, args, env: merged }),
+    );
   }
 
   /** Connect over any transport (stdio, in-memory for tests, …). */

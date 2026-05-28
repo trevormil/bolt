@@ -17,6 +17,7 @@ import { env, createLogger } from "@vellum/shared";
 import { VaultService, type VaultServiceDeps } from "./vaults.ts";
 import { TaskStore } from "./tasks.ts";
 import { Model } from "./model-setting.ts";
+import { McpManager, type McpConnector } from "./mcp-manager.ts";
 
 const log = createLogger("engine");
 
@@ -41,6 +42,7 @@ export interface Engine {
   tasks: TaskStore; // agent-settable scheduled tasks (#36)
   settings: SettingsStore; // global + per-persona settings (#40)
   events: EventStore; // per-persona product telemetry (#42)
+  mcp: McpManager; // long-lived MCP server connections (#46)
   claimFaucet: FaucetClaim;
 }
 
@@ -61,6 +63,7 @@ export interface EngineOptions {
     | "fetchTokenBalance"
   >; // vault test seams
   approve?: Approver; // capability approval prompt (#37); surfaces inject. Default fail-closed.
+  mcpConnect?: McpConnector; // test seam — connect MCP servers without spawning subprocesses (#46)
 }
 
 export function createEngine(opts: EngineOptions = {}): Engine {
@@ -127,6 +130,9 @@ export function createEngine(opts: EngineOptions = {}): Engine {
     ...opts.vault,
   });
   const tasks = new TaskStore(dbPath);
+  // MCP connections live on the engine so they're pooled across chat turns and
+  // shared by every surface; the daemon warms the global set + closes on exit.
+  const mcp = new McpManager(opts.mcpConnect);
   const claimFaucet = opts.claimFaucet ?? chainClaimFaucet;
   log.info(`engine ready · db=${dbPath}`);
   return {
@@ -137,6 +143,7 @@ export function createEngine(opts: EngineOptions = {}): Engine {
     tasks,
     settings,
     events,
+    mcp,
     ledger,
     orchestrator,
     txManager,
