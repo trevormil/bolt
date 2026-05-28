@@ -1,12 +1,13 @@
 ---
 id: 58
 title: "Unify persona-creation UX (onboarding == add-persona)"
-status: open
+status: in-progress
 priority: medium
 type: ux
 source: review
 created: 2026-05-28
 updated: 2026-05-28
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/52"]
 refs: ["0019-install-onboarding-wizard.md", "0053-frontend-design-revamp.md"]
 ---
 

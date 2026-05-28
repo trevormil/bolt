@@ -1,12 +1,13 @@
 ---
 id: 57
 title: "Export agent seed phrase from Settings (deliberate reveal)"
-status: open
+status: in-progress
 priority: medium
 type: feature
 source: review
 created: 2026-05-28
 updated: 2026-05-28
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/52"]
 refs: ["0019-install-onboarding-wizard.md"]
 ---
 

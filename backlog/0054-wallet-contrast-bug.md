@@ -1,12 +1,13 @@
 ---
 id: 54
 title: "Wallet UX: black-on-dark text contrast bug"
-status: open
+status: in-progress
 priority: medium
 type: bug
 source: review
 created: 2026-05-28
 updated: 2026-05-28
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/52"]
 refs: ["0053-frontend-design-revamp.md"]
 ---
 
