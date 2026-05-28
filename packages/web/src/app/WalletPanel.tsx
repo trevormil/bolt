@@ -1,8 +1,16 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Button, Icon, Input } from "@vellum/ui";
 import { api, type PaymentRequest } from "./api.ts";
+import { BrandLogo } from "./BrandLogo.tsx";
 import { bankSendMsg, loadConfig, signAndBroadcast } from "./keplr.ts";
 import { useWallet } from "./wallet-context.tsx";
+
+// Section label — mono, gold-soft, wide tracking (the terminal-luxe motif).
+const Label = ({ children }: { children: ReactNode }) => (
+  <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-soft">
+    {children}
+  </div>
+);
 
 const fmtUsdc = (base: string) =>
   (Number(base) / 1e6).toLocaleString(undefined, {
@@ -61,36 +69,39 @@ export function WalletPanel({ personaId }: { personaId: string }) {
   return (
     <div className="w-72 shrink-0 border-l border-border bg-surface p-4">
       <div className="flex items-center justify-between">
-        <h3 className="flex items-center gap-2 text-sm font-medium">
-          <Icon name="wallet" size={15} /> Wallet
+        <h3 className="flex items-center gap-2 font-serif text-base">
+          <Icon name="wallet" size={15} className="text-accent" /> Wallet
         </h3>
         <button
           onClick={refresh}
-          className="text-soft hover:text-fg"
+          className="text-soft transition-colors hover:text-accent"
           title="Refresh balance"
         >
           <Icon name="refresh" size={14} />
         </button>
       </div>
 
-      <div className="mt-3 text-xs uppercase tracking-wide text-soft">
-        bb1 address
+      <div className="mt-4 flex items-center gap-1.5">
+        <BrandLogo name="bitbadges" size={11} /> <Label>bb1 address</Label>
       </div>
       <button
         onClick={copy}
-        className="mt-1 flex w-full items-center gap-2 rounded-md border border-border bg-surface-3 px-2.5 py-2 text-left font-mono text-xs text-muted hover:text-fg"
+        className="mt-1 flex w-full items-center gap-2 rounded-lg border border-border bg-surface-3 px-2.5 py-2 text-left font-mono text-xs text-muted transition-colors hover:border-border-gold hover:text-fg"
         title="Copy address"
       >
         <span className="truncate">{address || "…"}</span>
         <Icon name={copied ? "check" : "copy"} size={13} />
       </button>
 
-      <div className="mt-4 text-xs uppercase tracking-wide text-soft">
-        Balance
+      <div className="mt-5">
+        <Label>Balance</Label>
       </div>
-      <div className="mt-1 font-mono text-2xl text-fg">
-        {loading ? "…" : fmtUsdc(usdc)}{" "}
-        <span className="text-sm text-muted">USDC</span>
+      <div className="mt-1.5 flex items-center gap-2">
+        <BrandLogo name="usdc" size={26} />
+        <span className="font-mono text-3xl leading-none text-accent">
+          {loading ? "…" : fmtUsdc(usdc)}
+        </span>
+        <span className="self-end pb-0.5 font-mono text-xs text-soft">USDC</span>
       </div>
 
       <Button
@@ -186,8 +197,8 @@ function FundActions({
   }
 
   return (
-    <div className="mt-4 border-t border-border pt-4">
-      <div className="text-xs uppercase tracking-wide text-soft">Fund</div>
+    <div className="mt-5 border-t border-border pt-4">
+      <Label>Fund</Label>
       <Input
         value={amount}
         onChange={(e) => setAmount(e.target.value)}
@@ -288,10 +299,8 @@ function PendingRequests({
   if (requests.length === 0) return null;
 
   return (
-    <div className="mt-4 border-t border-border pt-4">
-      <div className="text-xs uppercase tracking-wide text-soft">
-        Pending requests
-      </div>
+    <div className="mt-5 border-t border-border pt-4">
+      <Label>Pending requests</Label>
       {error && <p className="mt-2 text-xs text-danger">{error}</p>}
       <div className="mt-2 space-y-2">
         {requests.map((r) => (
@@ -300,8 +309,9 @@ function PendingRequests({
             className="rounded-md border border-border bg-surface-3 p-2.5"
           >
             <div className="flex items-baseline justify-between">
-              <span className="font-mono text-sm">
-                {fmtUsdc(r.amount)} USDC
+              <span className="flex items-center gap-1.5 font-mono text-sm text-fg">
+                <BrandLogo name="usdc" size={14} />
+                {fmtUsdc(r.amount)}
               </span>
               <span className="truncate pl-2 text-[11px] text-soft">
                 {r.memo}

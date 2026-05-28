@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Badge, Button, Card, Icon, Input } from "@vellum/ui";
+import { BrandLogo } from "./BrandLogo.tsx";
 import { api, type Vault } from "./api.ts";
 import {
   signAndBroadcast,
@@ -86,10 +87,15 @@ export function VaultsView({ personaId }: { personaId: string }) {
 
   return (
     <div className="h-full overflow-y-auto p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-sm font-medium text-muted">
-          Vaults — 1:1 USDC, agent-managed within rules
-        </h3>
+      <div className="mb-5 flex items-center justify-between">
+        <div>
+          <h3 className="flex items-center gap-2 font-serif text-xl">
+            <BrandLogo name="usdc" size={18} /> Vaults
+          </h3>
+          <p className="mt-0.5 text-xs text-muted">
+            1:1 USDC, agent-managed within rules
+          </p>
+        </div>
         <Button
           variant="secondary"
           size="sm"
@@ -347,19 +353,21 @@ function VaultRow({
             {vault.backingAddress.slice(0, 10)}…
           </div>
           {escrowMicro !== null && (
-            <div className="mt-1 text-xs text-muted">
-              escrowed:{" "}
-              <span className="text-fg">
-                {(Number(escrowMicro) / 1e6).toFixed(2)} USDC
-              </span>{" "}
-              <span className="text-soft">(agent's claim on this vault)</span>
+            <div className="mt-1.5 flex items-center gap-1.5 text-xs text-muted">
+              <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-soft">
+                escrowed
+              </span>
+              <BrandLogo name="usdc" size={13} />
+              <span className="font-mono text-fg">
+                {(Number(escrowMicro) / 1e6).toFixed(2)}
+              </span>
+              <span className="text-soft">· agent's claim</span>
             </div>
           )}
-          <div className="mt-1 flex flex-wrap gap-1">
+          <div className="mt-2 flex flex-wrap gap-1">
             {vault.gating?.amount && (
-              <Badge tone="default">
-                ≤ {vault.gating.amount.limitUsd} USDC /{" "}
-                {vault.gating.amount.period}
+              <Badge tone="accent">
+                ≤ {vault.gating.amount.limitUsd} USDC / {vault.gating.amount.period}
               </Badge>
             )}
             {vault.gating?.time?.unlockAt != null && (
