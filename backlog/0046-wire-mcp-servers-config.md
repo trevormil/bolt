@@ -1,12 +1,13 @@
 ---
 id: 46
 title: "Wire configured MCP servers into chat + daemon (persistent connections + config)"
-status: open
+status: in-progress
 priority: medium
 type: feature
 source: post-#33
 created: 2026-05-27
-updated: 2026-05-27
+updated: 2026-05-28
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/47"]
 refs: ["0033-mcp-connect-verify.md", "0005-agent-loop-mcp.md", "0040-persona-settings-framework.md", "0037-capability-permission-model.md"]
 ---
 

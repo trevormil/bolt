@@ -10,6 +10,16 @@ export {
 } from "./vaults.ts";
 export { vaultTools } from "./agent-tools.ts";
 export { mcpTools } from "./mcp-tools.ts";
+export {
+  McpServers,
+  McpServerSchema,
+  McpServersSchema,
+  type McpServerConfig,
+} from "./mcp-setting.ts";
+export { McpManager, type McpConnector } from "./mcp-manager.ts";
+// Re-export the global-scope sentinel so surfaces (daemon) can read/write the
+// global setting bucket without a direct @vellum/settings dep.
+export { GLOBAL } from "@vellum/settings";
 export { Model, APPROVED_MODELS, isApprovedModel } from "./model-setting.ts";
 export {
   BudgetLimits,

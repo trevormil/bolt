@@ -1,9 +1,15 @@
 import type { TraceSpan } from "@vellum/trace";
+import type { ToolInvoker, ToolSpec } from "@vellum/agent";
+import { createLogger } from "@vellum/shared";
 import type { Engine } from "./engine.ts";
 import { vaultTools } from "./agent-tools.ts";
 import { combineTools, filesystemTools } from "./fs-tools.ts";
 import { scheduleTools } from "./schedule-tools.ts";
+import { mcpTools } from "./mcp-tools.ts";
+import { McpServers } from "./mcp-setting.ts";
 import { evaluateBudget } from "./budget-setting.ts";
+
+const log = createLogger("chat");
 
 export interface ChatInput {
   conversationId: string;
@@ -63,16 +69,36 @@ export async function chat(
   // persona's compartment; the FS tools enforce grants via engine.authorizer.
   // In a read-only run (T-13) the value-moving vault tools are withheld entirely
   // — the agent simply has no create/withdraw tool to call.
-  const { tools, invoke } = readOnly
-    ? combineTools(
+  const sets: { tools: ToolSpec[]; invoke: ToolInvoker }[] = readOnly
+    ? [
         filesystemTools(engine, personaId),
         scheduleTools(engine, personaId, { readOnly: true }),
-      )
-    : combineTools(
+      ]
+    : [
         vaultTools(engine, personaId),
         filesystemTools(engine, personaId),
         scheduleTools(engine, personaId),
-      );
+      ];
+  // MCP servers (#46): merge the persona's configured external tools, reusing
+  // the daemon's pooled connections. Withheld from read-only runs for the same
+  // reason vault tools are (T-13) — an unarmed proactive run must not reach
+  // external tools that could move value. Each server's tools stay gated on the
+  // "mcp" capability scoped to the server name (#37); a server that's down is
+  // simply absent from `ensure`, so chat degrades gracefully.
+  if (!readOnly) {
+    const servers = McpServers.get(engine.settings, personaId).value;
+    for (const { name, client } of await engine.mcp.ensure(servers)) {
+      // Tool discovery can fail even on a connected server (e.g. a protocol/
+      // version mismatch). Skip that server's tools rather than failing the
+      // whole turn — same graceful-degradation contract as a connect failure.
+      try {
+        sets.push(await mcpTools(engine, personaId, client, name));
+      } catch (e) {
+        log.warn(`mcp server "${name}" tool discovery failed, skipping: ${e}`);
+      }
+    }
+  }
+  const { tools, invoke } = combineTools(...sets);
   const res = await engine.orchestrator.handle(conversationId, message, {
     trace,
     tools,

@@ -20,6 +20,8 @@ import {
   Model,
   APPROVED_MODELS,
   isApprovedModel,
+  McpServers,
+  McpServersSchema,
   type Engine,
 } from "@vellum/engine";
 import {
@@ -521,6 +523,38 @@ export function buildApp(
       );
     Model.setPersona(engine.settings, id, model);
     return c.json(Model.get(engine.settings, id));
+  });
+
+  // Per-persona MCP server config (#46). GET returns {value, source}; PUT body
+  // { servers: McpServerConfig[] | null } — null clears the override (inherit
+  // the global set). Connections are (re)established lazily on the persona's next
+  // chat turn, so a config change takes effect without a daemon restart; the old
+  // pooled connection is harmless and reused if the entry is unchanged.
+  app.get("/api/personas/:id/mcp-servers", (c) => {
+    const id = c.req.param("id");
+    if (!engine.store.getPersona(id))
+      return c.json({ error: "unknown persona" }, 404);
+    return c.json(McpServers.get(engine.settings, id));
+  });
+  app.put("/api/personas/:id/mcp-servers", async (c) => {
+    const id = c.req.param("id");
+    if (!engine.store.getPersona(id))
+      return c.json({ error: "unknown persona" }, 404);
+    const body = (await c.req.json().catch(() => ({}))) as {
+      servers?: unknown;
+    };
+    if (body.servers === null) {
+      McpServers.reset(engine.settings, id);
+      return c.json(McpServers.get(engine.settings, id));
+    }
+    const parsed = McpServersSchema.safeParse(body.servers);
+    if (!parsed.success)
+      return c.json(
+        { error: "invalid MCP server config", detail: parsed.error.message },
+        400,
+      );
+    McpServers.setPersona(engine.settings, id, parsed.data);
+    return c.json(McpServers.get(engine.settings, id));
   });
 
   // Spend from a persona's wallet, governed by the tx-lifecycle invariant (0023):
