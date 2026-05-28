@@ -15,6 +15,8 @@ import { SettingsStore } from "@vellum/settings";
 import { EventStore } from "@vellum/observability";
 import { env, createLogger } from "@vellum/shared";
 import { VaultService, type VaultServiceDeps } from "./vaults.ts";
+import { PaymentRequests } from "./payment-requests.ts";
+import { DepositRequests } from "./deposit-requests.ts";
 import { Model } from "./model-setting.ts";
 import { McpManager, type McpConnector } from "./mcp-manager.ts";
 
@@ -41,6 +43,10 @@ export interface Engine {
   settings: SettingsStore; // global + per-persona settings (#40)
   events: EventStore; // per-persona product telemetry (#42)
   mcp: McpManager; // long-lived MCP server connections (#46)
+  // Pending fund/deposit request stores (#67) — shared by web routes, the
+  // agent's request_* tools, and Telegram so every surface mints the same links.
+  paymentRequests: PaymentRequests;
+  depositRequests: DepositRequests;
   claimFaucet: FaucetClaim;
 }
 
@@ -130,6 +136,10 @@ export function createEngine(opts: EngineOptions = {}): Engine {
   // MCP connections live on the engine so they're pooled across chat turns and
   // shared by every surface; the daemon warms the global set + closes on exit.
   const mcp = new McpManager(opts.mcpConnect);
+  // Request stores (#67): one shared instance per surface (web routes + agent
+  // request_* tools), same sqlite file as everything else.
+  const paymentRequests = new PaymentRequests(dbPath);
+  const depositRequests = new DepositRequests(dbPath);
   const claimFaucet = opts.claimFaucet ?? chainClaimFaucet;
   log.info(`engine ready · db=${dbPath}`);
   return {
@@ -144,6 +154,8 @@ export function createEngine(opts: EngineOptions = {}): Engine {
     orchestrator,
     txManager,
     vaults,
+    paymentRequests,
+    depositRequests,
     claimFaucet,
   };
 }

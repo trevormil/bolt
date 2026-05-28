@@ -2,7 +2,12 @@ import type { TraceSpan } from "@vellum/trace";
 import type { ToolInvoker, ToolSpec } from "@vellum/agent";
 import { createLogger } from "@vellum/shared";
 import type { Engine } from "./engine.ts";
-import { balanceTools, spendTools, vaultTools } from "./agent-tools.ts";
+import {
+  balanceTools,
+  requestTools,
+  spendTools,
+  vaultTools,
+} from "./agent-tools.ts";
 import { combineTools, filesystemTools } from "./fs-tools.ts";
 import { execTools } from "./exec-tools.ts";
 import { mcpTools } from "./mcp-tools.ts";
@@ -83,6 +88,7 @@ export async function chat(
         balanceTools(engine, personaId),
         spendTools(engine, personaId),
         vaultTools(engine, personaId),
+        requestTools(engine, personaId),
         filesystemTools(engine, personaId),
         execTools(engine, personaId),
       ];

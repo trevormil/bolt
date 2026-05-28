@@ -6,10 +6,12 @@ import { randomUUID } from "node:crypto";
 // app (Keplr) or by opening the /pay/:id link elsewhere. The agent never pulls
 // funds.
 //
-// This store holds ONLY outstanding (pending) requests: a row existing IS the
-// "pending" status. On fulfilment the funding is recorded in the ledger (the
-// permanent trail) and the request row is deleted — filled requests aren't kept
-// around to bloat the store.
+// Lives in @vellum/engine (not the web layer) so every surface — web routes, the
+// agent's request_funds tool, Telegram — shares ONE instance (#67). This store
+// holds ONLY outstanding (pending) requests: a row existing IS the "pending"
+// status. On fulfilment the funding is recorded in the ledger (the permanent
+// trail) and the request row is deleted — filled requests aren't kept around to
+// bloat the store.
 export interface PaymentRequest {
   id: string;
   personaId: string;

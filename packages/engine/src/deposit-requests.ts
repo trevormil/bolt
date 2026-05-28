@@ -9,7 +9,9 @@ import { randomUUID } from "node:crypto";
 // /deposit page needs to build the deposit tx (collectionId + backingAddress +
 // the agent recipient).
 //
-// This store holds ONLY outstanding (pending) requests: a row existing IS the
+// Lives in @vellum/engine (not the web layer) so every surface — web routes, the
+// agent's request_vault_deposit tool, Telegram — shares ONE instance (#67). This
+// store holds ONLY outstanding (pending) requests: a row existing IS the
 // "pending" status. On fulfilment the row is deleted — the deposit itself is the
 // funder's on-chain tx (the permanent trail), so filled requests aren't kept
 // around to bloat the store.

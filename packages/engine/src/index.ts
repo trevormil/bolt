@@ -8,10 +8,17 @@ export {
   type CreateVaultRequest,
   type VaultServiceDeps,
 } from "./vaults.ts";
-export { vaultTools, balanceTools, spendTools } from "./agent-tools.ts";
+export {
+  vaultTools,
+  balanceTools,
+  spendTools,
+  requestTools,
+} from "./agent-tools.ts";
 // Re-export the spend input guards (#65) so surfaces (telegram) can pre-validate
 // without a direct @vellum/tx dep; TxManager.spend stays the final chokepoint.
 export { isBb1Address, isPositiveMicroAmount } from "@vellum/tx";
+export { PaymentRequests, type PaymentRequest } from "./payment-requests.ts";
+export { DepositRequests, type DepositRequest } from "./deposit-requests.ts";
 export { mcpTools } from "./mcp-tools.ts";
 export {
   McpServers,

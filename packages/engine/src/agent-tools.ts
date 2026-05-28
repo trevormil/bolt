@@ -406,3 +406,156 @@ export function spendTools(
 
   return { tools, invoke };
 }
+
+// Build a shareable link from a path. Absolute when VELLUM_PUBLIC_URL is set,
+// otherwise the bare path — the daemon is loopback-only, so a path is honest for
+// local use (the operator shares the public URL out of band when there is one).
+function linkFor(path: string): string {
+  const base = env.VELLUM_PUBLIC_URL;
+  return base ? `${base.replace(/\/$/, "")}${path}` : path;
+}
+
+// Request tools (#67): the agent raises a fundable/signable link and hands it
+// back to the user — it never pulls funds or signs on anyone's behalf.
+//   request_funds          → a global payment request (/pay)
+//   request_vault_deposit  → a vault deposit request (/deposit)
+//   request_vote           → a multi-sig sign-off link (/vote)
+// These create local state + return links; a human still signs, so NO value
+// moves here (hence no capability gate beyond being in the full tool set, which
+// is withheld from read-only runs). Scoped to ONE persona via the closure.
+export function requestTools(
+  engine: Engine,
+  personaId: string,
+): { tools: ToolSpec[]; invoke: ToolInvoker } {
+  const tools: ToolSpec[] = [
+    {
+      name: "request_funds",
+      description:
+        "Raise a request to fund THIS persona's wallet with USDC and get a shareable payment link (/pay). The human — or anyone you send the link to — pays it with their own wallet; you never pull funds. Use when you need more USDC to operate.",
+      parameters: {
+        type: "object",
+        properties: {
+          amountUsdc: { type: "number", description: "USDC to request" },
+          memo: {
+            type: "string",
+            description: "Optional note shown on the pay page",
+          },
+        },
+        required: ["amountUsdc"],
+      },
+    },
+    {
+      name: "request_vault_deposit",
+      description:
+        "Raise a request to fund a specific vault's escrow and get a shareable deposit link (/deposit). The funder signs with their own wallet; the vault tokens go to you (the persona). Use to top up a vault you manage.",
+      parameters: {
+        type: "object",
+        properties: {
+          collectionId: {
+            type: "string",
+            description: "The vault's collectionId",
+          },
+          amountUsdc: {
+            type: "number",
+            description: "USDC to request into the vault",
+          },
+          memo: {
+            type: "string",
+            description: "Optional note shown on the deposit page",
+          },
+        },
+        required: ["collectionId", "amountUsdc"],
+      },
+    },
+    {
+      name: "request_vote",
+      description:
+        "Get the multi-sig sign-off link (/vote) for a vault whose withdrawals require signer approval. Share it with the signers so they can cast their vote to release a pending withdrawal. Only works for vaults created with multi-sig.",
+      parameters: {
+        type: "object",
+        properties: {
+          collectionId: {
+            type: "string",
+            description: "The vault's collectionId",
+          },
+        },
+        required: ["collectionId"],
+      },
+    },
+  ];
+
+  // tool_call telemetry (#42): each successful request lands on the timeline
+  // (metadata only). No value moves, so there is no capability / denial branch.
+  const emit = (tool: string) =>
+    engine.events.emit({
+      personaId,
+      kind: "tool_call",
+      summary: `request:${tool}`,
+      ok: true,
+      meta: { tool, source: "request" },
+    });
+
+  const invoke: ToolInvoker = async (name, args) => {
+    if (name === "request_funds") {
+      const micro = microOrNull(args.amountUsdc);
+      if (!micro) return "Amount must be a positive number of USDC.";
+      const toAddress = engine.wallets.addressFor(personaId);
+      if (!toAddress) return "This persona has no wallet yet.";
+      const req = engine.paymentRequests.create({
+        personaId,
+        toAddress,
+        denom: env.VELLUM_DENOM,
+        amount: micro,
+        memo:
+          args.memo != null ? String(args.memo) : `Fund ${fmtUsdc(micro)} USDC`,
+      });
+      emit("request_funds");
+      return `Payment request for ${fmtUsdc(micro)} USDC created. Share this link to get funded: ${linkFor(`/pay/${req.id}`)}`;
+    }
+
+    if (name === "request_vault_deposit") {
+      const micro = microOrNull(args.amountUsdc);
+      if (!micro) return "Amount must be a positive number of USDC.";
+      const collectionId = String(args.collectionId);
+      const vault = engine.vaults
+        .list(personaId)
+        .find((v) => v.collectionId === collectionId);
+      if (!vault) return `No vault with collectionId ${collectionId}.`;
+      const agentAddress = engine.wallets.addressFor(personaId);
+      if (!agentAddress) return "This persona has no wallet yet.";
+      const req = engine.depositRequests.create({
+        personaId,
+        collectionId,
+        vaultSymbol: vault.symbol,
+        vaultName: vault.name,
+        backingAddress: vault.backingAddress,
+        agentAddress,
+        denom: env.VELLUM_DENOM,
+        amount: micro,
+        memo:
+          args.memo != null
+            ? String(args.memo)
+            : `Deposit ${fmtUsdc(micro)} USDC into ${vault.name}`,
+      });
+      emit("request_vault_deposit");
+      return `Deposit request for ${fmtUsdc(micro)} USDC into ${vault.symbol} created. Share this link to fund the vault: ${linkFor(`/deposit/${req.id}`)}`;
+    }
+
+    if (name === "request_vote") {
+      const collectionId = String(args.collectionId);
+      const vault = engine.vaults
+        .list(personaId)
+        .find((v) => v.collectionId === collectionId);
+      if (!vault) return `No vault with collectionId ${collectionId}.`;
+      const ms = vault.gating?.multisig;
+      if (!ms)
+        return `Vault ${vault.symbol} has no multi-sig sign-off, so there is nothing to vote on.`;
+      emit("request_vote");
+      return `${vault.symbol} needs ${ms.threshold}-of-${ms.signers.length} sign-off. Share this link with the signers to approve a pending withdrawal: ${linkFor(`/vote/${collectionId}`)}`;
+    }
+
+    return `unknown tool: ${name}`;
+  };
+
+  return { tools, invoke };
+}

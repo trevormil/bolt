@@ -34,8 +34,6 @@ import {
   type GatingPeriod,
 } from "@vellum/tokenization";
 import { isBb1Address, isPositiveMicroAmount } from "@vellum/tx";
-import { PaymentRequests } from "./payment-requests.ts";
-import { DepositRequests } from "./deposit-requests.ts";
 
 // Built SPA dir, resolved from this file (cwd-independent) so the server can be
 // launched from the repo root (where .env loads) or from packages/web alike.
@@ -246,11 +244,12 @@ function slug(name: string): string {
 // determinism live in the engine packages; this layer just exposes them.
 export function buildApp(
   engine: Engine,
-  // Injectable so tests get an isolated store; prod shares the engine's sqlite
-  // file (own table). Defaults to the configured DB path.
-  paymentRequests = new PaymentRequests(env.VELLUM_DB_PATH),
+  // Injectable so tests get an isolated store; defaults to the engine's shared
+  // instances (#67) so web routes and the agent's request_* tools mint links
+  // against the same DB.
+  paymentRequests = engine.paymentRequests,
   // Vault deposit requests (#62) — parallel to paymentRequests, own table.
-  depositRequests = new DepositRequests(env.VELLUM_DB_PATH),
+  depositRequests = engine.depositRequests,
   // Auth config (injectable for tests). Defaults to env.
   auth: { token?: string; host?: string } = {
     token: env.VELLUM_API_TOKEN,

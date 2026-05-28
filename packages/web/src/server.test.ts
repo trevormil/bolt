@@ -12,15 +12,13 @@ import type { Meter } from "@vellum/llm";
 import type { RunLoop } from "@vellum/orchestrator";
 import type { TxChain } from "@vellum/tx";
 import { env } from "@vellum/shared";
-import { createEngine } from "@vellum/engine";
+import { createEngine, PaymentRequests, DepositRequests } from "@vellum/engine";
 import {
   buildApp,
   creditedAmount,
   webServeOptions,
   parseGating,
 } from "./server.ts";
-import { PaymentRequests } from "./payment-requests.ts";
-import { DepositRequests } from "./deposit-requests.ts";
 
 const METER: Meter = {
   model: "test",

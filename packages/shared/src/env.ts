@@ -70,6 +70,12 @@ export const envSchema = z.object({
   // required to expose the API beyond localhost.
   VELLUM_API_TOKEN: z.string().optional(),
 
+  // Public base URL for the shareable links the agent mints (/pay, /deposit,
+  // /vote) via the request_* tools (#67). When set, those tools return absolute
+  // URLs; unset → a relative path (the daemon is loopback-only, so a bare path
+  // is honest for local use).
+  VELLUM_PUBLIC_URL: z.string().url().optional(),
+
   // Vellum is single-asset: the IBC USDC denom on the BitBadges devnet (6 dp,
   // displayed "USDC"). Balances, payment requests, and vaults use only this.
   VELLUM_DENOM: z
