@@ -71,6 +71,7 @@
         "@vellum/trace": "workspace:*",
         "@vellum/tx": "workspace:*",
         "@vellum/wallet": "workspace:*",
+        "zod": "3.23.8",
       },
     },
     "packages/evals": {

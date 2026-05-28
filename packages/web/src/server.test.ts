@@ -360,6 +360,47 @@ describe("web API", () => {
   });
 });
 
+describe("per-persona model select (#43)", () => {
+  test("GET → default null, PUT string → persona override, PUT null → reset", async () => {
+    await post("/api/personas", { name: "Atlas" });
+
+    const def = await (await app.request("/api/personas/atlas/model")).json();
+    expect(def).toEqual({ value: null, source: "default" });
+
+    const set = await app.request("/api/personas/atlas/model", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: "anthropic/claude-3.5-sonnet" }),
+    });
+    expect(set.status).toBe(200);
+    expect(await set.json()).toEqual({
+      value: "anthropic/claude-3.5-sonnet",
+      source: "persona",
+    });
+
+    const cleared = await app.request("/api/personas/atlas/model", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: null }),
+    });
+    expect(await cleared.json()).toEqual({ value: null, source: "default" });
+  });
+
+  test("rejects an empty model string", async () => {
+    await post("/api/personas", { name: "Atlas" });
+    const res = await app.request("/api/personas/atlas/model", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: "  " }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("unknown persona → 404", async () => {
+    expect((await app.request("/api/personas/ghost/model")).status).toBe(404);
+  });
+});
+
 describe("payment requests (0014)", () => {
   test("create → get → list a request for a persona", async () => {
     await post("/api/personas", { name: "Atlas" });

@@ -15,6 +15,7 @@ import { SettingsStore } from "@vellum/settings";
 import { env, createLogger } from "@vellum/shared";
 import { VaultService, type VaultServiceDeps } from "./vaults.ts";
 import { TaskStore } from "./tasks.ts";
+import { Model } from "./model-setting.ts";
 
 const log = createLogger("engine");
 
@@ -75,9 +76,16 @@ export function createEngine(opts: EngineOptions = {}): Engine {
     getBalances: opts.getBalances,
   });
   const ledger = new Ledger(dbPath);
+  // Settings is built early so the orchestrator can read per-persona model
+  // overrides (#43) on each turn — the tier router falls back when unset.
+  const settings = new SettingsStore(dbPath);
   const orchestrator = new Orchestrator(
     store,
-    { defaultPersonaId: "", dbPath },
+    {
+      defaultPersonaId: "",
+      dbPath,
+      modelFor: (id) => Model.get(settings, id).value,
+    },
     opts.runLoop,
   );
   // Capabilities first so the vault chokepoint can gate (#37).
@@ -107,7 +115,6 @@ export function createEngine(opts: EngineOptions = {}): Engine {
     ...opts.vault,
   });
   const tasks = new TaskStore(dbPath);
-  const settings = new SettingsStore(dbPath);
   const claimFaucet = opts.claimFaucet ?? chainClaimFaucet;
   log.info(`engine ready · db=${dbPath}`);
   return {

@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { runAgent, type ToolInvoker, type ToolSpec } from "@vellum/agent";
-import type { ChatMessage, Meter } from "@vellum/llm";
+import { completeWithTools, type ChatMessage, type Meter } from "@vellum/llm";
 import {
   renderSoul,
   readPersonaMarkdown,
@@ -40,10 +40,24 @@ export type RunLoop = (input: {
   trace: TraceSpan;
 }) => Promise<{ text: string; meters: Meter[] }>;
 
-const defaultRunLoop: RunLoop = async ({ messages, tools, invoke, trace }) => {
-  const run = await runAgent({ messages, tools, invoke, trace });
-  return { text: run.text, meters: run.meters };
-};
+// Per-persona model override (#43): if modelFor returns a model id for this
+// persona, every LLM round-trip in the agent loop uses that exact model;
+// otherwise the OpenRouter tier router picks (env LLM_MODEL_CHEAP/FRONTIER).
+export function makeDefaultRunLoop(
+  modelFor?: (personaId: string) => string | null,
+): RunLoop {
+  return async ({ persona, messages, tools, invoke, trace }) => {
+    const model = modelFor?.(persona.id) ?? undefined;
+    const run = await runAgent({
+      messages,
+      tools,
+      invoke,
+      trace,
+      chat: (m, t) => completeWithTools(m, t, model ? { model } : undefined),
+    });
+    return { text: run.text, meters: run.meters };
+  };
+}
 
 const SWITCH = /^\/(?:switch|use)\s+(\S+)/i;
 
@@ -55,6 +69,9 @@ export interface OrchestratorOptions {
   // Always-on persona markdown (#41); injectable for tests. Default reads
   // ~/.vellum global + per-persona PERSONA.md fresh each turn.
   readPersonaMarkdown?: (personaId: string) => string;
+  // Per-persona model override (#43); when set + a default runLoop is in use,
+  // the agent loop pins every round-trip to this model (else tier-routed).
+  modelFor?: (personaId: string) => string | null;
 }
 
 export class Orchestrator {
@@ -69,13 +86,15 @@ export class Orchestrator {
   constructor(
     store: PersonaStore,
     opts: OrchestratorOptions,
-    runLoop: RunLoop = defaultRunLoop,
+    runLoop?: RunLoop,
   ) {
     this.store = store;
     this.defaultPersonaId = opts.defaultPersonaId;
     this.maxDepth = opts.maxDepth ?? 1;
     this.recallK = opts.recallK ?? 5;
-    this.runLoop = runLoop;
+    // Explicit runLoop wins (tests). Otherwise build the default runLoop with
+    // the modelFor hook so per-persona model overrides (#43) take effect.
+    this.runLoop = runLoop ?? makeDefaultRunLoop(opts.modelFor);
     this.readMarkdown = opts.readPersonaMarkdown ?? readPersonaMarkdown;
     this.db = new Database(opts.dbPath ?? ":memory:");
     this.db.run(

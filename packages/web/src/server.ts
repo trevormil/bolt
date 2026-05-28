@@ -14,6 +14,7 @@ import {
   grantDefaultCapabilities,
   CapabilityDeniedError,
   llmBudget,
+  Model,
   type Engine,
 } from "@vellum/engine";
 import { PaymentRequests } from "./payment-requests.ts";
@@ -278,6 +279,32 @@ export function buildApp(
     if (!engine.store.getPersona(id))
       return c.json({ error: "unknown persona" }, 404);
     return c.json({ llm: llmBudget(engine.ledger, id) });
+  });
+
+  // Per-persona OpenRouter model override (#43). GET returns {value, source};
+  // PUT body { model: string | null } — null clears the override (inherit).
+  app.get("/api/personas/:id/model", (c) => {
+    const id = c.req.param("id");
+    if (!engine.store.getPersona(id))
+      return c.json({ error: "unknown persona" }, 404);
+    return c.json(Model.get(engine.settings, id));
+  });
+  app.put("/api/personas/:id/model", async (c) => {
+    const id = c.req.param("id");
+    if (!engine.store.getPersona(id))
+      return c.json({ error: "unknown persona" }, 404);
+    const body = (await c.req.json().catch(() => ({}))) as { model?: unknown };
+    if (body.model === null) {
+      Model.reset(engine.settings, id);
+      return c.json(Model.get(engine.settings, id));
+    }
+    if (typeof body.model !== "string" || body.model.trim() === "")
+      return c.json(
+        { error: "model must be a non-empty OpenRouter model id, or null" },
+        400,
+      );
+    Model.setPersona(engine.settings, id, body.model.trim());
+    return c.json(Model.get(engine.settings, id));
   });
 
   // Spend from a persona's wallet, governed by the tx-lifecycle invariant (0023):
