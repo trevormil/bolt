@@ -92,15 +92,24 @@ export const api = {
   setupStatus: () =>
     fetch("/api/setup-status").then((r) => json<SetupStatus>(r)),
 
-  // First-run web setup (#19): persist the LLM key + auto-generate the agent
-  // wallet (#59, no import) so the running daemon adopts them. The generated
-  // phrase is the agent's key — NEVER returned to the browser (reveal it
-  // deliberately from Settings → Export, #57).
-  setup: (input: { openRouterKey?: string; apiToken?: string }) =>
+  // First-run web setup (#19): persist the LLM key (REQUIRED + health-checked,
+  // #60) + auto-generate the agent wallet (#59, no import) so the running daemon
+  // adopts them. The generated phrase is the agent's key — NEVER returned to the
+  // browser (reveal it deliberately from Settings → Export, #57).
+  setup: (input: { openRouterKey: string; apiToken?: string }) =>
     fetch("/api/setup", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(input),
+    }).then((r) => json<{ ok: boolean }>(r)),
+
+  // Set / change / reset the OpenRouter key after onboarding (#60). Validated
+  // server-side before it's persisted.
+  setOpenRouterKey: (key: string) =>
+    fetch("/api/settings/openrouter-key", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ key }),
     }).then((r) => json<{ ok: boolean }>(r)),
 
   // Reveal the agent's master mnemonic for backup (#57). Loopback + authed; the

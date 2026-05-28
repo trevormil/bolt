@@ -1008,6 +1008,9 @@ describe("first-run web setup (/api/setup)", () => {
   // the tests must look like a same-origin loopback request to reach the route.
   function setupApp(
     auth: { token?: string; host?: string } = { host: "127.0.0.1" },
+    // Injected OpenRouter health-check (#60) — defaults to "valid" so the happy
+    // path needs no network; override with `async () => false` to test rejection.
+    verifyKey: (key: string) => Promise<boolean> = async () => true,
   ) {
     const envFilePath = join(
       tmpdir(),
@@ -1017,6 +1020,7 @@ describe("first-run web setup (/api/setup)", () => {
     const app = buildApp(makeEngine(), new PaymentRequests(":memory:"), auth, {
       envFilePath,
       applyRuntime: (p) => applied.push(p),
+      verifyKey,
     });
     return { app, envFilePath, applied };
   }
@@ -1089,12 +1093,34 @@ describe("first-run web setup (/api/setup)", () => {
     env.AGENT_SIGNER_MNEMONIC = undefined;
     const { app, applied } = setupApp();
     const res = await postSetup(app, {
+      openRouterKey: "sk-or-test",
       mnemonic: "attacker supplied phrase that must be ignored",
     });
     expect(res.status).toBe(200);
     const adopted = applied[0]?.AGENT_SIGNER_MNEMONIC ?? "";
     expect(adopted.trim().split(/\s+/)).toHaveLength(24); // freshly generated
     expect(adopted).not.toContain("attacker");
+  });
+
+  test("requires an OpenRouter key (#60)", async () => {
+    env.AGENT_SIGNER_MNEMONIC = undefined;
+    const { app, applied } = setupApp();
+    const res = await postSetup(app, {}); // no key
+    expect(res.status).toBe(400);
+    expect(applied).toHaveLength(0); // no wallet generated, nothing persisted
+  });
+
+  test("rejects an invalid OpenRouter key — nothing persisted (#60)", async () => {
+    env.AGENT_SIGNER_MNEMONIC = undefined;
+    const { app, applied } = setupApp(
+      { host: "127.0.0.1" },
+      async () => false, // health check fails
+    );
+    const res = await postSetup(app, { openRouterKey: "sk-or-bad" });
+    expect(res.status).toBe(400);
+    // The route validates the key BEFORE generating the wallet / writing .env,
+    // so an empty `applied` proves nothing was persisted.
+    expect(applied).toHaveLength(0);
   });
 });
 
@@ -1138,6 +1164,80 @@ describe("agent seed export (/api/agent/mnemonic)", () => {
     const res = await get(app({ token: "secret", host: "0.0.0.0" }), {
       authorization: "Bearer secret",
     });
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("change OpenRouter key (/api/settings/openrouter-key, #60)", () => {
+  function keyApp(
+    auth: { token?: string; host?: string } = { host: "127.0.0.1" },
+    verifyKey: (key: string) => Promise<boolean> = async () => true,
+  ) {
+    const applied: Partial<typeof env>[] = [];
+    const envFilePath = join(
+      tmpdir(),
+      `vellum-key-${Math.random().toString(36).slice(2)}.env`,
+    );
+    const app = buildApp(makeEngine(), new PaymentRequests(":memory:"), auth, {
+      envFilePath,
+      applyRuntime: (p) => applied.push(p),
+      verifyKey,
+    });
+    return { app, applied, envFilePath };
+  }
+  const post = (
+    a: ReturnType<typeof buildApp>,
+    body: unknown,
+    headers: Record<string, string> = {},
+  ) =>
+    a.request("/api/settings/openrouter-key", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: JSON.stringify(body),
+    });
+
+  test("validates + persists a new key on loopback", async () => {
+    const { app, applied, envFilePath } = keyApp();
+    const res = await post(app, { key: "sk-or-new" });
+    expect(res.status).toBe(200);
+    expect(applied[0]?.OPENROUTER_API_KEY).toBe("sk-or-new");
+    expect(readFileSync(envFilePath, "utf8")).toContain(
+      "OPENROUTER_API_KEY=sk-or-new",
+    );
+    rmSync(envFilePath, { force: true });
+  });
+
+  test("rejects an invalid key (400, nothing persisted)", async () => {
+    const { app, applied } = keyApp({ host: "127.0.0.1" }, async () => false);
+    expect((await post(app, { key: "sk-or-bad" })).status).toBe(400);
+    expect(applied).toHaveLength(0);
+  });
+
+  test("rejects an empty key", async () => {
+    const { app } = keyApp();
+    expect((await post(app, {})).status).toBe(400);
+  });
+
+  test("cross-origin rejected (not public)", async () => {
+    const { app, applied } = keyApp();
+    const res = await post(
+      app,
+      { key: "sk-or-x" },
+      { origin: "http://evil.x" },
+    );
+    expect(res.status).toBe(403);
+    expect(applied).toHaveLength(0);
+  });
+
+  test("loopback-only on an exposed bind even when authed", async () => {
+    const { app } = keyApp({ token: "secret", host: "0.0.0.0" });
+    const res = await post(
+      app,
+      { key: "sk-or-x" },
+      {
+        authorization: "Bearer secret",
+      },
+    );
     expect(res.status).toBe(403);
   });
 });

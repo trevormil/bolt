@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { confirmTx, generateWallet } from "@vellum/chain";
+import { verifyOpenRouterKey } from "@vellum/llm";
 import { tracer } from "@vellum/trace";
 import {
   createLogger,
@@ -252,12 +253,15 @@ export function buildApp(
     // Built-SPA directory (injectable so the cache-header behavior is testable
     // against a fixture, not whatever dist a dev checkout happens to have).
     distDir?: string;
+    // OpenRouter key health-check (#60), injectable so tests run offline.
+    verifyKey?: (key: string) => Promise<boolean>;
   } = {},
 ) {
   const app = new Hono();
   const setupEnvFilePath = setup.envFilePath ?? join(process.cwd(), ".env");
   const applyRuntimeEnv = setup.applyRuntime ?? setRuntimeEnv;
   const distDir = setup.distDir ?? DIST;
+  const verifyKey = setup.verifyKey ?? verifyOpenRouterKey;
 
   // Security headers (#24 / T-11). Defense-in-depth even though the app binds
   // loopback by default: a malicious local page must not be able to frame the
@@ -408,16 +412,31 @@ export function buildApp(
       apiToken?: unknown;
     };
 
+    // The LLM key is REQUIRED + health-checked (#60) — block an empty or invalid
+    // key here, BEFORE generating the wallet / writing .env, so a bad key leaves
+    // nothing persisted.
+    const openRouterKey =
+      typeof body.openRouterKey === "string" ? body.openRouterKey.trim() : "";
+    if (!openRouterKey)
+      return c.json({ error: "an OpenRouter API key is required" }, 400);
+    if (!(await verifyKey(openRouterKey)))
+      return c.json(
+        { error: "that OpenRouter key didn't validate — check it and retry" },
+        400,
+      );
+
     // Agent wallets are ALWAYS generated fresh (#59) — no import. The phrase
     // is the agent's key; it never enters the app from the user side.
     const mnemonic = (await generateWallet()).mnemonic;
 
-    const updates: Record<string, string> = { AGENT_SIGNER_MNEMONIC: mnemonic };
-    const runtime: Partial<typeof env> = { AGENT_SIGNER_MNEMONIC: mnemonic };
-    if (typeof body.openRouterKey === "string" && body.openRouterKey.trim()) {
-      updates.OPENROUTER_API_KEY = body.openRouterKey.trim();
-      runtime.OPENROUTER_API_KEY = body.openRouterKey.trim();
-    }
+    const updates: Record<string, string> = {
+      AGENT_SIGNER_MNEMONIC: mnemonic,
+      OPENROUTER_API_KEY: openRouterKey,
+    };
+    const runtime: Partial<typeof env> = {
+      AGENT_SIGNER_MNEMONIC: mnemonic,
+      OPENROUTER_API_KEY: openRouterKey,
+    };
     if (typeof body.apiToken === "string" && body.apiToken.trim()) {
       updates.VELLUM_API_TOKEN = body.apiToken.trim();
       runtime.VELLUM_API_TOKEN = body.apiToken.trim();
@@ -427,10 +446,28 @@ export function buildApp(
     applyRuntimeEnv(runtime); // live daemon adopts it now (no restart)
     engine.wallets.setMnemonic(mnemonic);
 
-    log.info(
-      "web setup complete · wallet configured" +
-        (updates.OPENROUTER_API_KEY ? " + LLM key" : ""),
-    );
+    log.info("web setup complete · wallet + LLM key configured");
+    return c.json({ ok: true });
+  });
+
+  // Set / change / reset the OpenRouter key after onboarding (#60). Same trust
+  // boundary as /api/setup (loopback-only, behind the Host/Origin guard) but NOT
+  // first-run-gated — the key is health-checked before it's persisted + adopted.
+  app.post("/api/settings/openrouter-key", async (c) => {
+    if (!isLoopback(auth.host ?? "127.0.0.1"))
+      return c.json({ error: "key changes are loopback-only" }, 403);
+    const body = (await c.req.json().catch(() => ({}))) as { key?: unknown };
+    const key = typeof body.key === "string" ? body.key.trim() : "";
+    if (!key)
+      return c.json({ error: "an OpenRouter API key is required" }, 400);
+    if (!(await verifyKey(key)))
+      return c.json(
+        { error: "that OpenRouter key didn't validate — check it and retry" },
+        400,
+      );
+    upsertEnvFile(setupEnvFilePath, { OPENROUTER_API_KEY: key });
+    applyRuntimeEnv({ OPENROUTER_API_KEY: key });
+    log.info("openrouter key updated · settings");
     return c.json({ ok: true });
   });
 

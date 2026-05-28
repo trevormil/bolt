@@ -5,10 +5,94 @@ import { api, type BudgetResponse, type Resolved } from "./api.ts";
 export function SettingsView({ personaId }: { personaId: string }) {
   return (
     <div className="h-full space-y-6 overflow-y-auto p-6">
+      <LlmKeySection />
       <ModelSection personaId={personaId} />
       <BudgetSection personaId={personaId} />
       <RecoverySection />
     </div>
+  );
+}
+
+// ── #60 OpenRouter key — set / change / reset (global, validated) ────────────
+// The key powers every persona's LLM. Required at onboarding; this lets the user
+// rotate it. The new key is health-checked server-side before it's persisted.
+function LlmKeySection() {
+  const [configured, setConfigured] = useState<boolean | null>(null);
+  const [key, setKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    api
+      .setupStatus()
+      .then((s) => live && setConfigured(s.hasLlmKey))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  async function save() {
+    if (!key.trim()) return;
+    setBusy(true);
+    setError(null);
+    setSaved(false);
+    try {
+      await api.setOpenRouterKey(key.trim());
+      setKey("");
+      setConfigured(true);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="p-4">
+      <SectionHead
+        title="OpenRouter API key"
+        hint="Powers every persona's LLM. Validated before it's saved; a new key replaces the old one."
+      />
+      <p className="mt-2 text-xs text-soft">
+        Status:{" "}
+        <span className={configured ? "text-accent" : "text-danger"}>
+          {configured == null
+            ? "…"
+            : configured
+              ? "configured"
+              : "not set — chat is disabled"}
+        </span>
+      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Input
+          type="password"
+          value={key}
+          onChange={(e) => setKey(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && key.trim() && void save()}
+          placeholder="sk-or-…"
+          className="min-w-[16rem] flex-1"
+        />
+        <Button
+          size="sm"
+          onClick={() => void save()}
+          disabled={busy || !key.trim()}
+        >
+          {busy
+            ? "Verifying…"
+            : saved
+              ? "Saved"
+              : configured
+                ? "Replace"
+                : "Save"}
+        </Button>
+      </div>
+      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+    </Card>
   );
 }
 

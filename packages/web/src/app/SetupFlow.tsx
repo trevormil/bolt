@@ -18,10 +18,11 @@ export function SetupFlow({ onDone }: { onDone: (personaId: string) => void }) {
   const [error, setError] = useState<string | null>(null);
 
   async function submitSecrets() {
+    if (!openRouterKey.trim()) return;
     setBusy(true);
     setError(null);
     try {
-      await api.setup({ openRouterKey: openRouterKey.trim() || undefined });
+      await api.setup({ openRouterKey: openRouterKey.trim() });
       setStep("persona");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -60,13 +61,17 @@ export function SetupFlow({ onDone }: { onDone: (personaId: string) => void }) {
           <div className="mt-6 space-y-5">
             <Field
               label="OpenRouter API key"
-              hint="Powers the agent's LLM. You can add it later, but chat won't work until you do."
+              hint="Powers the agent's LLM — required. We verify it before continuing. Get one at openrouter.ai/keys."
             >
               <Input
                 type="password"
                 value={openRouterKey}
                 onChange={(e) => setKey(e.target.value)}
-                placeholder="sk-or-…  (optional)"
+                onKeyDown={(e) =>
+                  e.key === "Enter" && openRouterKey.trim() && submitSecrets()
+                }
+                placeholder="sk-or-…"
+                autoFocus
               />
             </Field>
             <div className="rounded-lg border border-border-gold bg-accent-soft/20 p-3">
@@ -84,9 +89,9 @@ export function SetupFlow({ onDone }: { onDone: (personaId: string) => void }) {
               className="w-full"
               size="lg"
               onClick={submitSecrets}
-              disabled={busy}
+              disabled={busy || !openRouterKey.trim()}
             >
-              {busy ? "Setting up…" : "Continue"}{" "}
+              {busy ? "Verifying key…" : "Continue"}{" "}
               <Icon name="arrowRight" size={16} />
             </Button>
           </div>
