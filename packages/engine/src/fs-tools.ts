@@ -3,12 +3,36 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   statSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import type { ToolInvoker, ToolSpec } from "@vellum/agent";
 import type { Engine } from "./engine.ts";
+
+// Resolve a path to its REAL location (following symlinks) before the capability
+// check — otherwise a symlink inside a granted root could point outside it and
+// escape the grant (#35 symlink finding). For a path that doesn't exist yet
+// (writing a new file), realpath the deepest existing ancestor and re-append the
+// remainder, so the check still sees the true target directory.
+function realResolve(input: string): string {
+  const abs = resolve(input);
+  const tail: string[] = [];
+  let cur = abs;
+  while (!existsSync(cur)) {
+    tail.unshift(basename(cur));
+    const parent = dirname(cur);
+    if (parent === cur) return abs; // hit root without an existing ancestor
+    cur = parent;
+  }
+  try {
+    const real = realpathSync(cur);
+    return tail.length ? join(real, ...tail) : real;
+  } catch {
+    return abs;
+  }
+}
 
 const MAX_READ = 20_000; // cap injected file content (chars) — context hygiene
 
@@ -62,7 +86,7 @@ export function filesystemTools(
   ];
 
   const invoke: ToolInvoker = async (name, args) => {
-    const path = resolve(String(args.path ?? ""));
+    const path = realResolve(String(args.path ?? "")); // symlink-safe
     if (!path || path === "/") return "A specific path is required.";
 
     if (name === "fs_read" || name === "fs_list") {

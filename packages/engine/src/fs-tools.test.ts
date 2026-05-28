@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, existsSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateWallet } from "@vellum/chain";
@@ -10,7 +18,9 @@ let mnemonic: string;
 let root: string;
 beforeEach(async () => {
   mnemonic = (await generateWallet()).mnemonic;
-  root = mkdtempSync(join(tmpdir(), "vellum-fs-"));
+  // realpath the temp root — fs grant scopes are canonical (real) paths, since
+  // authorization resolves symlinks (e.g. macOS /tmp → /private/tmp).
+  root = realpathSync(mkdtempSync(join(tmpdir(), "vellum-fs-")));
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
@@ -64,6 +74,30 @@ describe("filesystem tools (#35) — capability-gated", () => {
     expect(
       await invoke("fs_read", { path: join(root, "../escape") }),
     ).toContain("Denied");
+  });
+
+  test("a symlink inside the root that points outside is denied (#35 escape)", async () => {
+    const outside = realpathSync(
+      mkdtempSync(join(tmpdir(), "vellum-outside-")),
+    );
+    try {
+      writeFileSync(join(outside, "secret.txt"), "TOPSECRET");
+      // A symlink within the granted root pointing at the outside dir.
+      symlinkSync(outside, join(root, "link"));
+      const e = eng();
+      e.capabilities.grant({
+        personaId: "p",
+        capability: "fs.read",
+        scope: root,
+        mode: "allow",
+      });
+      const out = await filesystemTools(e, "p").invoke("fs_read", {
+        path: join(root, "link", "secret.txt"),
+      });
+      expect(out).toContain("Denied"); // realpath escapes the granted root
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
   });
 
   test("no grant → write denied, nothing written (fail-closed)", async () => {
