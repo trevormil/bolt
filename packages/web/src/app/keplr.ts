@@ -114,6 +114,30 @@ export interface MsgJson {
   value: unknown;
 }
 
+/** A third-party multisig sign-off (#45 slice 3): a signer casts a yes-vote on
+ *  a vault's withdrawal proposal. Each MsgCastVote IS a signature toward quorum;
+ *  the withdrawal executes once cast yes-weight ≥ the vault's quorumThreshold. */
+export function castVoteMsg(input: {
+  voter: string; // the signer's connected wallet (creator)
+  collectionId: string;
+  approvalId: string;
+  proposalId: string;
+  yesWeight?: number; // this signer's weight (default 1)
+}): MsgJson {
+  return {
+    typeUrl: "/tokenization.MsgCastVote",
+    value: {
+      creator: input.voter,
+      collectionId: input.collectionId,
+      approvalLevel: "collection",
+      approverAddress: "",
+      approvalId: input.approvalId,
+      proposalId: input.proposalId,
+      yesWeight: String(input.yesWeight ?? 1),
+    },
+  };
+}
+
 export function bankSendMsg(
   from: string,
   to: string,

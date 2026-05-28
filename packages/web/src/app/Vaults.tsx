@@ -20,6 +20,9 @@ export function VaultsView({ personaId }: { personaId: string }) {
   );
   const [limit, setLimit] = useState("");
   const [unlockDate, setUnlockDate] = useState(""); // yyyy-mm-dd
+  // Multi-sig (#45 slice 3): signer bb1 addresses (one per line) + threshold.
+  const [signersText, setSignersText] = useState("");
+  const [threshold, setThreshold] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,11 +43,21 @@ export function VaultsView({ personaId }: { personaId: string }) {
       const gating: {
         amount?: { limitUsd: number; period: "daily" | "weekly" | "monthly" };
         time?: { unlockAt?: number };
+        multisig?: { signers: { address: string }[]; threshold: number };
       } = {};
       if (period !== "none" && Number(limit) > 0)
         gating.amount = { limitUsd: Number(limit), period };
       if (unlockDate)
         gating.time = { unlockAt: new Date(unlockDate).getTime() };
+      const signers = signersText
+        .split(/[\s,]+/)
+        .map((s) => s.trim())
+        .filter((s) => s.startsWith("bb1"));
+      if (signers.length && Number(threshold) > 0)
+        gating.multisig = {
+          signers: signers.map((address) => ({ address })),
+          threshold: Number(threshold),
+        };
       await api.createVault(personaId, {
         name: name.trim(),
         symbol: symbol.trim(),
@@ -55,6 +68,8 @@ export function VaultsView({ personaId }: { personaId: string }) {
       setLimit("");
       setUnlockDate("");
       setPeriod("daily");
+      setSignersText("");
+      setThreshold("");
       setCreating(false);
       await reload();
     } catch (e) {
@@ -125,8 +140,30 @@ export function VaultsView({ personaId }: { personaId: string }) {
             <p className="text-[11px] text-soft">
               The agent can withdraw up to the cap per{" "}
               {period === "none" ? "—" : period}
-              {unlockDate ? `, and not before ${unlockDate}` : ""}. Multi-sig
-              sign-off is coming next.
+              {unlockDate ? `, and not before ${unlockDate}` : ""}.
+            </p>
+          </div>
+          {/* Multi-sig (#45 slice 3): withdrawals need signer sign-off. */}
+          <div className="space-y-1">
+            <span className="text-xs uppercase tracking-wide text-soft">
+              Multi-sig sign-off (optional)
+            </span>
+            <textarea
+              value={signersText}
+              onChange={(e) => setSignersText(e.target.value)}
+              placeholder="Signer bb1… addresses, one per line (leave blank for none)"
+              rows={2}
+              className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-xs text-fg"
+            />
+            <Input
+              value={threshold}
+              onChange={(e) => setThreshold(e.target.value)}
+              placeholder="Approvals required (e.g. 2)"
+              disabled={!signersText.trim()}
+            />
+            <p className="text-[11px] text-soft">
+              If set, each withdrawal needs this many signer approvals (via a
+              shareable sign-off link) before it executes.
             </p>
           </div>
           {error && <p className="text-sm text-danger">{error}</p>}
@@ -282,10 +319,28 @@ function VaultRow({
                 {new Date(vault.gating.time.unlockAt).toLocaleDateString()}
               </Badge>
             )}
-            {!vault.gating?.amount && vault.gating?.time?.unlockAt == null && (
-              <span className="text-[11px] text-soft">no withdrawal cap</span>
+            {vault.gating?.multisig && (
+              <Badge tone="accent">
+                {vault.gating.multisig.threshold}-of-
+                {vault.gating.multisig.signers.length} multisig
+              </Badge>
             )}
+            {!vault.gating?.amount &&
+              vault.gating?.time?.unlockAt == null &&
+              !vault.gating?.multisig && (
+                <span className="text-[11px] text-soft">no withdrawal cap</span>
+              )}
           </div>
+          {vault.gating?.multisig && (
+            <a
+              href={`/vote/${vault.collectionId}`}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-1 inline-flex items-center gap-1 text-[11px] text-accent hover:underline"
+            >
+              <Icon name="link" size={11} /> share sign-off link
+            </a>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Input

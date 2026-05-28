@@ -242,6 +242,16 @@ export class VaultService {
     );
   }
 
+  /** Look up a vault by collectionId across all personas (no persona context).
+   *  Backs the PUBLIC sign-off page (#45 slice 3) — collectionId + signers are
+   *  on-chain/public, so this exposes nothing the chain doesn't already. */
+  getByCollection(collectionId: string): VaultRecord | null {
+    const r = this.db
+      .query("SELECT * FROM vaults WHERE collection_id = ?")
+      .get(collectionId) as { persona_id: string } | null;
+    return r ? this.get(r.persona_id, collectionId) : null;
+  }
+
   /**
    * Escrow tracking (#45, ADR-0003 rev 2026-05-28): the per-vault escrow is how
    * much of THIS vault's tokens the persona's AGENT WALLET holds in the

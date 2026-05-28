@@ -478,6 +478,25 @@ describe("vault gating parse (#45 slice 2)", () => {
     // {time:{}} must not suppress the legacy daily cap → undefined, not a policy).
     expect(parseGating({ time: {} })).toBeUndefined();
     expect(parseGating({ amount: undefined, time: {} })).toBeUndefined();
+    // multisig (#45 slice 3)
+    expect(
+      parseGating({
+        multisig: { signers: [{ address: "bb1a" }], threshold: 1 },
+      }),
+    ).toEqual({
+      multisig: {
+        signers: [{ address: "bb1a", weight: undefined }],
+        threshold: 1,
+      },
+    });
+    expect(parseGating({ multisig: { signers: [], threshold: 1 } })).toBe(
+      "invalid",
+    ); // empty signer set
+    expect(
+      parseGating({
+        multisig: { signers: [{ address: "0xbad" }], threshold: 1 },
+      }),
+    ).toBe("invalid"); // non-bb1 signer
     // invalid: bad period, non-positive limit, negative unlock
     expect(parseGating({ amount: { limitUsd: 5, period: "yearly" } })).toBe(
       "invalid",

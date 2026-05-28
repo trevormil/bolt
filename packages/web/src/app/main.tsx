@@ -2,6 +2,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App.tsx";
 import { PayPage } from "./PayPage.tsx";
+import { VotePage } from "./VotePage.tsx";
 import { WalletProvider } from "./wallet-context.tsx";
 import "./styles.css";
 
@@ -18,15 +19,19 @@ if ("serviceWorker" in navigator && import.meta.env.PROD) {
   });
 }
 
-// Minimal path routing — the only standalone route is the public pay page
-// (/pay/:id). Everything else is the single-page app. (No router dep needed.)
+// Minimal path routing — standalone public routes are the pay page (/pay/:id)
+// and the multisig sign-off page (/vote/:collectionId). Everything else is the
+// single-page app. (No router dep needed.)
 const payMatch = window.location.pathname.match(/^\/pay\/([^/]+)/);
+const voteMatch = window.location.pathname.match(/^\/vote\/([^/]+)/);
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <WalletProvider>
       {payMatch ? (
         <PayPage reqId={decodeURIComponent(payMatch[1]!)} />
+      ) : voteMatch ? (
+        <VotePage collectionId={decodeURIComponent(voteMatch[1]!)} />
       ) : (
         <App />
       )}
