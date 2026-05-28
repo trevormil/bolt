@@ -161,6 +161,7 @@
       "dependencies": {
         "@vellum/engine": "workspace:*",
         "@vellum/shared": "workspace:*",
+        "@vellum/tx": "workspace:*",
         "grammy": "1.43.0",
       },
     },

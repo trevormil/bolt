@@ -82,4 +82,33 @@ describe("runSetup (#19 install wizard core)", () => {
     );
     expect(second.personaId).toBe(first.personaId);
   });
+
+  test("Telegram is optional: writes the token + chat id only when provided (#49)", async () => {
+    const { mnemonic } = await generateWallet();
+    const make = (opts: Parameters<typeof createEngine>[0]) =>
+      createEngine({ ...opts, dbPath: ":memory:", embedder: null });
+
+    // Provided → persisted to .env so the daemon attaches the bot on next boot.
+    const withTg = join(mkdtempSync(join(tmpdir(), "vellum-setup-")), ".env");
+    await runSetup(
+      {
+        mnemonic,
+        personaName: "Solo",
+        telegramBotToken: "123456:ABC-token",
+        telegramPrincipalChatId: "42",
+      },
+      { envPath: withTg, createEngine: make },
+    );
+    const env1 = readFileSync(withTg, "utf8");
+    expect(env1).toContain("TELEGRAM_BOT_TOKEN=123456:ABC-token");
+    expect(env1).toContain("TELEGRAM_PRINCIPAL_CHAT_ID=42");
+
+    // Absent → nothing written (skippable; no accidental empty token).
+    const without = join(mkdtempSync(join(tmpdir(), "vellum-setup-")), ".env");
+    await runSetup(
+      { mnemonic, personaName: "Solo" },
+      { envPath: without, createEngine: make },
+    );
+    expect(readFileSync(without, "utf8")).not.toContain("TELEGRAM_BOT_TOKEN");
+  });
 });

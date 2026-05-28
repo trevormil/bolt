@@ -14,6 +14,10 @@ type Step = "secrets" | "persona";
 export function SetupFlow({ onDone }: { onDone: (personaId: string) => void }) {
   const [step, setStep] = useState<Step>("secrets");
   const [openRouterKey, setKey] = useState("");
+  // Optional Telegram remote control (#49) — collapsed by default, skippable.
+  const [showTelegram, setShowTelegram] = useState(false);
+  const [telegramBotToken, setTelegramToken] = useState("");
+  const [telegramChatId, setTelegramChatId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -22,7 +26,19 @@ export function SetupFlow({ onDone }: { onDone: (personaId: string) => void }) {
     setBusy(true);
     setError(null);
     try {
-      await api.setup({ openRouterKey: openRouterKey.trim() });
+      const tgToken = telegramBotToken.trim();
+      await api.setup({
+        openRouterKey: openRouterKey.trim(),
+        // Only send Telegram fields when a token was actually entered (optional).
+        ...(tgToken
+          ? {
+              telegramBotToken: tgToken,
+              ...(telegramChatId.trim()
+                ? { telegramPrincipalChatId: telegramChatId.trim() }
+                : {}),
+            }
+          : {}),
+      });
       setStep("persona");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -83,6 +99,40 @@ export function SetupFlow({ onDone }: { onDone: (personaId: string) => void }) {
                 persona wallets derive from it. You can back up the seed phrase
                 anytime in Settings → Wallet recovery.
               </p>
+            </div>
+            <div className="rounded-lg border border-border bg-base/40 p-3">
+              {!showTelegram ? (
+                <button
+                  type="button"
+                  onClick={() => setShowTelegram(true)}
+                  className="flex w-full items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-soft hover:text-fg"
+                >
+                  <Icon name="zap" size={13} /> Control Bolt from Telegram
+                  (optional)
+                </button>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-accent">
+                    <Icon name="zap" size={13} /> Telegram remote control
+                  </div>
+                  <p className="text-xs leading-relaxed text-muted">
+                    Reach the agent from anywhere — the bot polls out to
+                    Telegram, so nothing is exposed on this machine. Get a token
+                    from <strong className="text-fg">@BotFather</strong>. Leave
+                    blank to skip. Takes effect when the daemon next starts.
+                  </p>
+                  <Input
+                    value={telegramBotToken}
+                    onChange={(e) => setTelegramToken(e.target.value)}
+                    placeholder="bot token (123456:ABC…)"
+                  />
+                  <Input
+                    value={telegramChatId}
+                    onChange={(e) => setTelegramChatId(e.target.value)}
+                    placeholder="your chat id (optional — else first chat claims it)"
+                  />
+                </div>
+              )}
             </div>
             {error && <p className="text-sm text-danger">{error}</p>}
             <Button

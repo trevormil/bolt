@@ -10,6 +10,7 @@ import { attachTelegram } from "./attach.ts";
 export { attachTelegram } from "./attach.ts";
 export { buildBot, type BotOptions } from "./bot.ts";
 export { Recipients } from "./recipients.ts";
+export { Sessions } from "./sessions.ts";
 
 const log = createLogger("telegram");
 

@@ -1,15 +1,26 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createEngine } from "@vellum/engine";
+import type { TxChain } from "@vellum/tx";
+import { env } from "@vellum/shared";
 import { buildBot } from "./bot.ts";
 
 const TEST_MNEMONIC =
   "test test test test test test test test test test test junk";
+
+// Offline tx chain so /spend's pre-check + (if allowed) broadcast never hit the
+// network. Funded so the only thing that can stop a spend is the capability gate.
+const fakeTxChain: TxChain = {
+  getBalances: async () => [{ denom: env.VELLUM_DENOM, amount: "10000000" }],
+  signAndBroadcast: async () => "SPENDHASH",
+  confirmTx: async () => ({ height: 5, code: 0 }),
+};
 
 function fakeBot(opts: Parameters<typeof buildBot>[2] = {}) {
   const engine = createEngine({
     dbPath: ":memory:",
     embedder: null,
     mnemonic: TEST_MNEMONIC,
+    txChain: fakeTxChain,
     runLoop: async () => ({
       text: "ok",
       meters: [
@@ -63,6 +74,23 @@ function textUpdate(chatId: number, text: string) {
   } as never;
 }
 
+// A "/cmd args" update with the bot_command entity grammy needs to route it to
+// bot.command(...) and populate ctx.match with the argument text.
+function commandUpdate(chatId: number, cmd: string, args = "") {
+  const text = args ? `/${cmd} ${args}` : `/${cmd}`;
+  return {
+    update_id: 1,
+    message: {
+      message_id: 1,
+      date: 0,
+      chat: { id: chatId, type: "private" },
+      from: { id: chatId, is_bot: false, first_name: "u", username: "u" },
+      text,
+      entities: [{ type: "bot_command", offset: 0, length: cmd.length + 1 }],
+    },
+  } as never;
+}
+
 describe("buildBot logging boundary", () => {
   let logs: string[];
   const origLog = console.log;
@@ -108,5 +136,54 @@ describe("principal allowlist (#28)", () => {
     const { bot, sent } = fakeBot();
     await bot.handleUpdate(textUpdate(7, "hi"));
     expect(sent.every((t) => !t.includes("personal agent"))).toBe(true);
+  });
+});
+
+// Reachability (#49): the new command surface must be wired into the REAL bot
+// (buildBot), not just unit-callable. These drive grammy's handleUpdate so a
+// regression that forgot to register a command would fail here.
+describe("command surface is wired into the bot (#49)", () => {
+  test("/help lists the command surface", async () => {
+    const { bot, sent } = fakeBot();
+    await bot.handleUpdate(commandUpdate(1, "help"));
+    expect(sent.join("\n")).toContain("/switch");
+    expect(sent.join("\n")).toContain("/spend");
+  });
+
+  test("/new then /personas reflect the per-chat selection", async () => {
+    const { bot, engine, sent } = fakeBot();
+    await bot.handleUpdate(commandUpdate(1, "new", "Atlas"));
+    expect(engine.store.getPersona("atlas")).not.toBeNull();
+    await bot.handleUpdate(commandUpdate(1, "personas"));
+    expect(sent.join("\n")).toMatch(/▶ atlas/);
+  });
+
+  test("/switch is wired and changes the chat's persona", async () => {
+    const { bot, engine, sent } = fakeBot();
+    await bot.handleUpdate(commandUpdate(1, "new", "Atlas"));
+    await bot.handleUpdate(commandUpdate(1, "new", "Nova")); // chat now on nova
+    await bot.handleUpdate(commandUpdate(1, "switch", "atlas"));
+    expect(sent.some((t) => t.includes('driving "atlas"'))).toBe(true);
+  });
+
+  test("/spend is wired to the gated TxManager chokepoint — an allowed spend submits", async () => {
+    const { bot, sent } = fakeBot();
+    // /new bootstraps a persona with the #37 default grants (spend = allow).
+    await bot.handleUpdate(commandUpdate(1, "new", "Atlas"));
+    await bot.handleUpdate(commandUpdate(1, "spend", "bb1dest 1.00"));
+    expect(sent.some((t) => t.includes("submitted"))).toBe(true);
+  });
+
+  test("/spend respects a revoked spend capability — gate denies, no tx", async () => {
+    const { bot, engine, sent } = fakeBot();
+    await bot.handleUpdate(commandUpdate(1, "new", "Atlas"));
+    engine.capabilities.revoke("atlas", "spend", null); // pull the default grant
+    await bot.handleUpdate(commandUpdate(1, "spend", "bb1dest 1.00"));
+    expect(sent.some((t) => t.includes("Denied"))).toBe(true);
+    expect(
+      engine.ledger
+        .list({ personaId: "atlas" })
+        .some((e) => e.kind === "spend"),
+    ).toBe(false);
   });
 });

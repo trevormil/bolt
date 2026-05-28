@@ -1,17 +1,33 @@
 import { Bot } from "grammy";
 import type { Engine } from "@vellum/engine";
 import { createLogger } from "@vellum/shared";
-import { onBalance, onLedger, onStart, onText } from "./handlers.ts";
+import {
+  onBalance,
+  onHelp,
+  onLedger,
+  onNew,
+  onPersonas,
+  onSpend,
+  onStart,
+  onSwitch,
+  onText,
+  onVaults,
+} from "./handlers.ts";
+import { Sessions } from "./sessions.ts";
 
 const log = createLogger("telegram");
 const who = (ctx: { from?: { username?: string; id?: number } }) =>
   ctx.from?.username ?? String(ctx.from?.id ?? "?");
 
 /**
- * Build the grammY bot wired to the engine — Telegram as a real agent surface
- * (the thesis's primary channel). Text routes through the shared chat flow
- * (persona + memory + vault tools + budget gate); /balance and /ledger surface
- * the wallet + proof-of-action. Metadata-only logging — never raw message text.
+ * Build the grammY bot wired to the engine — Telegram as a real remote-control
+ * surface (the reframed thesis: the bot polls OUT, so "from anywhere" needs no
+ * daemon exposure). Text routes through the shared chat flow (persona + memory +
+ * vault tools + budget gate); commands give CLI/web parity. Per-chat persona
+ * (/switch) lets one operator drive multiple compartments. EVERY money path
+ * (/spend, the agent's vault tools) goes through the engine capability
+ * chokepoint (#37) + ledger — there is no ungated send here.
+ * Metadata-only logging — never raw message text.
  */
 export interface BotOptions {
   // Called with each AUTHORIZED interacting chat id (metadata only) so the
@@ -22,6 +38,9 @@ export interface BotOptions {
   // could drive the shared `assistant` persona (spend, read balance + ledger).
   // Default allow (back-compat for unit tests + a no-config local run).
   authorizeChat?: (chatId: number) => boolean;
+  // Per-chat active-persona store (#49). Injectable for tests; attach.ts wires
+  // the persistent one backed by ~/.vellum. Defaults to an in-memory store.
+  sessions?: Sessions;
 }
 
 const DENY_MSG =
@@ -33,6 +52,7 @@ export function buildBot(
   opts: BotOptions = {},
 ): Bot {
   const bot = new Bot(token);
+  const sessions = opts.sessions ?? new Sessions();
   const seen = (ctx: { chat?: { id: number } }) => {
     if (ctx.chat?.id !== undefined) opts.onSeen?.(ctx.chat.id);
   };
@@ -50,21 +70,49 @@ export function buildBot(
       seen(ctx);
       return handler(ctx);
     };
+  // The text after a /command (grammy puts it on ctx.match). Used by commands
+  // that take an argument (/switch, /new, /spend). Never logged.
+  const arg = (ctx: BotHandlerCtx) =>
+    typeof ctx.match === "string" ? ctx.match : "";
   bot.command(
     "start",
-    guarded("/start", (ctx) => onStart(ctx, engine)),
+    guarded("/start", (ctx) => onStart(ctx, engine, sessions)),
+  );
+  bot.command(
+    "help",
+    guarded("/help", (ctx) => onHelp(ctx)),
   );
   bot.command(
     "balance",
-    guarded("/balance", (ctx) => onBalance(ctx, engine)),
+    guarded("/balance", (ctx) => onBalance(ctx, engine, sessions)),
   );
   bot.command(
     "ledger",
-    guarded("/ledger", (ctx) => onLedger(ctx, engine)),
+    guarded("/ledger", (ctx) => onLedger(ctx, engine, sessions)),
+  );
+  bot.command(
+    "personas",
+    guarded("/personas", (ctx) => onPersonas(ctx, engine, sessions)),
+  );
+  bot.command(
+    "switch",
+    guarded("/switch", (ctx) => onSwitch(ctx, engine, sessions, arg(ctx))),
+  );
+  bot.command(
+    "new",
+    guarded("/new", (ctx) => onNew(ctx, engine, sessions, arg(ctx))),
+  );
+  bot.command(
+    "vaults",
+    guarded("/vaults", (ctx) => onVaults(ctx, engine, sessions)),
+  );
+  bot.command(
+    "spend",
+    guarded("/spend", (ctx) => onSpend(ctx, engine, sessions, arg(ctx))),
   );
   bot.on(
     "message:text",
-    guarded("message:text", (ctx) => onText(ctx, engine)),
+    guarded("message:text", (ctx) => onText(ctx, engine, sessions)),
   );
   return bot;
 }
@@ -74,5 +122,6 @@ type BotHandlerCtx = {
   chat?: { id: number };
   from?: { username?: string; id?: number };
   message?: { text?: string };
+  match?: string | RegExpMatchArray;
   reply(text: string, opts?: unknown): Promise<unknown>;
 };

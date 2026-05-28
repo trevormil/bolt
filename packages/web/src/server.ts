@@ -421,6 +421,8 @@ export function buildApp(
     const body = (await c.req.json().catch(() => ({}))) as {
       openRouterKey?: unknown;
       apiToken?: unknown;
+      telegramBotToken?: unknown;
+      telegramPrincipalChatId?: unknown;
     };
 
     // The LLM key is REQUIRED + health-checked (#60) — block an empty or invalid
@@ -452,13 +454,35 @@ export function buildApp(
       updates.VELLUM_API_TOKEN = body.apiToken.trim();
       runtime.VELLUM_API_TOKEN = body.apiToken.trim();
     }
+    // Telegram remote control (#49) — OPTIONAL. Telegram is the agent's remote
+    // entrypoint (the bot polls OUT, so no daemon exposure is needed). Persisted
+    // + adopted into runtime env; the long-poller is attached on the next daemon
+    // start (attachTelegram reads env at boot — it isn't hot-attached here).
+    const tgToken =
+      typeof body.telegramBotToken === "string"
+        ? body.telegramBotToken.trim()
+        : "";
+    if (tgToken) {
+      updates.TELEGRAM_BOT_TOKEN = tgToken;
+      runtime.TELEGRAM_BOT_TOKEN = tgToken;
+      const tgChat =
+        typeof body.telegramPrincipalChatId === "string"
+          ? body.telegramPrincipalChatId.trim()
+          : "";
+      if (tgChat) {
+        updates.TELEGRAM_PRINCIPAL_CHAT_ID = tgChat;
+        runtime.TELEGRAM_PRINCIPAL_CHAT_ID = Number(tgChat);
+      }
+    }
 
     upsertEnvFile(setupEnvFilePath, updates); // persist for next boot
     applyRuntimeEnv(runtime); // live daemon adopts it now (no restart)
     engine.wallets.setMnemonic(mnemonic);
 
-    log.info("web setup complete · wallet + LLM key configured");
-    return c.json({ ok: true });
+    log.info(
+      `web setup complete · wallet + LLM key configured${tgToken ? " + telegram (starts on next daemon restart)" : ""}`,
+    );
+    return c.json({ ok: true, telegramEnabled: !!tgToken });
   });
 
   // Set / change / reset the OpenRouter key after onboarding (#60). Same trust

@@ -96,12 +96,19 @@ export const api = {
   // #60) + auto-generate the agent wallet (#59, no import) so the running daemon
   // adopts them. The generated phrase is the agent's key — NEVER returned to the
   // browser (reveal it deliberately from Settings → Export, #57).
-  setup: (input: { openRouterKey: string; apiToken?: string }) =>
+  setup: (input: {
+    openRouterKey: string;
+    apiToken?: string;
+    // Optional Telegram remote control (#49) — the bot polls OUT, so no daemon
+    // exposure is needed. Blank = no bot. Takes effect on the next daemon start.
+    telegramBotToken?: string;
+    telegramPrincipalChatId?: string;
+  }) =>
     fetch("/api/setup", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(input),
-    }).then((r) => json<{ ok: boolean }>(r)),
+    }).then((r) => json<{ ok: boolean; telegramEnabled?: boolean }>(r)),
 
   // Set / change / reset the OpenRouter key after onboarding (#60). Validated
   // server-side before it's persisted.

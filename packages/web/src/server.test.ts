@@ -1247,6 +1247,43 @@ describe("first-run web setup (/api/setup)", () => {
     rmSync(envFilePath, { force: true });
   });
 
+  test("optionally enables Telegram: persists + adopts the token only when provided (#49)", async () => {
+    env.AGENT_SIGNER_MNEMONIC = undefined;
+    const { app, envFilePath, applied } = setupApp();
+    const res = await postSetup(app, {
+      openRouterKey: "sk-or-test",
+      telegramBotToken: "123456:ABC-token",
+      telegramPrincipalChatId: "42",
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()) as { telegramEnabled?: boolean }).toMatchObject({
+      telegramEnabled: true,
+    });
+    // Adopted into runtime env so the next daemon start attaches the bot, and
+    // persisted for that boot. The chat id is coerced to a number (env schema).
+    expect(applied[0]?.TELEGRAM_BOT_TOKEN).toBe("123456:ABC-token");
+    expect(applied[0]?.TELEGRAM_PRINCIPAL_CHAT_ID).toBe(42);
+    const written = readFileSync(envFilePath, "utf8");
+    expect(written).toContain("TELEGRAM_BOT_TOKEN=123456:ABC-token");
+    expect(written).toContain("TELEGRAM_PRINCIPAL_CHAT_ID=42");
+    rmSync(envFilePath, { force: true });
+  });
+
+  test("Telegram stays optional: no token → nothing written, telegramEnabled false (#49)", async () => {
+    env.AGENT_SIGNER_MNEMONIC = undefined;
+    const { app, envFilePath, applied } = setupApp();
+    const res = await postSetup(app, { openRouterKey: "sk-or-test" });
+    expect(res.status).toBe(200);
+    expect((await res.json()) as { telegramEnabled?: boolean }).toMatchObject({
+      telegramEnabled: false,
+    });
+    expect(applied[0]?.TELEGRAM_BOT_TOKEN).toBeUndefined();
+    expect(readFileSync(envFilePath, "utf8")).not.toContain(
+      "TELEGRAM_BOT_TOKEN",
+    );
+    rmSync(envFilePath, { force: true });
+  });
+
   test("ignores any mnemonic in the body — wallets are always generated (#59)", async () => {
     // No import: even if a caller sends a phrase, setup generates a fresh one.
     env.AGENT_SIGNER_MNEMONIC = undefined;

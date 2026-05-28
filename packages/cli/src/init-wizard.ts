@@ -123,8 +123,38 @@ export async function initWizard(
       "\n",
   );
 
-  // 4) Expose the daemon beyond loopback? (default no — local-first).
-  console.log(step(4, "Network exposure"));
+  // 4) Telegram remote control (#49) — OPTIONAL. Telegram is the agent's remote
+  // entrypoint: the bot polls OUT to Telegram, so "reach it from anywhere" needs
+  // NO daemon exposure (the daemon stays loopback-only). Skippable — blank token
+  // means no bot.
+  console.log(
+    step(
+      4,
+      "Telegram remote control",
+      "reach the agent from anywhere — optional",
+    ),
+  );
+  let telegramBotToken: string | undefined;
+  let telegramPrincipalChatId: string | undefined;
+  if (
+    yesno("Control Bolt from Telegram? " + dim("(get a token from @BotFather)"))
+  ) {
+    telegramBotToken = ask("bot token: ") || undefined;
+    if (telegramBotToken) {
+      const cid = ask(
+        "your Telegram chat id " + dim("[blank = first chat claims it]") + ": ",
+      );
+      telegramPrincipalChatId = cid || undefined;
+      console.log(
+        `   ${check} Telegram enabled ${dim("(starts with the daemon).")}`,
+      );
+    } else {
+      console.log(`   ${dim("skipped — no token entered.")}`);
+    }
+  }
+
+  // 5) Expose the daemon beyond loopback? (default no — local-first).
+  console.log(step(5, "Network exposure"));
   let apiToken: string | undefined;
   if (
     yesno(
@@ -138,7 +168,14 @@ export async function initWizard(
   }
 
   const res = await runSetup(
-    { openRouterKey, mnemonic, personaName, apiToken },
+    {
+      openRouterKey,
+      mnemonic,
+      personaName,
+      apiToken,
+      telegramBotToken,
+      telegramPrincipalChatId,
+    },
     { envPath },
   );
 
@@ -158,12 +195,12 @@ export async function initWizard(
     `   ${dim("• secrets")}   ${fg(res.envPath)} ${dim("(" + res.wroteKeys.join(", ") + ")")}`,
   );
 
-  // 5) Run Bolt — seamlessly. The user shouldn't have to run any command: the
+  // 6) Run Bolt — seamlessly. The user shouldn't have to run any command: the
   // wizard starts the daemon for them (gated by y/n) and only ever points them at
   // the URL. If a daemon is already serving the configured port, we don't start a
   // second one (that would just fail on the bound port).
   const url = `http://127.0.0.1:${env.WEB_PORT}`;
-  console.log(step(5, "Run Bolt"));
+  console.log(step(6, "Run Bolt"));
   const alreadyUp = await fetch(`${url}/api/health`, {
     signal: AbortSignal.timeout(800),
   })

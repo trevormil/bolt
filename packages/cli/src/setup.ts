@@ -21,6 +21,12 @@ export interface SetupAnswers {
   // Set ONLY if the user wants the daemon reachable beyond loopback — guards
   // state-changing API routes with a bearer token.
   apiToken?: string;
+  // Optional Telegram remote-control surface (#49). Telegram is the agent's
+  // remote entrypoint (the bot polls OUT, so no daemon exposure is needed). When
+  // set, the daemon attaches the bot on next boot. The principal chat id pins the
+  // owner up front; left blank, the first chat to message the bot claims it (TOFU).
+  telegramBotToken?: string;
+  telegramPrincipalChatId?: string;
 }
 
 export interface SetupResult {
@@ -54,6 +60,11 @@ export async function runSetup(
   };
   if (answers.openRouterKey) updates.OPENROUTER_API_KEY = answers.openRouterKey;
   if (answers.apiToken) updates.VELLUM_API_TOKEN = answers.apiToken;
+  // Telegram is OPTIONAL (#49) — only persisted when a token was provided.
+  if (answers.telegramBotToken?.trim())
+    updates.TELEGRAM_BOT_TOKEN = answers.telegramBotToken.trim();
+  if (answers.telegramPrincipalChatId?.trim())
+    updates.TELEGRAM_PRINCIPAL_CHAT_ID = answers.telegramPrincipalChatId.trim();
   const wroteKeys = upsertEnvFile(deps.envPath, updates);
 
   // Build the engine with the chosen mnemonic explicitly — env was just written
