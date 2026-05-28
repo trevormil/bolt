@@ -67,12 +67,22 @@ export interface SpendInput {
   trace?: TraceSpan; // optional tracing parent (no-op by default)
 }
 
+// Structural capability gate (#37) — kept structural so @vellum/tx doesn't
+// depend on @vellum/capabilities. The engine injects authorizer.authorizeOrThrow;
+// it throws (CapabilityDeniedError) when the action is denied. Absent → no gate
+// (tests / non-gated callers).
+export type TxAuthorize = (
+  personaId: string,
+  action: { capability: string; target?: string; summary: string },
+) => Promise<void>;
+
 export interface TxManagerOptions {
   wallets: PersonaWallets;
   ledger: Ledger;
   dbPath?: string;
   denom?: string; // defaults to env.VELLUM_DENOM (USDC)
   chain?: TxChain;
+  authorize?: TxAuthorize; // gate free-form spend at the chokepoint (#37)
 }
 
 interface TxRow {
@@ -116,6 +126,7 @@ export class TxManager {
   private ledger: Ledger;
   private denom: string;
   private chain: TxChain;
+  private authorize?: TxAuthorize;
   private locks = new Map<string, Promise<void>>();
 
   constructor(opts: TxManagerOptions) {
@@ -123,6 +134,7 @@ export class TxManager {
     this.ledger = opts.ledger;
     this.denom = opts.denom ?? env.VELLUM_DENOM;
     this.chain = opts.chain ?? DEFAULT_CHAIN;
+    this.authorize = opts.authorize;
     this.db = new Database(opts.dbPath ?? ":memory:");
     this.db.run(`CREATE TABLE IF NOT EXISTS tx (
       id TEXT PRIMARY KEY,
@@ -262,6 +274,17 @@ export class TxManager {
    */
   async spend(input: SpendInput): Promise<PendingTx> {
     const { personaId, to, amount } = input;
+    // Capability chokepoint (#37): a direct engine.txManager.spend(...) call
+    // can't bypass the gate. Throws CapabilityDeniedError when denied; the
+    // surface (web /spend) catches it → 403. Skipped for non-spend kinds
+    // (vault_op is gated upstream in VaultService) and when no gate is wired.
+    if ((input.kind ?? "spend") === "spend") {
+      await this.authorize?.(personaId, {
+        capability: "spend",
+        target: to,
+        summary: `spend ${usdc(amount)} → ${to}`,
+      });
+    }
     const from = this.wallets.addressFor(personaId);
     if (!from) throw new Error(`no wallet for persona: ${personaId}`);
     // Friendly pre-check (CheckTx is authoritative, but this reads better).

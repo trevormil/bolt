@@ -298,28 +298,26 @@ export function buildApp(
         400,
       );
     }
-    if (
-      !(await engine.authorizer.authorize(id, {
-        capability: "spend",
-        target: to,
-        summary: `spend ${amount} → ${to}`,
-      }))
-    ) {
-      return c.json(
-        { error: "denied: persona lacks the 'spend' capability" },
-        403,
-      );
-    }
+    // Spend is gated at the TxManager chokepoint (#37) — a direct call can't
+    // bypass it. Catch the denial here → 403.
     const trace = tracer.trace("spend", { personaId: id });
-    const pending = await engine.txManager.spend({
-      personaId: id,
-      to,
-      amount,
-      trace,
-    });
-    trace.end();
-    void tracer.flush();
-    return c.json(pending);
+    try {
+      const pending = await engine.txManager.spend({
+        personaId: id,
+        to,
+        amount,
+        trace,
+      });
+      trace.end();
+      void tracer.flush();
+      return c.json(pending);
+    } catch (e) {
+      trace.end();
+      void tracer.flush();
+      if (e instanceof CapabilityDeniedError)
+        return c.json({ error: e.message }, 403);
+      throw e;
+    }
   });
 
   // Vaults — agent creates (human is manager); list; agent withdraws within rules.

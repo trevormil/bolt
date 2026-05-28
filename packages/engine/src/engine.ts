@@ -87,6 +87,9 @@ export function createEngine(opts: EngineOptions = {}): Engine {
     ledger,
     dbPath,
     chain: opts.txChain,
+    // Gate free-form spend at the chokepoint (#37) — symmetric with vaults.
+    authorize: (personaId, action) =>
+      authorizer.authorizeOrThrow(personaId, action),
   });
   const vaults = new VaultService({
     dbPath,

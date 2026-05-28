@@ -303,3 +303,50 @@ describe("TxManager — reconciliation invariant", () => {
     }
   });
 });
+
+describe("TxManager — capability chokepoint (#37)", () => {
+  test("a denied spend never touches the chain (gate fires before broadcast)", async () => {
+    let broadcasts = 0;
+    const chain = baseChain({
+      signAndBroadcast: async () => {
+        broadcasts++;
+        return "SHOULD_NOT_HAPPEN";
+      },
+    });
+    const tm = new TxManager({
+      wallets,
+      ledger,
+      chain,
+      denom: DENOM,
+      authorize: async () => {
+        throw new Error("denied: spend");
+      },
+    });
+    await expect(
+      tm.spend({ personaId: "a", to: "bb1dest", amount: "1000000" }),
+    ).rejects.toThrow("denied");
+    expect(broadcasts).toBe(0); // gate fired before any chain interaction
+    tm.close();
+  });
+
+  test("an allowed spend proceeds through the lifecycle", async () => {
+    let authorized = false;
+    const tm = new TxManager({
+      wallets,
+      ledger,
+      chain: baseChain(),
+      denom: DENOM,
+      authorize: async () => {
+        authorized = true;
+      },
+    });
+    const p = await tm.spend({
+      personaId: "a",
+      to: "bb1dest",
+      amount: "1000000",
+    });
+    expect(authorized).toBe(true);
+    expect(p.status).toBe("pending");
+    tm.close();
+  });
+});
