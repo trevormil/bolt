@@ -101,7 +101,9 @@ export function WalletPanel({ personaId }: { personaId: string }) {
         <span className="font-mono text-3xl leading-none text-accent">
           {loading ? "…" : fmtUsdc(usdc)}
         </span>
-        <span className="self-end pb-0.5 font-mono text-xs text-soft">USDC</span>
+        <span className="self-end pb-0.5 font-mono text-xs text-soft">
+          USDC
+        </span>
       </div>
 
       <Button

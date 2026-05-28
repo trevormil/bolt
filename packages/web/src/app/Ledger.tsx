@@ -48,9 +48,7 @@ export function LedgerView({ personaId }: { personaId: string }) {
         </div>
       )}
 
-      <h3 className="mb-3 mt-6 font-serif text-lg">
-        Proof-of-action ledger
-      </h3>
+      <h3 className="mb-3 mt-6 font-serif text-lg">Proof-of-action ledger</h3>
       {entries.length === 0 ? (
         <p className="text-sm text-soft">
           No actions yet — every tool call, spend, and message lands here.
@@ -94,7 +92,9 @@ export function LedgerView({ personaId }: { personaId: string }) {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <Card className="p-4">
-      <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-soft">{label}</div>
+      <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-soft">
+        {label}
+      </div>
       <div className="mt-1 font-mono text-2xl text-fg">{value}</div>
     </Card>
   );

@@ -27,7 +27,10 @@ export function BrandLogo({
       width={size}
       height={size}
       loading="lazy"
-      className={cn("inline-block shrink-0 rounded-full object-cover", className)}
+      className={cn(
+        "inline-block shrink-0 rounded-full object-cover",
+        className,
+      )}
     />
   );
 }

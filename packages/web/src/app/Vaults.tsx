@@ -367,7 +367,8 @@ function VaultRow({
           <div className="mt-2 flex flex-wrap gap-1">
             {vault.gating?.amount && (
               <Badge tone="accent">
-                ≤ {vault.gating.amount.limitUsd} USDC / {vault.gating.amount.period}
+                ≤ {vault.gating.amount.limitUsd} USDC /{" "}
+                {vault.gating.amount.period}
               </Badge>
             )}
             {vault.gating?.time?.unlockAt != null && (
