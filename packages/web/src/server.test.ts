@@ -980,7 +980,12 @@ describe("first-run web setup (/api/setup)", () => {
   // to a throwaway temp file and the runtime mutation is recorded (not applied to
   // the global singleton), so the test never touches the repo .env or leaks state
   // into other tests.
-  function setupApp(auth?: { token?: string; host?: string }) {
+  // Default to loopback with NO token (the first-run dev path). /api/setup is NOT
+  // a public route — it goes through the auth middleware's Host/Origin guard — so
+  // the tests must look like a same-origin loopback request to reach the route.
+  function setupApp(
+    auth: { token?: string; host?: string } = { host: "127.0.0.1" },
+  ) {
     const envFilePath = join(
       tmpdir(),
       `vellum-setup-${Math.random().toString(36).slice(2)}.env`,
@@ -993,17 +998,35 @@ describe("first-run web setup (/api/setup)", () => {
     return { app, envFilePath, applied };
   }
 
-  const postSetup = (app: ReturnType<typeof buildApp>, body: unknown) =>
+  const postSetup = (
+    app: ReturnType<typeof buildApp>,
+    body: unknown,
+    headers: Record<string, string> = {},
+  ) =>
     app.request("/api/setup", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...headers },
       body: JSON.stringify(body),
     });
 
+  test("stays behind the cross-site guard (CSRF/DNS-rebinding) — !51 HIGH", async () => {
+    // A page the user visits must not be able to plant a mnemonic on a fresh
+    // install. /api/setup is not public, so a cross-origin POST is rejected
+    // before the route runs.
+    env.AGENT_SIGNER_MNEMONIC = undefined;
+    const { app, applied } = setupApp();
+    const res = await postSetup(app, {}, { origin: "http://evil.example" });
+    expect(res.status).toBe(403);
+    expect(applied).toHaveLength(0);
+  });
+
   test("refuses when the daemon is exposed beyond loopback", async () => {
+    // Even an authenticated client on an exposed bind can't persist secrets here
+    // — the route is loopback-only (defense-in-depth behind the auth middleware).
     env.AGENT_SIGNER_MNEMONIC = undefined;
     const { app, applied } = setupApp({ token: "secret", host: "0.0.0.0" });
-    expect((await postSetup(app, {})).status).toBe(403);
+    const res = await postSetup(app, {}, { authorization: "Bearer secret" });
+    expect(res.status).toBe(403);
     expect(applied).toHaveLength(0); // never accept secrets over a network boundary
   });
 
@@ -1014,22 +1037,21 @@ describe("first-run web setup (/api/setup)", () => {
     expect(applied).toHaveLength(0); // no runtime mutation on a refused call
   });
 
-  test("generate flow returns a 24-word mnemonic ONCE + persists it", async () => {
+  test("generate flow creates a 24-word wallet + persists it, never echoing the phrase", async () => {
     env.AGENT_SIGNER_MNEMONIC = undefined;
     const { app, envFilePath, applied } = setupApp();
     const res = await postSetup(app, { openRouterKey: "sk-or-test" });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      ok: boolean;
-      generatedMnemonic: string | null;
-    };
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.ok).toBe(true);
-    expect(body.generatedMnemonic).toBeTruthy();
-    const gen = body.generatedMnemonic ?? "";
-    expect(gen.trim().split(/\s+/)).toHaveLength(24);
+    // The agent's phrase is NEVER returned to the browser (#57 reveals it from
+    // Settings) — the response carries no mnemonic field.
+    expect(JSON.stringify(body)).not.toContain("mnemonic");
 
-    // Runtime adopted the wallet + key so the live daemon works without restart.
-    expect(applied[0]?.AGENT_SIGNER_MNEMONIC).toBe(gen);
+    // It WAS generated + adopted at runtime (so the live daemon works without
+    // restart) — a real 24-word phrase, observable only server-side.
+    const adopted = applied[0]?.AGENT_SIGNER_MNEMONIC ?? "";
+    expect(adopted.trim().split(/\s+/)).toHaveLength(24);
     expect(applied[0]?.OPENROUTER_API_KEY).toBe("sk-or-test");
 
     // Persisted to the (temp) .env for the next boot.
@@ -1045,8 +1067,8 @@ describe("first-run web setup (/api/setup)", () => {
     const { app, envFilePath, applied } = setupApp();
     const res = await postSetup(app, { mnemonic });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { generatedMnemonic: string | null };
-    expect(body.generatedMnemonic).toBeNull(); // imported phrase is never returned
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(JSON.stringify(body)).not.toContain("mnemonic"); // never returned
     expect(applied[0]?.AGENT_SIGNER_MNEMONIC).toBe(mnemonic);
     rmSync(envFilePath, { force: true });
   });

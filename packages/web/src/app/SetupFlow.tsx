@@ -2,12 +2,13 @@ import { useState, type ReactNode } from "react";
 import { Button, Card, Icon, Input } from "@vellum/ui";
 import { api } from "./api.ts";
 
-// First-run web onboarding (#54): the browser-native alternative to the terminal
+// First-run web onboarding (#19): the browser-native alternative to the terminal
 // wizard. Walks a from-scratch user through the LLM key + agent wallet (generate
 // server-side or import) + first persona, all on loopback — secrets go to the
-// local daemon's .env via POST /api/setup, and a generated mnemonic is shown ONCE
-// to back up. On done, the app reloads into the dashboard.
-type Step = "secrets" | "backup" | "persona";
+// local daemon's .env via POST /api/setup. The generated phrase is the AGENT's
+// key, never shown here; the user reveals it deliberately from Settings → Export
+// (#57). On done, the app reloads into the dashboard.
+type Step = "secrets" | "persona";
 
 export function SetupFlow({ onDone }: { onDone: (personaId: string) => void }) {
   const [step, setStep] = useState<Step>("secrets");
@@ -16,7 +17,6 @@ export function SetupFlow({ onDone }: { onDone: (personaId: string) => void }) {
     "generate",
   );
   const [importMnemonic, setImport] = useState("");
-  const [mnemonic, setMnemonic] = useState<string | null>(null); // generated, to back up
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,16 +30,11 @@ export function SetupFlow({ onDone }: { onDone: (personaId: string) => void }) {
     setBusy(true);
     setError(null);
     try {
-      const r = await api.setup({
+      await api.setup({
         openRouterKey: openRouterKey.trim() || undefined,
         mnemonic: walletMode === "import" ? importMnemonic.trim() : undefined,
       });
-      if (r.generatedMnemonic) {
-        setMnemonic(r.generatedMnemonic);
-        setStep("backup");
-      } else {
-        setStep("persona");
-      }
+      setStep("persona");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -81,9 +76,7 @@ export function SetupFlow({ onDone }: { onDone: (personaId: string) => void }) {
             <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-soft">
               {step === "secrets"
                 ? "step 1 · key + wallet"
-                : step === "backup"
-                  ? "step 2 · back up your wallet"
-                  : "step 3 · your first persona"}
+                : "step 2 · your first persona"}
             </div>
           </div>
         </div>
@@ -138,33 +131,6 @@ export function SetupFlow({ onDone }: { onDone: (personaId: string) => void }) {
             >
               {busy ? "Setting up…" : "Continue"}{" "}
               <Icon name="arrowRight" size={16} />
-            </Button>
-          </div>
-        )}
-
-        {step === "backup" && mnemonic && (
-          <div className="mt-6 space-y-4">
-            <p className="text-sm text-muted">
-              This is your agent's recovery phrase. Write it down — it's shown
-              once and never leaves this machine.
-            </p>
-            <div className="grid grid-cols-3 gap-1.5 rounded-lg border border-border-gold bg-accent-soft/30 p-3">
-              {mnemonic.split(/\s+/).map((w, i) => (
-                <div
-                  key={i}
-                  className="flex items-baseline gap-1.5 font-mono text-xs"
-                >
-                  <span className="text-soft">{i + 1}</span>
-                  <span className="text-accent-strong">{w}</span>
-                </div>
-              ))}
-            </div>
-            <Button
-              className="w-full"
-              size="lg"
-              onClick={() => setStep("persona")}
-            >
-              I've saved it — continue
             </Button>
           </div>
         )}
@@ -235,10 +201,10 @@ function Choice({
     <button
       onClick={onClick}
       className={
-        "flex-1 rounded-lg border px-3 py-2 text-left transition-colors " +
+        "flex-1 rounded-lg border-2 px-3 py-2 text-left transition-colors " +
         (active
-          ? "border-border-gold bg-accent-soft/40 text-fg"
-          : "border-border text-muted hover:border-soft")
+          ? "border-accent bg-accent-soft/50 text-fg shadow-glow"
+          : "border-border text-muted hover:border-accent/60 hover:text-fg")
       }
     >
       <div className="text-sm font-medium">{title}</div>

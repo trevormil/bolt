@@ -92,9 +92,10 @@ export const api = {
   setupStatus: () =>
     fetch("/api/setup-status").then((r) => json<SetupStatus>(r)),
 
-  // First-run web setup (#54): persist the LLM key + agent wallet (generate
-  // server-side, or import) so the running daemon adopts them. Returns the
-  // generated mnemonic ONCE (to back up) when no mnemonic was supplied.
+  // First-run web setup (#19): persist the LLM key + agent wallet (generate
+  // server-side, or import) so the running daemon adopts them. The generated
+  // phrase is the agent's key — it is NEVER returned to the browser (reveal it
+  // deliberately from Settings → Export, #57).
   setup: (input: {
     openRouterKey?: string;
     mnemonic?: string;
@@ -104,7 +105,7 @@ export const api = {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(input),
-    }).then((r) => json<{ ok: boolean; generatedMnemonic: string | null }>(r)),
+    }).then((r) => json<{ ok: boolean }>(r)),
 
   listPersonas: () =>
     fetch("/api/personas")

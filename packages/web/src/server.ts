@@ -180,9 +180,12 @@ export function isPublicRoute(method: string, path: string): boolean {
   // Setup status drives the onboarding screen before anything is configured.
   // No secrets — booleans + counts only, no local path material (#19/!48).
   if (method === "GET" && path === "/api/setup-status") return true;
-  // First-run web onboarding (#54): reachable before any key/persona exists. The
-  // route itself is loopback-gated + first-run-only — see POST /api/setup.
-  if (method === "POST" && path === "/api/setup") return true;
+  // NOTE: POST /api/setup is deliberately NOT public. It persists a wallet
+  // mnemonic, so it must stay behind the Host/Origin cross-site guard below
+  // (else a page the user visits could POST localhost on a fresh install and
+  // plant an attacker mnemonic — !51 HIGH). The auth middleware already lets it
+  // through on loopback without a token (the first-run dev path), and the route
+  // itself is additionally loopback-only + first-run-only.
   // Auth status + login/logout must be reachable to authenticate in the first place.
   if (method === "GET" && path === "/api/auth") return true;
   if (method === "POST" && (path === "/api/login" || path === "/api/logout"))
@@ -368,8 +371,9 @@ export function buildApp(
   // the ALREADY-RUNNING daemon adopt them (no restart) so the next step (persona
   // creation) works immediately. Loopback-only + first-run-only — secrets are
   // never accepted over an exposed/network boundary, and never re-written once a
-  // wallet exists. The wallet can be generated server-side (the mnemonic is
-  // returned ONCE to back up — it never travels TO the server).
+  // wallet exists. The wallet can be generated server-side; the phrase is the
+  // AGENT's key and is NEVER returned to the browser (the user reveals it on
+  // demand from Settings → Export, #57). It also never travels TO the server.
   app.post("/api/setup", async (c) => {
     if (!isLoopback(auth.host ?? "127.0.0.1"))
       return c.json(
@@ -389,7 +393,6 @@ export function buildApp(
     };
 
     // Generate a fresh wallet unless the user imported one.
-    let generatedMnemonic: string | null = null;
     let mnemonic: string;
     if (typeof body.mnemonic === "string" && body.mnemonic.trim()) {
       mnemonic = body.mnemonic.trim();
@@ -399,9 +402,7 @@ export function buildApp(
         return c.json({ error: "invalid mnemonic" }, 400);
       }
     } else {
-      const w = await generateWallet();
-      mnemonic = w.mnemonic;
-      generatedMnemonic = w.mnemonic;
+      mnemonic = (await generateWallet()).mnemonic;
     }
 
     const updates: Record<string, string> = { AGENT_SIGNER_MNEMONIC: mnemonic };
@@ -423,7 +424,7 @@ export function buildApp(
       "web setup complete · wallet configured" +
         (updates.OPENROUTER_API_KEY ? " + LLM key" : ""),
     );
-    return c.json({ ok: true, generatedMnemonic });
+    return c.json({ ok: true });
   });
 
   app.get("/api/personas", (c) => {
