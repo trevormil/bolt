@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite";
 import { createLogger } from "@vellum/shared";
+import { scanForInjection } from "./injection.ts";
 import type {
   Embedder,
   MemoryRecord,
@@ -158,7 +159,11 @@ export class PersonaStore {
     this.assertPersona(personaId);
     const created = Date.now();
     const source = opts.source ?? "memory";
-    const meta = JSON.stringify(opts.meta ?? {});
+    // Tag ingested content that carries override-style instructions (#24 T-02)
+    // so recall can render it as untrusted data, not trusted context.
+    const metaObj: Record<string, unknown> = { ...(opts.meta ?? {}) };
+    if (scanForInjection(text)) metaObj.injectionRisk = true;
+    const meta = JSON.stringify(metaObj);
 
     let embedding: Uint8Array | null = null;
     if (this.embedder) {
@@ -178,7 +183,7 @@ export class PersonaStore {
       )
       .run(text, personaId, id);
 
-    return { id, personaId, text, source, meta: opts.meta ?? {}, created };
+    return { id, personaId, text, source, meta: metaObj, created };
   }
 
   /**

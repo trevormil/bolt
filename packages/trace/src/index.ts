@@ -2,6 +2,8 @@
 export {
   tracer,
   createTracer,
+  scrubValue,
+  scrubMetadata,
   NOOP_SPAN,
   type Tracer,
   type TraceSpan,
