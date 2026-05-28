@@ -1,5 +1,11 @@
-import { describe, expect, test } from "bun:test";
-import { Authorizer, CapabilityStore, type AuthLedger } from "./index.ts";
+import { afterEach, describe, expect, test } from "bun:test";
+import { join } from "node:path";
+import {
+  Authorizer,
+  CapabilityStore,
+  grantDefaultCapabilities,
+  type AuthLedger,
+} from "./index.ts";
 
 const store = () => new CapabilityStore(":memory:");
 
@@ -105,6 +111,37 @@ describe("CapabilityStore.decide — default-deny + scope", () => {
     expect(s.decide("b", "spend")).toBe("deny"); // not shared
     s.revoke("a", "spend");
     expect(s.decide("a", "spend")).toBe("deny");
+    s.close();
+  });
+});
+
+describe("grantDefaultCapabilities — YOLO default policy (#52)", () => {
+  afterEach(() => delete process.env.VELLUM_WORKSPACE);
+
+  test("grants exec + fs.read/fs.write scoped to the workspace", () => {
+    const workspace = "/tmp/vellum-yolo-test-ws";
+    process.env.VELLUM_WORKSPACE = workspace;
+    const s = store();
+    grantDefaultCapabilities(s, "p");
+
+    // Money + scheduling: unscoped allow (unchanged).
+    expect(s.decide("p", "spend")).toBe("allow");
+    expect(s.decide("p", "vault.create")).toBe("allow");
+    expect(s.decide("p", "vault.withdraw")).toBe("allow");
+
+    // YOLO dev grants are allowed INSIDE the workspace…
+    expect(s.decide("p", "fs.read", join(workspace, "a.txt"))).toBe("allow");
+    expect(s.decide("p", "fs.write", join(workspace, "sub/b.txt"))).toBe(
+      "allow",
+    );
+    expect(s.decide("p", "exec", workspace)).toBe("allow");
+
+    // …and DENIED outside it (workspace-scoped, not blanket).
+    expect(s.decide("p", "fs.read", "/etc/passwd")).toBe("deny");
+    expect(s.decide("p", "fs.write", join(workspace, "../escape"))).toBe(
+      "deny",
+    );
+    expect(s.decide("p", "exec", "/some/other/dir")).toBe("deny");
     s.close();
   });
 });

@@ -26,6 +26,23 @@ export function ensureDataDir(): string {
   return dir;
 }
 
+// The agent's working directory (#52) — the single root the YOLO filesystem +
+// command-execution tools operate in. $VELLUM_WORKSPACE wins; default is
+// `<dataDir>/workspace`. PURE (no fs side effects); ensureWorkspaceDir() creates
+// it. Returns an absolute path (resolve) so it matches the canonical form the
+// exec/fs grants are scoped to.
+export function workspaceDir(): string {
+  const explicit = process.env.VELLUM_WORKSPACE?.trim();
+  return resolve(explicit || join(dataDir(), "workspace"));
+}
+
+/** Create the workspace dir (idempotent). Returns its absolute path. */
+export function ensureWorkspaceDir(): string {
+  const dir = workspaceDir();
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
 /**
  * One-time migration off the old cwd-relative `./vellum.db`. If the target DB
  * (in the data dir) doesn't exist yet but a legacy `./vellum.db` does, copy it

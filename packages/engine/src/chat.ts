@@ -4,6 +4,7 @@ import { createLogger } from "@vellum/shared";
 import type { Engine } from "./engine.ts";
 import { vaultTools } from "./agent-tools.ts";
 import { combineTools, filesystemTools } from "./fs-tools.ts";
+import { execTools } from "./exec-tools.ts";
 import { mcpTools } from "./mcp-tools.ts";
 import { McpServers } from "./mcp-setting.ts";
 import { evaluateBudget } from "./budget-setting.ts";
@@ -64,13 +65,19 @@ export async function chat(
   }
 
   engine.orchestrator.resolve(conversationId, `/switch ${personaId}`);
-  // Vault tools + capability-gated filesystem tools (#35). Both share the
-  // persona's compartment; the FS tools enforce grants via engine.authorizer.
-  // In a read-only run (T-13) the value-moving vault tools are withheld entirely
-  // — the agent simply has no create/withdraw tool to call.
+  // Vault tools + capability-gated filesystem tools (#35) + command execution
+  // (#52). All share the persona's compartment and enforce grants via
+  // engine.authorizer. In a read-only run (T-13) the value-moving vault tools,
+  // the mutating fs_write tool, AND command execution are all withheld entirely
+  // — an unattended read-only run can observe disk/state but cannot modify the
+  // host or move value. fs_read/fs_list stay so it can still inspect.
   const sets: { tools: ToolSpec[]; invoke: ToolInvoker }[] = readOnly
-    ? [filesystemTools(engine, personaId)]
-    : [vaultTools(engine, personaId), filesystemTools(engine, personaId)];
+    ? [filesystemTools(engine, personaId, { readOnly: true })]
+    : [
+        vaultTools(engine, personaId),
+        filesystemTools(engine, personaId),
+        execTools(engine, personaId),
+      ];
   // MCP servers (#46): merge the persona's configured external tools, reusing
   // the daemon's pooled connections. Withheld from read-only runs for the same
   // reason vault tools are (T-13) — an unattended read-only run must not reach

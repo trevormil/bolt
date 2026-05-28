@@ -29,6 +29,7 @@ export {
   type BudgetEvaluation,
 } from "./budget-setting.ts";
 export { filesystemTools, combineTools } from "./fs-tools.ts";
+export { execTools } from "./exec-tools.ts";
 export { chat, type ChatInput, type ChatResult } from "./chat.ts";
 export { llmBudget, type LlmBudget } from "./budgets.ts";
 // Re-export the persona card renderer (#25) so the CLI/wizard can show a

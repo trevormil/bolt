@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { generateWallet } from "@vellum/chain";
 import { verifyOpenRouterKey } from "@vellum/llm";
-import { env } from "@vellum/shared";
+import { env, workspaceDir } from "@vellum/shared";
 import { runSetup } from "./setup.ts";
 import {
   banner,
@@ -79,6 +79,35 @@ export async function initWizard(
   // 3) First persona.
   console.log(step(3, "Your first persona"));
   const personaName = ask("name " + dim("[Assistant]") + ": ", "Assistant");
+
+  // YOLO dev capability disclosure (#52). The default grant gives the agent
+  // full read/write + command execution in its workspace — informed consent,
+  // shown loudly. Money stays rule-bound (vault-gated) regardless.
+  console.log(
+    "\n   " +
+      copper("⚡ Full local access (YOLO).") +
+      " " +
+      dim("By default this agent can read & write files and"),
+  );
+  console.log(
+    "   " +
+      dim("run shell commands in its workspace:") +
+      " " +
+      gold(workspaceDir()),
+  );
+  console.log(
+    "   " +
+      dim(
+        "It runs commands like a dev terminal there. Money stays vault-gated — it can't move funds.",
+      ),
+  );
+  console.log(
+    "   " +
+      dim(
+        "Revoke fs.read / fs.write / exec per-persona to lock it down later.",
+      ) +
+      "\n",
+  );
 
   // 4) Expose the daemon beyond loopback? (default no — local-first).
   console.log(step(4, "Network exposure"));

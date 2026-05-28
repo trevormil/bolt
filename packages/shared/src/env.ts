@@ -51,6 +51,19 @@ export const envSchema = z.object({
   // the CLI, daemon, and web share one filesystem source of truth regardless of
   // launch dir. Explicit override still honored.
   VELLUM_DB_PATH: z.string().default(dataPath("vellum.db")),
+
+  // The agent's working directory (#52) — the single root the YOLO filesystem +
+  // command-execution (`run_command`) tools operate in. Defaults to
+  // `<dataDir>/workspace` (see paths.ts workspaceDir); override to point the
+  // agent at a project checkout. fs + exec are scoped here and cannot escape it.
+  VELLUM_WORKSPACE: z.string().optional(),
+  // Per-command wall-clock timeout for `run_command` (ms). The process tree is
+  // killed on expiry so a runaway build can't hang the agent loop.
+  VELLUM_EXEC_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
+  // Cap on captured stdout/stderr per stream (chars) — a flood is truncated so
+  // it can't blow up the LLM context / cost.
+  VELLUM_EXEC_MAX_OUTPUT: z.coerce.number().int().positive().default(16_000),
+
   WEB_PORT: z.coerce.number().default(8787),
   WEB_HOST: z.string().default("127.0.0.1"),
   // Bearer token guarding state-changing API routes. Optional on loopback;

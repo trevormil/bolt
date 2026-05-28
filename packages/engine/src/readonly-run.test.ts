@@ -50,4 +50,35 @@ describe("read-only proactive runs (#24 / T-13)", () => {
     expect(full).toContain("create_vault");
     expect(full).toContain("withdraw_from_vault");
   });
+
+  test("readOnly chat withholds fs_write and run_command; full run exposes them (#52)", async () => {
+    const { engine, names } = await engCapturingTools();
+    grantDefaultCapabilities(engine.capabilities, "p");
+    engine.store.createPersona("p", "Pat", {
+      name: "Pat",
+      role: "t",
+      voice: "v",
+    });
+    await engine.wallets.ensureWallet("p");
+
+    await chat(engine, {
+      conversationId: "c",
+      personaId: "p",
+      message: "look around",
+      readOnly: true,
+    });
+    const ro = names();
+    expect(ro).not.toContain("fs_write"); // mutating fs tool withheld
+    expect(ro).not.toContain("run_command"); // command execution withheld
+    expect(ro).toContain("fs_read"); // read-only inspection stays
+
+    await chat(engine, {
+      conversationId: "c",
+      personaId: "p",
+      message: "build it",
+    });
+    const full = names();
+    expect(full).toContain("fs_write");
+    expect(full).toContain("run_command");
+  });
 });

@@ -8,11 +8,12 @@ import {
   readFileSync,
   rmSync,
 } from "node:fs";
-import { dataDir, dataPath, migrateLegacyDb } from "./paths.ts";
+import { dataDir, dataPath, migrateLegacyDb, workspaceDir } from "./paths.ts";
 
 const saved = {
   VELLUM_HOME: process.env.VELLUM_HOME,
   XDG_DATA_HOME: process.env.XDG_DATA_HOME,
+  VELLUM_WORKSPACE: process.env.VELLUM_WORKSPACE,
 };
 afterEach(() => {
   for (const [k, v] of Object.entries(saved)) {
@@ -43,6 +44,18 @@ describe("dataDir resolution precedence", () => {
     expect(dataPath("personas", "atlas", "PERSONA.md")).toBe(
       "/tmp/vh/personas/atlas/PERSONA.md",
     );
+  });
+});
+
+describe("workspaceDir resolution (#52)", () => {
+  test("VELLUM_WORKSPACE wins (resolved absolute)", () => {
+    process.env.VELLUM_WORKSPACE = "/tmp/my-ws";
+    expect(workspaceDir()).toBe("/tmp/my-ws");
+  });
+  test("defaults to <dataDir>/workspace", () => {
+    delete process.env.VELLUM_WORKSPACE;
+    process.env.VELLUM_HOME = "/tmp/vh";
+    expect(workspaceDir()).toBe("/tmp/vh/workspace");
   });
 });
 

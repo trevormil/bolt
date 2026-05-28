@@ -45,6 +45,10 @@ const MAX_READ = 20_000; // cap injected file content (chars) — context hygien
 export function filesystemTools(
   engine: Engine,
   personaId: string,
+  // Read-only run (#24 / T-13): withhold the mutating `fs_write` tool entirely,
+  // so an unattended read-only run can observe disk but cannot modify it — the
+  // same posture vault tools take. Defaults to full read+write.
+  opts: { readOnly?: boolean } = {},
 ): { tools: ToolSpec[]; invoke: ToolInvoker } {
   const tools: ToolSpec[] = [
     {
@@ -70,7 +74,9 @@ export function filesystemTools(
         required: ["path"],
       },
     },
-    {
+  ];
+  if (!opts.readOnly)
+    tools.push({
       name: "fs_write",
       description:
         "Write (create/overwrite) a local text file. Requires write permission for the path; the human may be prompted to approve.",
@@ -82,8 +88,7 @@ export function filesystemTools(
         },
         required: ["path", "content"],
       },
-    },
-  ];
+    });
 
   // fs_op telemetry (#42): record the op + ok/err on the activity timeline.
   // Metadata only — the path (operational), never file contents.

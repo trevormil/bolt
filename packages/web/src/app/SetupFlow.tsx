@@ -103,6 +103,18 @@ export function SetupFlow({ onDone }: { onDone: (personaId: string) => void }) {
               Your first persona gets its own wallet + walled-off memory. You
               can add more later — name is all you need to start.
             </p>
+            <div className="rounded-lg border border-border-gold bg-accent-soft/20 p-3">
+              <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-accent">
+                <Icon name="zap" size={13} /> Full local access (YOLO)
+              </div>
+              <p className="mt-1.5 text-xs leading-relaxed text-muted">
+                By default this agent can read &amp; write files and run shell
+                commands in its workspace folder — like a dev terminal. It can
+                build, test, and run code there. Money stays vault-gated; exec
+                can&apos;t move funds. You can revoke file &amp; command access
+                per-persona later.
+              </p>
+            </div>
             <PersonaForm submitLabel="Enter Bolt" onCreated={onDone} />
           </div>
         )}
