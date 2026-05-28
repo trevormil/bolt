@@ -2,7 +2,7 @@
 id: 49
 title: "Telegram: onboarding setup + full remote-control surface"
 status: open
-priority: medium
+priority: high
 type: feature
 source: planning
 created: 2026-05-28
@@ -37,3 +37,14 @@ the command surface is thin.
 Keep metadata-only logging (never raw message bodies) and the principal allowlist
 intact. Telegram + the web external gateway (#48) are the two concrete remote
 surfaces; #50 is the optional unifying channel abstraction if a third arrives.
+
+## Reframe (2026-05-28) — Telegram IS the remote-access strategy
+Telegram is now THE way to reach the agent from anywhere (not one of two
+surfaces). Because the bot polls OUT to Telegram, "from anywhere" needs **no
+daemon exposure** — the daemon stays loopback-only, the web UI is local-only, and
+there is no inbound surface / TLS / tunnel to manage. Bumped to high.
+- DROP the "webhook mode for the exposed gateway" item — #48 is iceboxed;
+  long-poll is the model.
+- KEEP: onboarding collects TELEGRAM_BOT_TOKEN; per-persona /switch + expanded
+  command surface (parity with CLI/web, capability-gated + ledgered); the
+  second-channel high-value-spend approval (#24 T-06) as a Telegram yes/no.
