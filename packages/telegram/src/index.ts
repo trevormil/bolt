@@ -29,30 +29,22 @@ if (!env.TELEGRAM_BOT_TOKEN) {
     onSeen: (chatId) => recipients.record(chatId),
   });
 
-  // Proactive per-persona check-ins (0018): on a cadence, push any non-quiet
-  // nudge to every known chat. Delivery failures are logged, never fatal.
-  const scheduler = new CheckInScheduler({
+  // Proactive output (check-ins #18, scheduled tasks #36) goes ONLY to the
+  // principal (the owner) — never broadcast to every chat that messaged the bot,
+  // so one persona's output can't leak to a stranger (#36 privacy finding).
+  const deliverToPrincipal = async (_personaId: string, message: string) => {
+    const chatId = recipients.principal();
+    if (chatId === null) return; // no principal yet — nothing to deliver to
+    await bot.api
+      .sendMessage(chatId, message)
+      .catch((e) => log.warn(`proactive delivery failed: ${e}`));
+  };
+  new CheckInScheduler({
     engine,
     intervalMs: env.VELLUM_CHECKIN_INTERVAL_MS,
-    deliver: async (_personaId, message) => {
-      for (const chatId of recipients.all()) {
-        await bot.api
-          .sendMessage(chatId, message)
-          .catch((e) => log.warn(`check-in delivery failed: ${e}`));
-      }
-    },
-  });
-  scheduler.start();
-
-  // Agent-settable scheduled tasks (#36): run due tasks + deliver to all chats.
-  const deliverToAll = async (_personaId: string, message: string) => {
-    for (const chatId of recipients.all()) {
-      await bot.api
-        .sendMessage(chatId, message)
-        .catch((e) => log.warn(`task delivery failed: ${e}`));
-    }
-  };
-  new TaskScheduler({ engine, deliver: deliverToAll }).start();
+    deliver: deliverToPrincipal,
+  }).start();
+  new TaskScheduler({ engine, deliver: deliverToPrincipal }).start();
 
   log.info("starting bot (long polling)…");
   void bot.start({
