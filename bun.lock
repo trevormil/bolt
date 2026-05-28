@@ -36,6 +36,17 @@
         "bitbadges": "0.41.0",
       },
     },
+    "packages/cli": {
+      "name": "@vellum/cli",
+      "version": "0.0.0",
+      "bin": {
+        "vellum": "src/cli.ts",
+      },
+      "dependencies": {
+        "@vellum/engine": "workspace:*",
+        "@vellum/shared": "workspace:*",
+      },
+    },
     "packages/engine": {
       "name": "@vellum/engine",
       "version": "0.0.0",
@@ -472,6 +483,8 @@
     "@vellum/agent": ["@vellum/agent@workspace:packages/agent"],
 
     "@vellum/chain": ["@vellum/chain@workspace:packages/chain"],
+
+    "@vellum/cli": ["@vellum/cli@workspace:packages/cli"],
 
     "@vellum/engine": ["@vellum/engine@workspace:packages/engine"],
 
