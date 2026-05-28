@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Avatar, Button, Card, Icon, Input, cn } from "@vellum/ui";
 import { api, type Persona, type SetupStatus } from "./api.ts";
+import { BrandLogo } from "./BrandLogo.tsx";
 import { Chat } from "./Chat.tsx";
 import { LedgerView } from "./Ledger.tsx";
 import { VaultsView } from "./Vaults.tsx";
@@ -72,25 +73,25 @@ export function App() {
   return (
     <div className="flex h-full bg-base text-fg font-sans">
       <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-surface">
-        <div className="flex items-center gap-2 px-4 py-4">
-          <span className="grid h-7 w-7 place-items-center rounded-md bg-accent text-accent-fg">
-            <Icon name="sparkle" size={16} />
+        <div className="flex items-center gap-2.5 px-5 py-5">
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-gold text-accent-fg shadow-glow">
+            <Icon name="zap" size={17} strokeWidth={2} />
           </span>
-          <span className="font-serif text-lg">Bolt</span>
+          <span className="font-serif text-xl tracking-tight">Bolt</span>
         </div>
-        <div className="px-3 text-xs uppercase tracking-wide text-soft">
+        <div className="px-5 pb-2 font-mono text-[10px] uppercase tracking-[0.22em] text-soft">
           Personas
         </div>
-        <nav className="flex-1 space-y-1 overflow-y-auto p-2">
+        <nav className="flex-1 space-y-0.5 overflow-y-auto px-2">
           {personas.map((p) => (
             <button
               key={p.id}
               onClick={() => setSelectedId(p.id)}
               className={cn(
-                "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm",
+                "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors",
                 p.id === selectedId
-                  ? "bg-surface-3 text-fg"
-                  : "text-muted hover:bg-surface-3/50",
+                  ? "border border-border-gold bg-accent-soft/40 text-fg"
+                  : "border border-transparent text-muted hover:bg-surface-3/50",
               )}
             >
               <Avatar name={p.name} size={26} />
@@ -114,25 +115,28 @@ export function App() {
         {selected && (
           <>
             <header className="flex items-center justify-between gap-4 border-b border-border px-6 py-4">
-              <div className="min-w-0">
-                <h1 className="truncate text-lg font-medium">
-                  {selected.name}
-                </h1>
-                <p className="truncate text-sm text-muted">
-                  {selected.soul.role}
-                </p>
+              <div className="flex min-w-0 items-center gap-3">
+                <Avatar name={selected.name} size={36} />
+                <div className="min-w-0">
+                  <h1 className="truncate font-serif text-xl">
+                    {selected.name}
+                  </h1>
+                  <p className="truncate text-sm text-muted">
+                    {selected.soul.role}
+                  </p>
+                </div>
               </div>
               <div className="flex items-center gap-3">
                 <KeplrButton />
-                <div className="flex gap-1 rounded-lg bg-surface p-1">
+                <div className="flex gap-1 rounded-lg border border-border bg-surface p-1">
                   {TABS.map((t) => (
                     <button
                       key={t}
                       onClick={() => setTab(t)}
                       className={cn(
-                        "rounded-md px-3 py-1.5 text-sm capitalize",
+                        "rounded-md px-3 py-1.5 text-sm capitalize transition-colors",
                         tab === t
-                          ? "bg-accent text-accent-fg"
+                          ? "bg-gold text-accent-fg shadow-glow"
                           : "text-muted hover:text-fg",
                       )}
                     >
@@ -184,7 +188,7 @@ function KeplrButton() {
         onClick={connect}
         disabled={connecting}
       >
-        <Icon name="wallet" size={14} />{" "}
+        <BrandLogo name="keplr" size={15} className="rounded-none" />
         {connecting ? "Connecting…" : "Connect Keplr"}
       </Button>
     );
@@ -192,13 +196,16 @@ function KeplrButton() {
     <button
       onClick={disconnect}
       title="Disconnect Keplr"
-      className="flex items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs hover:border-soft"
+      className="flex items-center gap-2 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs transition-colors hover:border-border-gold"
     >
-      <Icon name="wallet" size={14} />
-      <span className="font-mono">
+      <BrandLogo name="keplr" size={14} className="rounded-none" />
+      <span className="font-mono text-fg">
         {wallet.address.slice(0, 8)}…{wallet.address.slice(-4)}
       </span>
-      <span className="text-muted">{(Number(usdc) / 1e6).toFixed(2)} USDC</span>
+      <span className="flex items-center gap-1 font-mono text-muted">
+        {(Number(usdc) / 1e6).toFixed(2)}
+        <BrandLogo name="usdc" size={13} />
+      </span>
     </button>
   );
 }
@@ -226,11 +233,11 @@ function Login({ onLogin }: { onLogin: () => void }) {
   return (
     <div className="grid h-full place-items-center bg-base text-fg font-sans">
       <Card className="w-[24rem] p-6">
-        <div className="flex items-center gap-2">
-          <span className="grid h-8 w-8 place-items-center rounded-md bg-accent text-accent-fg">
-            <Icon name="wallet" size={16} />
+        <div className="flex items-center gap-2.5">
+          <span className="grid h-9 w-9 place-items-center rounded-lg bg-gold text-accent-fg shadow-glow">
+            <Icon name="zap" size={18} strokeWidth={2} />
           </span>
-          <span className="font-serif text-xl">Bolt</span>
+          <span className="font-serif text-2xl">Bolt</span>
         </div>
         <p className="mt-4 text-sm text-muted">
           This instance is access-protected. Enter the API token to continue.
@@ -259,18 +266,29 @@ function Login({ onLogin }: { onLogin: () => void }) {
 
 function Welcome({ onStart }: { onStart: () => void }) {
   return (
-    <div className="grid h-full place-items-center bg-base text-fg font-sans">
-      <div className="max-w-md text-center">
-        <span className="mx-auto mb-5 grid h-14 w-14 place-items-center rounded-xl bg-accent text-accent-fg shadow-glow">
-          <Icon name="sparkle" size={28} />
+    <div className="relative grid h-full place-items-center overflow-hidden bg-base text-fg font-sans">
+      {/* Atmosphere: a warm gold glow from above, matching the landing. */}
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(48rem 32rem at 50% -8%, rgba(212,175,55,0.12), transparent 60%)",
+        }}
+      />
+      <div className="relative max-w-md px-6 text-center">
+        <span className="mx-auto mb-6 grid h-16 w-16 place-items-center rounded-2xl bg-gold text-accent-fg shadow-glow">
+          <Icon name="zap" size={32} strokeWidth={2} />
         </span>
-        <h1 className="font-serif text-4xl">Bolt</h1>
-        <p className="mt-3 text-muted">
-          A payment-first personal agent. Every persona is its own compartment —
-          its own memory, wallet, and budget, walled off from the rest.
+        <p className="mb-3 font-mono text-[11px] uppercase tracking-[0.3em] text-copper">
+          local-first · agentic · payment-native
+        </p>
+        <h1 className="font-serif text-5xl leading-none tracking-tight">Bolt</h1>
+        <p className="mt-4 text-muted">
+          The agent with a wallet. Every persona is its own compartment — its own
+          memory, wallet, and budget, walled off from the rest.
         </p>
         <SetupBanner />
-        <Button className="mt-6" onClick={onStart}>
+        <Button className="mt-7" size="lg" onClick={onStart}>
           Create your first persona <Icon name="arrowRight" size={16} />
         </Button>
       </div>
@@ -295,14 +313,16 @@ function SetupBanner() {
   if (!status.hasWallet) missing.push("an agent signer wallet");
   if (!missing.length) return null;
   return (
-    <div className="mt-5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-left text-sm">
-      <p className="font-medium text-amber-300">Finish setup to enable chat</p>
-      <p className="mt-1 text-muted">
+    <div className="mt-6 rounded-xl border border-border-gold bg-accent-soft/30 p-4 text-left text-sm">
+      <p className="flex items-center gap-1.5 font-medium text-accent">
+        <Icon name="zap" size={14} strokeWidth={2} /> Finish setup to enable chat
+      </p>
+      <p className="mt-1.5 text-muted">
         Missing {missing.join(" and ")}. Run the one-command wizard in a
         terminal:
       </p>
-      <pre className="mt-2 rounded bg-base/60 px-2 py-1 font-mono text-xs">
-        bun run setup
+      <pre className="mt-2.5 rounded-md border border-border bg-base/70 px-3 py-2 font-mono text-xs text-accent-strong">
+        <span className="text-soft">$ </span>bun run setup
       </pre>
     </div>
   );
