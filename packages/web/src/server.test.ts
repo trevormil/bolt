@@ -1,8 +1,12 @@
-import { beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Meter } from "@vellum/llm";
 import type { RunLoop } from "@vellum/orchestrator";
 import type { TxChain } from "@vellum/tx";
 import { env } from "@vellum/shared";
+import { generateWallet } from "@vellum/chain";
 import { createEngine } from "@vellum/engine";
 import {
   buildApp,
@@ -960,5 +964,100 @@ describe("setup status (#19)", () => {
       host: "0.0.0.0",
     });
     expect((await a.request("/api/setup-status")).status).toBe(200);
+  });
+});
+
+describe("first-run web setup (/api/setup)", () => {
+  // The first-run gate reads the global env.AGENT_SIGNER_MNEMONIC singleton — the
+  // same field setRuntimeEnv mutates. Snapshot + clear it so these tests are
+  // deterministic regardless of the ambient .env, and restore after each.
+  const savedMnemonic = env.AGENT_SIGNER_MNEMONIC;
+  afterEach(() => {
+    env.AGENT_SIGNER_MNEMONIC = savedMnemonic;
+  });
+
+  // Build an app whose setup side-effects are captured, not real: .env writes go
+  // to a throwaway temp file and the runtime mutation is recorded (not applied to
+  // the global singleton), so the test never touches the repo .env or leaks state
+  // into other tests.
+  function setupApp(auth?: { token?: string; host?: string }) {
+    const envFilePath = join(
+      tmpdir(),
+      `vellum-setup-${Math.random().toString(36).slice(2)}.env`,
+    );
+    const applied: Partial<typeof env>[] = [];
+    const app = buildApp(makeEngine(), new PaymentRequests(":memory:"), auth, {
+      envFilePath,
+      applyRuntime: (p) => applied.push(p),
+    });
+    return { app, envFilePath, applied };
+  }
+
+  const postSetup = (app: ReturnType<typeof buildApp>, body: unknown) =>
+    app.request("/api/setup", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  test("refuses when the daemon is exposed beyond loopback", async () => {
+    env.AGENT_SIGNER_MNEMONIC = undefined;
+    const { app, applied } = setupApp({ token: "secret", host: "0.0.0.0" });
+    expect((await postSetup(app, {})).status).toBe(403);
+    expect(applied).toHaveLength(0); // never accept secrets over a network boundary
+  });
+
+  test("refuses once a wallet already exists (first-run only)", async () => {
+    env.AGENT_SIGNER_MNEMONIC = "already configured";
+    const { app, applied } = setupApp();
+    expect((await postSetup(app, {})).status).toBe(409);
+    expect(applied).toHaveLength(0); // no runtime mutation on a refused call
+  });
+
+  test("generate flow returns a 24-word mnemonic ONCE + persists it", async () => {
+    env.AGENT_SIGNER_MNEMONIC = undefined;
+    const { app, envFilePath, applied } = setupApp();
+    const res = await postSetup(app, { openRouterKey: "sk-or-test" });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      ok: boolean;
+      generatedMnemonic: string | null;
+    };
+    expect(body.ok).toBe(true);
+    expect(body.generatedMnemonic).toBeTruthy();
+    const gen = body.generatedMnemonic ?? "";
+    expect(gen.trim().split(/\s+/)).toHaveLength(24);
+
+    // Runtime adopted the wallet + key so the live daemon works without restart.
+    expect(applied[0]?.AGENT_SIGNER_MNEMONIC).toBe(gen);
+    expect(applied[0]?.OPENROUTER_API_KEY).toBe("sk-or-test");
+
+    // Persisted to the (temp) .env for the next boot.
+    const written = readFileSync(envFilePath, "utf8");
+    expect(written).toContain("AGENT_SIGNER_MNEMONIC=");
+    expect(written).toContain("OPENROUTER_API_KEY=sk-or-test");
+    rmSync(envFilePath, { force: true });
+  });
+
+  test("import flow accepts a valid phrase + never echoes it back", async () => {
+    env.AGENT_SIGNER_MNEMONIC = undefined;
+    const { mnemonic } = await generateWallet(); // a real, valid 24-word phrase
+    const { app, envFilePath, applied } = setupApp();
+    const res = await postSetup(app, { mnemonic });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { generatedMnemonic: string | null };
+    expect(body.generatedMnemonic).toBeNull(); // imported phrase is never returned
+    expect(applied[0]?.AGENT_SIGNER_MNEMONIC).toBe(mnemonic);
+    rmSync(envFilePath, { force: true });
+  });
+
+  test("rejects an invalid mnemonic", async () => {
+    env.AGENT_SIGNER_MNEMONIC = undefined;
+    const { app, applied } = setupApp();
+    const res = await postSetup(app, {
+      mnemonic: "totally not a real bip39 phrase",
+    });
+    expect(res.status).toBe(400);
+    expect(applied).toHaveLength(0);
   });
 });

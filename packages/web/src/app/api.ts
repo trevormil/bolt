@@ -88,9 +88,23 @@ export const api = {
     ),
 
   // Onboarding setup status (#19) — what's configured, so the UI can guide a
-  // from-scratch user to the terminal wizard for secrets.
+  // from-scratch user through web onboarding.
   setupStatus: () =>
     fetch("/api/setup-status").then((r) => json<SetupStatus>(r)),
+
+  // First-run web setup (#54): persist the LLM key + agent wallet (generate
+  // server-side, or import) so the running daemon adopts them. Returns the
+  // generated mnemonic ONCE (to back up) when no mnemonic was supplied.
+  setup: (input: {
+    openRouterKey?: string;
+    mnemonic?: string;
+    apiToken?: string;
+  }) =>
+    fetch("/api/setup", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    }).then((r) => json<{ ok: boolean; generatedMnemonic: string | null }>(r)),
 
   listPersonas: () =>
     fetch("/api/personas")

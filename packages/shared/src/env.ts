@@ -98,3 +98,14 @@ function parseEnv(): Env {
 }
 
 export const env: Env = parseEnv();
+
+/**
+ * Mutate the live `env` singleton at runtime (#54 web onboarding). The web setup
+ * route writes secrets to .env (persisted for next boot) AND calls this so the
+ * ALREADY-RUNNING daemon adopts the new OpenRouter key / mnemonic without a
+ * restart — consumers read `env.*` at call time, so the mutation takes effect
+ * immediately. Loopback-gated at the route; never a public mutation surface.
+ */
+export function setRuntimeEnv(partial: Partial<Env>): void {
+  Object.assign(env, partial);
+}

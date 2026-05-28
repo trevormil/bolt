@@ -55,6 +55,15 @@ export class PersonaWallets {
       created INTEGER NOT NULL)`);
   }
 
+  /** Adopt a master mnemonic at runtime (#54 web onboarding): a daemon that
+   *  booted with no AGENT_SIGNER_MNEMONIC can derive persona wallets right after
+   *  first-run setup, without a restart. Existing rows' addresses still re-derive
+   *  from this mnemonic + their stored HD index (the mismatch guard catches a
+   *  swap to a different mnemonic). */
+  setMnemonic(mnemonic: string): void {
+    this.mnemonic = mnemonic;
+  }
+
   private requireMnemonic(): string {
     if (!this.mnemonic) {
       throw new Error(

@@ -1,10 +1,13 @@
+import { join } from "node:path";
 import { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
-import { confirmTx } from "@vellum/chain";
+import { confirmTx, generateWallet, addressOf } from "@vellum/chain";
 import { tracer } from "@vellum/trace";
 import {
   createLogger,
   env,
+  setRuntimeEnv,
+  upsertEnvFile,
   ensureDataDir,
   migrateLegacyDb,
 } from "@vellum/shared";
@@ -175,8 +178,11 @@ export function parseGating(raw: unknown): VaultGating | undefined | "invalid" {
 export function isPublicRoute(method: string, path: string): boolean {
   if (path === "/api/health" || path === "/api/config") return true;
   // Setup status drives the onboarding screen before anything is configured.
-  // No secrets — just booleans + the local data-dir path (#19).
+  // No secrets — booleans + counts only, no local path material (#19/!48).
   if (method === "GET" && path === "/api/setup-status") return true;
+  // First-run web onboarding (#54): reachable before any key/persona exists. The
+  // route itself is loopback-gated + first-run-only — see POST /api/setup.
+  if (method === "POST" && path === "/api/setup") return true;
   // Auth status + login/logout must be reachable to authenticate in the first place.
   if (method === "GET" && path === "/api/auth") return true;
   if (method === "POST" && (path === "/api/login" || path === "/api/logout"))
@@ -221,8 +227,17 @@ export function buildApp(
     token: env.VELLUM_API_TOKEN,
     host: env.WEB_HOST,
   },
+  // First-run setup side-effects (injectable for tests so /api/setup doesn't
+  // write the real .env or mutate the global env singleton). Prod uses the
+  // cwd .env Bun auto-loads + the live env mutation.
+  setup: {
+    envFilePath?: string;
+    applyRuntime?: (partial: Partial<typeof env>) => void;
+  } = {},
 ) {
   const app = new Hono();
+  const setupEnvFilePath = setup.envFilePath ?? join(process.cwd(), ".env");
+  const applyRuntimeEnv = setup.applyRuntime ?? setRuntimeEnv;
 
   // Security headers (#24 / T-11). Defense-in-depth even though the app binds
   // loopback by default: a malicious local page must not be able to frame the
@@ -332,9 +347,9 @@ export function buildApp(
     }),
   );
 
-  // Onboarding setup status (#19) — what's configured, so the web onboarding can
-  // guide a from-scratch user to the terminal wizard for secrets. Booleans/counts
-  // ONLY: never the key/mnemonic values, and never the local data-dir path
+  // Onboarding setup status (#19) — what's configured, so the web onboarding
+  // (SetupFlow) knows whether to show the first-run flow. Booleans/counts ONLY:
+  // never the key/mnemonic values, and never the local data-dir path
   // (unauthenticated route — no local filesystem disclosure; !48 review).
   app.get("/api/setup-status", (c) =>
     c.json({
@@ -348,6 +363,68 @@ export function buildApp(
       daemonExposed: !isLoopback(env.WEB_HOST),
     }),
   );
+
+  // First-run web onboarding (#54): persist the LLM key + agent wallet, and make
+  // the ALREADY-RUNNING daemon adopt them (no restart) so the next step (persona
+  // creation) works immediately. Loopback-only + first-run-only — secrets are
+  // never accepted over an exposed/network boundary, and never re-written once a
+  // wallet exists. The wallet can be generated server-side (the mnemonic is
+  // returned ONCE to back up — it never travels TO the server).
+  app.post("/api/setup", async (c) => {
+    if (!isLoopback(auth.host ?? "127.0.0.1"))
+      return c.json(
+        {
+          error:
+            "setup is loopback-only; configure secrets via the CLI when exposed",
+        },
+        403,
+      );
+    if (env.AGENT_SIGNER_MNEMONIC)
+      return c.json({ error: "already set up" }, 409);
+
+    const body = (await c.req.json().catch(() => ({}))) as {
+      openRouterKey?: unknown;
+      mnemonic?: unknown;
+      apiToken?: unknown;
+    };
+
+    // Generate a fresh wallet unless the user imported one.
+    let generatedMnemonic: string | null = null;
+    let mnemonic: string;
+    if (typeof body.mnemonic === "string" && body.mnemonic.trim()) {
+      mnemonic = body.mnemonic.trim();
+      try {
+        await addressOf(mnemonic); // validate the phrase
+      } catch {
+        return c.json({ error: "invalid mnemonic" }, 400);
+      }
+    } else {
+      const w = await generateWallet();
+      mnemonic = w.mnemonic;
+      generatedMnemonic = w.mnemonic;
+    }
+
+    const updates: Record<string, string> = { AGENT_SIGNER_MNEMONIC: mnemonic };
+    const runtime: Partial<typeof env> = { AGENT_SIGNER_MNEMONIC: mnemonic };
+    if (typeof body.openRouterKey === "string" && body.openRouterKey.trim()) {
+      updates.OPENROUTER_API_KEY = body.openRouterKey.trim();
+      runtime.OPENROUTER_API_KEY = body.openRouterKey.trim();
+    }
+    if (typeof body.apiToken === "string" && body.apiToken.trim()) {
+      updates.VELLUM_API_TOKEN = body.apiToken.trim();
+      runtime.VELLUM_API_TOKEN = body.apiToken.trim();
+    }
+
+    upsertEnvFile(setupEnvFilePath, updates); // persist for next boot
+    applyRuntimeEnv(runtime); // live daemon adopts it now (no restart)
+    engine.wallets.setMnemonic(mnemonic);
+
+    log.info(
+      "web setup complete · wallet configured" +
+        (updates.OPENROUTER_API_KEY ? " + LLM key" : ""),
+    );
+    return c.json({ ok: true, generatedMnemonic });
+  });
 
   app.get("/api/personas", (c) => {
     const personas = engine.store.listPersonas().map((p) => ({

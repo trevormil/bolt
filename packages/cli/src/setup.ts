@@ -3,8 +3,7 @@ import {
   grantDefaultCapabilities,
   renderPersonaCard,
 } from "@vellum/engine";
-import { ensureDataDir, dataDir } from "@vellum/shared";
-import { upsertEnvFile } from "./env-file.ts";
+import { ensureDataDir, dataDir, upsertEnvFile } from "@vellum/shared";
 import { slug } from "./commands.ts";
 
 // The answers the install wizard (#19) collects, and the pure setup it performs.

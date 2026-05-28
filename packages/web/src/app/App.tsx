@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Avatar, Button, Card, Icon, Input, cn } from "@vellum/ui";
 import { api, type Persona, type SetupStatus } from "./api.ts";
 import { BrandLogo } from "./BrandLogo.tsx";
+import { SetupFlow } from "./SetupFlow.tsx";
 import { Chat } from "./Chat.tsx";
 import { LedgerView } from "./Ledger.tsx";
 import { VaultsView } from "./Vaults.tsx";
@@ -20,6 +21,8 @@ export function App() {
   const [loaded, setLoaded] = useState(false);
   const [creating, setCreating] = useState(false);
   const [authed, setAuthed] = useState<boolean | null>(null);
+  // null = unknown; true = no agent wallet yet → show the first-run web setup (#54).
+  const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
 
   async function reload(selectId?: string) {
     const list = await api.listPersonas();
@@ -40,19 +43,37 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (authed) void reload();
+    if (!authed) return;
+    api
+      .setupStatus()
+      .then((s) => setNeedsSetup(!s.hasWallet))
+      .catch(() => setNeedsSetup(false));
+    void reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authed]);
 
   const selected = personas.find((p) => p.id === selectedId) ?? null;
 
-  if (authed === null) {
+  if (authed === null || (authed && needsSetup === null)) {
     return (
       <div className="grid h-full place-items-center bg-base text-soft">…</div>
     );
   }
   if (!authed) {
     return <Login onLogin={() => setAuthed(true)} />;
+  }
+
+  // First run with no agent wallet: the guided web setup (#54) collects the LLM
+  // key + wallet + first persona, then drops the user into the app.
+  if (needsSetup) {
+    return (
+      <SetupFlow
+        onDone={async (id) => {
+          setNeedsSetup(false);
+          await reload(id);
+        }}
+      />
+    );
   }
 
   if (loaded && personas.length === 0 && !creating) {
@@ -288,10 +309,12 @@ function Welcome({ onStart }: { onStart: () => void }) {
         <p className="mb-3 font-mono text-[11px] uppercase tracking-[0.3em] text-copper">
           local-first · agentic · payment-native
         </p>
-        <h1 className="font-serif text-5xl leading-none tracking-tight">Bolt</h1>
+        <h1 className="font-serif text-5xl leading-none tracking-tight">
+          Bolt
+        </h1>
         <p className="mt-4 text-muted">
-          The agent with a wallet. Every persona is its own compartment — its own
-          memory, wallet, and budget, walled off from the rest.
+          The agent with a wallet. Every persona is its own compartment — its
+          own memory, wallet, and budget, walled off from the rest.
         </p>
         <SetupBanner />
         <Button className="mt-7" size="lg" onClick={onStart}>
@@ -321,7 +344,8 @@ function SetupBanner() {
   return (
     <div className="mt-6 rounded-xl border border-border-gold bg-accent-soft/30 p-4 text-left text-sm">
       <p className="flex items-center gap-1.5 font-medium text-accent">
-        <Icon name="zap" size={14} strokeWidth={2} /> Finish setup to enable chat
+        <Icon name="zap" size={14} strokeWidth={2} /> Finish setup to enable
+        chat
       </p>
       <p className="mt-1.5 text-muted">
         Missing {missing.join(" and ")}. Run the one-command wizard in a
