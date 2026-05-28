@@ -43,7 +43,7 @@ export default {
       fontFamily: {
         sans: ["Hanken Grotesk", "system-ui", "-apple-system", "sans-serif"],
         mono: ["JetBrains Mono", "ui-monospace", "SF Mono", "monospace"],
-        serif: ["Fraunces", "Georgia", "Times New Roman", "serif"],
+        serif: ["Bricolage Grotesque", "system-ui", "sans-serif"],
       },
     },
   },

@@ -8,11 +8,13 @@
   --r-lg: 18px;
   --r-xl: 24px;
 
-  /* Aurum type system (#53): a high-contrast serif for brand moments, a warm
-   * grotesque for body, and a precise mono for money / addresses / terminal. */
+  /* Aurum type system (#53): a bold display grotesque (Bricolage) for brand
+   * moments, a clean grotesque (Hanken) for body, and a precise mono for money /
+   * addresses / terminal. (`--font-serif` is the "display" slot — not literally
+   * a serif.) */
   --font-sans: "Hanken Grotesk", system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", monospace;
-  --font-serif: "Fraunces", Georgia, "Times New Roman", serif;
+  --font-serif: "Bricolage Grotesque", system-ui, sans-serif;
 }
 
 /* Root surface contract: opt an app subtree into the design system. Colors

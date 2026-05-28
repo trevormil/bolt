@@ -74,9 +74,11 @@ export function App() {
     <div className="flex h-full bg-base text-fg font-sans">
       <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-surface">
         <div className="flex items-center gap-2.5 px-5 py-5">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-gold text-accent-fg shadow-glow">
-            <Icon name="zap" size={17} strokeWidth={2} />
-          </span>
+          <img
+            src="/logos/bolt.png"
+            alt="Bolt"
+            className="h-8 w-8 rounded-lg object-cover shadow-glow"
+          />
           <span className="font-serif text-xl tracking-tight">Bolt</span>
         </div>
         <div className="px-5 pb-2 font-mono text-[10px] uppercase tracking-[0.22em] text-soft">
@@ -234,9 +236,11 @@ function Login({ onLogin }: { onLogin: () => void }) {
     <div className="grid h-full place-items-center bg-base text-fg font-sans">
       <Card className="w-[24rem] p-6">
         <div className="flex items-center gap-2.5">
-          <span className="grid h-9 w-9 place-items-center rounded-lg bg-gold text-accent-fg shadow-glow">
-            <Icon name="zap" size={18} strokeWidth={2} />
-          </span>
+          <img
+            src="/logos/bolt.png"
+            alt="Bolt"
+            className="h-9 w-9 rounded-lg object-cover shadow-glow"
+          />
           <span className="font-serif text-2xl">Bolt</span>
         </div>
         <p className="mt-4 text-sm text-muted">
@@ -276,9 +280,11 @@ function Welcome({ onStart }: { onStart: () => void }) {
         }}
       />
       <div className="relative max-w-md px-6 text-center">
-        <span className="mx-auto mb-6 grid h-16 w-16 place-items-center rounded-2xl bg-gold text-accent-fg shadow-glow">
-          <Icon name="zap" size={32} strokeWidth={2} />
-        </span>
+        <img
+          src="/logos/bolt.png"
+          alt="Bolt"
+          className="mx-auto mb-6 h-20 w-20 rounded-2xl object-cover shadow-glow"
+        />
         <p className="mb-3 font-mono text-[11px] uppercase tracking-[0.3em] text-copper">
           local-first · agentic · payment-native
         </p>
