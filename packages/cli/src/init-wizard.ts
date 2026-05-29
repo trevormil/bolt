@@ -139,6 +139,21 @@ export async function initWizard(
   if (
     yesno("Control Bolt from Telegram? " + dim("(get a token from @BotFather)"))
   ) {
+    // Guided @BotFather steps (#70) — parity with the web onboarding so the
+    // terminal install is just as self-serve.
+    console.log(
+      "   " +
+        dim("1.") +
+        ` In Telegram, message ${bold("@BotFather")} and send ${fg("/newbot")}.`,
+    );
+    console.log(
+      "   " +
+        dim("2.") +
+        ` Pick a name + a ${fg("…_bot")} username; copy the token it returns.`,
+    );
+    console.log(
+      "   " + dim("3.") + ` Paste it below ${dim("(we verify it).")}`,
+    );
     // Validate the token via getMe before accepting it (#74 review) — loop like
     // the OpenRouter key prompt so a mistyped token isn't saved + falsely
     // reported "enabled" only to fail at the next daemon boot. Blank = skip.
@@ -156,12 +171,28 @@ export async function initWizard(
         continue;
       }
       telegramBotToken = entered;
+      // Ownership: pin the principal up front, or let the first /start claim it.
+      // Either way a stranger who finds the bot can't drive your agent (#28).
       const cid = ask(
         "your Telegram chat id " + dim("[blank = first chat claims it]") + ": ",
       );
       telegramPrincipalChatId = cid || undefined;
       console.log(
         `   ${check} Telegram enabled as @${tg.username ?? "?"} ${dim("(starts with the daemon).")}`,
+      );
+      console.log(
+        "   " +
+          dim(
+            cid
+              ? `Only chat ${cid} can drive the bot.`
+              : "Message the bot /start to claim ownership — so only you can drive it.",
+          ),
+      );
+      console.log(
+        "   " +
+          dim("Then use ") +
+          fg("/personas /switch /vaults /balance /ledger /spend /help") +
+          dim(" — same gates as the app."),
       );
       break;
     }
