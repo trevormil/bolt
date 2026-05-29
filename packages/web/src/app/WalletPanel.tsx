@@ -71,7 +71,7 @@ export function WalletPanel({ personaId }: { personaId: string }) {
   return (
     <div className="w-72 shrink-0 border-l border-border bg-surface p-4">
       <div className="flex items-center justify-between">
-        <h3 className="flex items-center gap-2 font-serif text-base">
+        <h3 className="flex items-center gap-2 font-serif text-base text-fg">
           <Icon name="wallet" size={15} className="text-accent" /> Wallet
         </h3>
         <button

@@ -77,7 +77,21 @@ export function SetupFlow({ onDone }: { onDone: (personaId: string) => void }) {
           <div className="mt-6 space-y-5">
             <Field
               label="OpenRouter API key"
-              hint="Powers the agent's LLM — required. We verify it before continuing. Get one at openrouter.ai/keys."
+              hint={
+                <>
+                  Powers the agent's LLM — required. We verify it before
+                  continuing. Get one at{" "}
+                  <a
+                    href="https://openrouter.ai/keys"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-accent underline"
+                  >
+                    openrouter.ai/keys
+                  </a>
+                  .
+                </>
+              }
             >
               <Input
                 type="password"
@@ -209,7 +223,7 @@ function Field({
   children,
 }: {
   label: string;
-  hint: string;
+  hint: ReactNode;
   children: ReactNode;
 }) {
   return (

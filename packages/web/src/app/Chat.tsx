@@ -1,13 +1,49 @@
 import { useRef, useState } from "react";
 import { Button, Icon, Input, cn } from "@vellum/ui";
+import Markdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { api, type Persona } from "./api.ts";
 
 interface Msg {
   role: "user" | "agent";
   text: string;
-  costUsd?: number;
-  tokens?: number;
 }
+
+// Markdown renderers for assistant bubbles (#69) — Aurum-styled, no raw HTML
+// (react-markdown's default; rehype-raw is deliberately NOT enabled). Links open
+// in a new tab; fenced code gets a bordered block, inline code a subtle chip.
+const MD: Components = {
+  a: ({ href, children }) => (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-accent underline"
+    >
+      {children}
+    </a>
+  ),
+  pre: ({ children }) => (
+    <pre className="my-2 overflow-x-auto rounded-lg border border-border bg-base p-3 font-mono text-xs">
+      {children}
+    </pre>
+  ),
+  code: ({ className, children }) =>
+    className?.startsWith("language-") ? (
+      <code className={className}>{children}</code>
+    ) : (
+      <code className="rounded bg-surface-3 px-1 py-0.5 font-mono text-[0.85em]">
+        {children}
+      </code>
+    ),
+  ul: ({ children }) => (
+    <ul className="my-1.5 list-disc space-y-0.5 pl-5">{children}</ul>
+  ),
+  ol: ({ children }) => (
+    <ol className="my-1.5 list-decimal space-y-0.5 pl-5">{children}</ol>
+  ),
+  p: ({ children }) => <p className="my-1.5">{children}</p>,
+};
 
 export function Chat({ persona }: { persona: Persona }) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
@@ -30,15 +66,10 @@ export function Chat({ persona }: { persona: Persona }) {
         personaId: persona.id,
         message: text,
       });
-      setMsgs((m) => [
-        ...m,
-        {
-          role: "agent",
-          text: res.reply,
-          costUsd: res.costUsd,
-          tokens: res.tokens,
-        },
-      ]);
+      // Cost/tokens still come back on the response (and are recorded to the
+      // ledger server-side) but are intentionally NOT shown in the direct chat —
+      // that lives in the behind-the-scenes Activity / Ledger views.
+      setMsgs((m) => [...m, { role: "agent", text: res.reply }]);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -73,11 +104,13 @@ export function Chat({ persona }: { persona: Persona }) {
                   : "rounded-[18px] rounded-bl-md border border-border bg-surface-2 text-fg",
               )}
             >
-              <div className="whitespace-pre-wrap">{m.text}</div>
-              {m.role === "agent" && m.costUsd !== undefined && (
-                <div className="mt-2 flex items-center gap-1.5 border-t border-border pt-1.5 font-mono text-[11px] text-soft">
-                  <Icon name="zap" size={11} className="text-accent" />$
-                  {m.costUsd.toFixed(6)} · {m.tokens} tok
+              {m.role === "user" ? (
+                <div className="whitespace-pre-wrap">{m.text}</div>
+              ) : (
+                <div className="[&>:first-child]:mt-0 [&>:last-child]:mb-0">
+                  <Markdown remarkPlugins={[remarkGfm]} components={MD}>
+                    {m.text}
+                  </Markdown>
                 </div>
               )}
             </div>
