@@ -116,11 +116,9 @@ export async function onText(
     personaId,
     message: text,
   });
-  // Plain-English reply + a light cost receipt (proof-of-action), unless refused.
-  const footer = r.budgetExceeded
-    ? ""
-    : `\n\n· $${r.costUsd.toFixed(4)} · ${r.tokens} tok`;
-  await ctx.reply(r.reply + footer);
+  // Plain-English reply only (#79) — per-message cost/token receipts are noise on
+  // a chat surface; LLM spend is reported by /ledger instead.
+  await ctx.reply(r.reply);
 }
 
 export async function onBalance(

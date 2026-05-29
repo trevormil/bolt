@@ -70,12 +70,14 @@ function ctx(text?: string, chatId = 1) {
 }
 
 describe("telegram handlers (engine-wired)", () => {
-  test("onText routes through the agent + appends a cost receipt", async () => {
+  test("onText routes through the agent — plain reply, no cost footer (#79)", async () => {
     const engine = engineWithFakes();
     const { c, replies } = ctx("what can you do?");
     await onText(c, engine, new Sessions());
     expect(replies[0]).toContain("Hi, I'm Bolt.");
-    expect(replies[0]).toContain("tok"); // cost footer
+    // Cost/tokens belong in /ledger, not on every chat message (#79).
+    expect(replies[0]).not.toContain("tok");
+    expect(replies[0]).not.toContain("· $");
   });
 
   test("/start greets and ensures the default persona + wallet", async () => {
