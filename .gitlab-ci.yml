@@ -28,6 +28,23 @@ quality:
     - bun test
     - bun run --filter @vellum/web build
 
+# End-to-end (#77): Playwright drives the real SPA against an offline seamed
+# server (no LLM/chain/network), so it runs on every push/MR alongside `quality`
+# and blocks on red. The browser installs to a global cache the shell runner
+# keeps between runs, so it's a one-time download. The webServer step (in
+# playwright.config.ts) builds the SPA and boots the test server itself.
+e2e:
+  stage: quality
+  script:
+    - bun run test:e2e:install
+    - bun run test:e2e
+  artifacts:
+    when: on_failure
+    paths:
+      - playwright-report/
+      - test-results/
+    expire_in: 1 week
+
 evals:
   stage: eval
   when: manual

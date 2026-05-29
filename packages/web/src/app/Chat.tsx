@@ -188,7 +188,10 @@ export function Chat({ persona }: { persona: Persona }) {
   return (
     <div className="flex h-full min-h-0">
       {/* Session rail — the list of conversations under this persona. */}
-      <div className="flex w-48 shrink-0 flex-col border-r border-border bg-surface/50">
+      <div
+        data-testid="session-rail"
+        className="flex w-48 shrink-0 flex-col border-r border-border bg-surface/50"
+      >
         <div className="flex items-center justify-between px-3 py-3">
           <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-soft">
             Chats
@@ -258,7 +261,10 @@ export function Chat({ persona }: { persona: Persona }) {
 
       {/* Conversation pane. */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex-1 space-y-4 overflow-y-auto p-6">
+        <div
+          data-testid="chat-log"
+          className="flex-1 space-y-4 overflow-y-auto p-6"
+        >
           {msgs.length === 0 && (
             <p className="mt-10 text-center text-sm text-soft">
               Talk to {persona.name}. It reasons only over its own walled

@@ -15,17 +15,20 @@
     "demo": "bun scripts/demo.ts",
     "dev": "bun run --filter '@vellum/*' dev",
     "typecheck": "tsc --noEmit",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install chromium",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
   "devDependencies": {
+    "@playwright/test": "1.60.0",
     "@types/bun": "1.1.14",
-    "prettier": "3.3.3",
-    "typescript": "5.5.4",
     "@vellum/chain": "workspace:*",
     "@vellum/engine": "workspace:*",
     "@vellum/shared": "workspace:*",
-    "@vellum/tokenization": "workspace:*"
+    "@vellum/tokenization": "workspace:*",
+    "prettier": "3.3.3",
+    "typescript": "5.5.4"
   },
   "overrides": {
     "protobufjs": "7.6.1",

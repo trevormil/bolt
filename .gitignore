@@ -13,6 +13,12 @@ coverage/
 # ticketing lock (transient)
 backlog/.next-id.lock
 
+# playwright e2e artifacts (#77)
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
 # web app build + local db
 packages/web/dist
 vellum.db

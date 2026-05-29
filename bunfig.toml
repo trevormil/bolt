@@ -4,3 +4,6 @@
 # live runs still use the real OPENROUTER_API_KEY / AGENT_SIGNER_MNEMONIC.)
 [test]
 preload = ["./test-preload.ts"]
+# Scope `bun test` to the workspace packages so it never picks up the Playwright
+# e2e specs under e2e/ (those use @playwright/test, run via `bun run test:e2e`).
+root = "packages"
