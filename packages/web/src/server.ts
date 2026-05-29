@@ -988,6 +988,23 @@ export function buildApp(
     }
   });
 
+  // Tx status (#81): poll a submitted tx toward its terminal state so the UI can
+  // show pending → confirmed/failed instead of an action that appears to hang.
+  // Persona-scoped — a tx id belonging to another persona 404s (no cross-
+  // compartment status leak).
+  app.get("/api/personas/:id/tx/:txId", (c) => {
+    const id = c.req.param("id");
+    const tx = engine.txManager.get(c.req.param("txId"));
+    if (!tx || tx.personaId !== id) return c.json({ error: "unknown tx" }, 404);
+    return c.json({
+      id: tx.id,
+      hash: tx.hash,
+      status: tx.status,
+      height: tx.height,
+      error: tx.error,
+    });
+  });
+
   // Payment requests (0014) — the agent/user raises a one-time funding request;
   // the human opens the link and signs a USDC transfer to the persona from their
   // own Keplr wallet. The agent never pulls funds.

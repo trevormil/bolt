@@ -464,26 +464,52 @@ function VaultRow({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [personaId, vault.collectionId]);
 
+  // Poll a submitted tx toward a terminal state (#81). The daemon's auto-reconcile
+  // is the real guarantee it settles; this just lets the UI reflect it without a
+  // reload. Returns the last-seen status ("pending" if the window elapses first).
+  async function pollTx(pid: string, txId: string): Promise<string> {
+    for (let i = 0; i < 20; i++) {
+      const t = await api.txStatus(pid, txId).catch(() => null);
+      if (t && (t.status === "confirmed" || t.status === "failed"))
+        return t.status;
+      await new Promise((res) => setTimeout(res, 1500));
+    }
+    return "pending";
+  }
+
   // Agent withdraws within the vault's on-chain rule (server-signed).
   async function withdraw() {
     const usdc = Number(amount);
     if (!usdc) return;
     setBusy("withdraw");
     setNote(null);
+    let r: { id: string; hash: string | null; status: string };
     try {
-      const r = await api.vaultWithdraw(
+      r = await api.vaultWithdraw(
         personaId,
         vault.collectionId,
         String(Math.round(usdc * 1e6)),
       );
-      setNote(`Withdrawal ${r.status} (${r.hash.slice(0, 10)}…)`);
-      void reloadEscrow();
-      setAmount("");
     } catch (e) {
       setNote(e instanceof Error ? e.message : String(e));
-    } finally {
       setBusy(null);
+      return;
     }
+    // Unblock the button as soon as it's submitted; surface progress via the note
+    // (#81) instead of a perpetual "pending" or a 30s-disabled control.
+    setBusy(null);
+    setAmount("");
+    const short = r.hash ? ` (${r.hash.slice(0, 10)}…)` : "";
+    setNote(`Withdrawal submitted${short} — confirming on-chain…`);
+    const settled = await pollTx(personaId, r.id);
+    if (settled === "confirmed") setNote(`Withdrawal confirmed${short}`);
+    else if (settled === "failed")
+      setNote(`Withdrawal failed${short} — see Activity for details.`);
+    else
+      setNote(
+        `Still confirming${short} — it will settle shortly; see Activity.`,
+      );
+    void reloadEscrow();
   }
 
   // Manager-admin (#45 slice 4): the human manager, signing from their own

@@ -317,7 +317,22 @@ export const api = {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ amount: amountMicro }),
-    }).then((r) => json<{ hash: string; status: string }>(r)),
+    }).then((r) =>
+      json<{ id: string; hash: string | null; status: string }>(r),
+    ),
+
+  // Poll a submitted tx toward its terminal state (#81) so a withdrawal shows
+  // pending → confirmed/failed instead of appearing to hang.
+  txStatus: (id: string, txId: string) =>
+    fetch(`/api/personas/${id}/tx/${txId}`).then((r) =>
+      json<{
+        id: string;
+        hash: string | null;
+        status: "submitting" | "pending" | "confirmed" | "failed";
+        height: number | null;
+        error: string | null;
+      }>(r),
+    ),
 
   createPaymentRequest: (
     id: string,

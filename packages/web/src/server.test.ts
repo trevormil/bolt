@@ -276,6 +276,36 @@ describe("web API", () => {
     expect(escrow.escrowedMicro).toBe("3000000"); // fake fetchTokenBalance → 3 vUSDC
   });
 
+  test("tx-status route reports a submitted tx + 404s for unknown/cross-persona (#81)", async () => {
+    await post("/api/personas", { name: "Atlas" });
+    await post("/api/personas/atlas/vaults", {
+      name: "Groceries",
+      symbol: "vUSDC",
+      dailyWithdrawLimit: 5,
+    });
+    const wd = await post("/api/personas/atlas/vaults/777/withdraw", {
+      amount: "1000000",
+    });
+    const tx = (await wd.json()) as { id: string };
+
+    const ok = await app.request(`/api/personas/atlas/tx/${tx.id}`);
+    expect(ok.status).toBe(200);
+    const body = (await ok.json()) as { id: string; status: string };
+    expect(body.id).toBe(tx.id);
+    expect(["pending", "confirmed"]).toContain(body.status);
+
+    // Unknown tx id → 404.
+    expect(
+      (await app.request("/api/personas/atlas/tx/does-not-exist")).status,
+    ).toBe(404);
+
+    // Cross-persona: another persona can't read atlas's tx (no status leak).
+    await post("/api/personas", { name: "Nyx" });
+    expect((await app.request(`/api/personas/nyx/tx/${tx.id}`)).status).toBe(
+      404,
+    );
+  });
+
   test("vault create uses the supplied managerAddress (the connected wallet) (#75)", async () => {
     await post("/api/personas", { name: "Atlas" });
     const manager = "bb1" + "m".repeat(39);
