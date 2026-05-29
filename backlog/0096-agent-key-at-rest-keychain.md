@@ -1,7 +1,7 @@
 ---
 id: 96
 title: "Agent signer key at rest — move master mnemonic out of plaintext .env into the OS keychain"
-status: in-progress
+status: closed
 prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/83"]
 priority: high
 type: security

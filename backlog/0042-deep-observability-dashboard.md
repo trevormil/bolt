@@ -1,12 +1,13 @@
 ---
 id: 42
 title: "Deep per-persona observability + dashboard (user-facing)"
-status: open
+status: closed
 priority: high
 type: feature
 source: planning
 created: 2026-05-27
 updated: 2026-05-27
+prs: []
 refs: ["ARCHITECTURE.md", "0011-cost-trust-ledger.md", "0021-langfuse-observability.md", "0017-web-budgets-ledger.md", "0040-persona-settings-framework.md"]
 ---
 

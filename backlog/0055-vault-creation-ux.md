@@ -1,7 +1,7 @@
 ---
 id: 55
 title: "Streamline the vault-creation UX"
-status: in-progress
+status: closed
 priority: medium
 type: ux
 source: review

@@ -1,13 +1,13 @@
 ---
 id: 25
 title: "Trust-UX adopts (breadcrumb, receipt, /ledger, plain-English, framing)"
-status: in-progress
+status: closed
 priority: medium
 type: ux
 source: audit
 created: 2026-05-26
 updated: 2026-05-28
-prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/50"]
+prs: []
 refs: ["ARCHITECTURE.md", "research/audit/00-summary.md"]
 ---
 

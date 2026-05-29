@@ -1,7 +1,7 @@
 ---
 id: 59
 title: "Always auto-generate agent wallets — drop import"
-status: in-progress
+status: closed
 priority: medium
 type: ux
 source: review

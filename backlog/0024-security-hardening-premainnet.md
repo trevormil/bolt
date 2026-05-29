@@ -1,13 +1,13 @@
 ---
 id: 24
 title: "Security hardening (pre-mainnet, deferred)"
-status: in-progress
+status: icebox
 priority: medium
 type: security
 source: audit
 created: 2026-05-26
 updated: 2026-05-28
-prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/49"]
+prs: []
 refs: ["ARCHITECTURE.md", "research/audit/00-summary.md"]
 ---
 

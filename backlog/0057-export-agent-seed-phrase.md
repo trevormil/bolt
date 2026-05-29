@@ -1,7 +1,7 @@
 ---
 id: 57
 title: "Export agent seed phrase from Settings (deliberate reveal)"
-status: in-progress
+status: closed
 priority: medium
 type: feature
 source: review

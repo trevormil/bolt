@@ -34,3 +34,10 @@ avoid — capture the intent, don't build it yet.
 ## Notes
 This is the unifying layer behind "external gateways as well as telegram
 connections." Keep it a design placeholder until the concrete surfaces exist.
+
+## Reframe (2026-05-28) — narrowed to a single remote channel
+Direction narrowed: **Telegram is the sole remote channel**; the web UI is
+local-only (not a remote "channel"), and network exposure (#48) is iceboxed. With
+no second/third inbound channel on the horizon, a unified channel-gateway
+abstraction has nothing to abstract — stays iceboxed (effectively won't-do unless
+a genuine third channel is later wanted).

@@ -1,7 +1,7 @@
 ---
 id: 62
 title: "Shareable vault deposit-request page (the 'fund this vault' flow)"
-status: in-progress
+status: closed
 priority: medium
 type: feature
 source: review

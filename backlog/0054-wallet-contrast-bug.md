@@ -1,7 +1,7 @@
 ---
 id: 54
 title: "Wallet UX: black-on-dark text contrast bug"
-status: in-progress
+status: closed
 priority: medium
 type: bug
 source: review

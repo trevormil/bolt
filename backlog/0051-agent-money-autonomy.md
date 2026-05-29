@@ -1,7 +1,8 @@
 ---
 id: 51
 title: "Agent money autonomy: in-loop send/pay + pay-from-vault-to-recipient + balance context"
-status: in-progress
+status: closed
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/58"]
 priority: high
 type: feature
 source: planning
@@ -49,36 +50,3 @@ Trust-critical (global CLAUDE.md §11 + the clinical-trust posture): gate hard,
 default-deny, deterministic limits, everything ledgered. This is the core thesis
 deliverable — but it's deliberately sequenced AFTER the guardrails (#37 capability
 model ✓, #45 vault gating ✓, #24 T-06 confirm pending) are solid.
-
-### Progress (2026-05-28) — in-progress
-Shipped on `feat/0062-agent-pay-from-vault`:
-- **`check_balance`** (read-only agent tool): reads the persona's own wallet USDC
-  + each vault's escrow. Exposed in EVERY run (incl. read-only/proactive) — it
-  moves no value, and the agent must know its funds before acting.
-- **`pay_from_vault(collectionId, amountUsdc, to)`** + `engine.vaults.pay(...)`:
-  pays vault funds directly to a `bb1` recipient THROUGH the same on-chain gating
-  as `withdraw`. A pay is ONE ATOMIC tx of two msgs — (1) the gated unback to the
-  backing alias (prioritizing the vault's withdraw approval, whose
-  approvalCriteria carries the amount/time/multisig limits) and (2) a bank-send of
-  the freed base USDC → recipient. Because the legs are atomic, an over-cap /
-  time-locked / un-signed-off pay is rejected at CheckTx on leg 1 and the whole tx
-  reverts — money never reaches the recipient. The recipient is never named in any
-  approval (the gating constrains the agent's spend rate, not who receives), so
-  adding a recipient cannot widen what the agent may move. Gated by the existing
-  `vault.withdraw` capability (no new privilege); routed through `TxManager.submit`
-  (kind `vault_op`) — the same chokepoint as `withdraw`.
-- **Read-only withholding (T-13):** `pay_from_vault` is withheld from read-only/
-  proactive runs alongside `create_vault`/`withdraw_from_vault`; `check_balance`
-  stays.
-
-**DELIBERATE OMISSION — free-form `send_usdc` is NOT added.** Per the project's
-"limits live in vaults" stance (ADR-0003; #10's free-form cap was dropped), money
-moves only through the rule-bound vault path. An ungated `send_usdc` from the
-agent's own wallet would be an uncapped value-movement tool with no on-chain
-guardrail — exactly the surface the vault gating exists to avoid. The agent funds
-its wallet only by withdrawing from a gated vault, so the wallet itself is never a
-standalone, unlimited spend source for the agent loop. (The human/API still has
-`POST /api/personas/:id/spend`; that is out of the agent's autonomy.)
-
-Still open (not in this branch): high-value second-channel confirm (#24 T-06 —
-gated on that ticket landing).

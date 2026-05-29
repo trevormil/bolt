@@ -1,7 +1,7 @@
 ---
 id: 97
 title: "Flaky e2e: chat sessions rename/delete spec (strict-mode locator + timing)"
-status: in-progress
+status: closed
 prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/85"]
 priority: low
 type: testing

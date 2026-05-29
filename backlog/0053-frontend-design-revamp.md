@@ -1,7 +1,7 @@
 ---
 id: 53
 title: "Full frontend design + UX revamp (Dusk 2.0)"
-status: in-progress
+status: closed
 priority: medium
 type: ux
 source: planning

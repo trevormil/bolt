@@ -1,7 +1,7 @@
 ---
 id: 48
 title: "External gateway: real network exposure (LAN bind + internet tunnel)"
-status: open
+status: icebox
 priority: medium
 type: feature
 source: planning
@@ -40,3 +40,12 @@ The token + CSRF guard + headers make LAN exposure defensible today; this ticket
 is the bind + reach + ergonomics. Pairs with #49 (Telegram as the other remote
 surface) toward the full OpenClaw external-gateway story. True multi-channel
 abstraction is #50.
+
+## Reframe (2026-05-28) — Telegram is the entrypoint; no network exposure
+Trevor's call: we are **not** exposing the daemon to the network. Telegram (#49)
+is the remote entrypoint — the bot reaches OUT to Telegram's servers (long-poll),
+so "reach your agent from anywhere" works with the daemon staying **loopback-only**
+(zero inbound attack surface; no token-over-LAN, no TLS, no tunnel). Iceboxed.
+The LAN-bind security primitives (token, CSRF/DNS-rebind guard, fail-closed
+non-loopback startup) stay in the codebase but unused by default. Revisit only if
+a genuine need for direct web exposure appears.
