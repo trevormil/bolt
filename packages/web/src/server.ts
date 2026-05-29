@@ -871,11 +871,16 @@ export function buildApp(
     const usd = Number(body.amountUsdc);
     if (!Number.isFinite(usd) || usd <= 0)
       return c.json({ error: "amountUsdc must be a number > 0" }, 400);
+    // Reject sub-micro amounts that round to 0 µUSDC — they'd mint a fundable
+    // link for a zero-amount transfer (mirrors the agent tool's microOrNull).
+    const micro = Math.round(usd * 1e6);
+    if (micro < 1)
+      return c.json({ error: "amountUsdc is too small (rounds to zero)" }, 400);
     const req = paymentRequests.create({
       personaId: id,
       toAddress: addr,
       denom: env.VELLUM_DENOM,
-      amount: String(Math.round(usd * 1e6)),
+      amount: String(micro),
       memo: body.memo?.trim() || `Fund ${id}`,
     });
     return c.json(req, 201);
@@ -987,6 +992,12 @@ export function buildApp(
     const usd = Number(body.amountUsdc);
     if (!Number.isFinite(usd) || usd <= 0)
       return c.json({ error: "amountUsdc must be a number > 0" }, 400);
+    // Reject sub-micro amounts that round to 0 µUSDC (mirrors microOrNull) — a
+    // zero-amount deposit request would render a fundable link that builds a
+    // zero MsgTransferTokens.
+    const micro = Math.round(usd * 1e6);
+    if (micro < 1)
+      return c.json({ error: "amountUsdc is too small (rounds to zero)" }, 400);
     const req = depositRequests.create({
       personaId: id,
       collectionId: vault.collectionId,
@@ -995,7 +1006,7 @@ export function buildApp(
       backingAddress: vault.backingAddress,
       agentAddress,
       denom: env.VELLUM_DENOM,
-      amount: String(Math.round(usd * 1e6)),
+      amount: String(micro),
       memo: body.memo?.trim() || `Fund ${vault.symbol} vault`,
     });
     return c.json(req, 201);

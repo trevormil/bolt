@@ -757,6 +757,14 @@ describe("payment requests (0014)", () => {
       (await post("/api/personas/atlas/payment-requests", { amountUsdc: 0 }))
         .status,
     ).toBe(400);
+    // positive but rounds to 0 µUSDC → rejected (#63 review)
+    expect(
+      (
+        await post("/api/personas/atlas/payment-requests", {
+          amountUsdc: 0.0000001,
+        })
+      ).status,
+    ).toBe(400);
     expect(
       (await post("/api/personas/ghost/payment-requests", { amountUsdc: 5 }))
         .status,
@@ -889,6 +897,15 @@ describe("vault deposit requests (#62)", () => {
         await post("/api/personas/atlas/deposit-requests", {
           collectionId: "777",
           amountUsdc: 0,
+        })
+      ).status,
+    ).toBe(400);
+    // positive but rounds to 0 µUSDC → rejected (#63 review)
+    expect(
+      (
+        await post("/api/personas/atlas/deposit-requests", {
+          collectionId: "777",
+          amountUsdc: 0.0000001,
         })
       ).status,
     ).toBe(400);

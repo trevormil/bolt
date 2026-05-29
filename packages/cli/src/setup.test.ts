@@ -111,4 +111,25 @@ describe("runSetup (#19 install wizard core)", () => {
     );
     expect(readFileSync(without, "utf8")).not.toContain("TELEGRAM_BOT_TOKEN");
   });
+
+  test("rejects a non-integer Telegram chat id — nothing written (#63 review)", async () => {
+    const { mnemonic } = await generateWallet();
+    const make = (opts: Parameters<typeof createEngine>[0]) =>
+      createEngine({ ...opts, dbPath: ":memory:", embedder: null });
+    const envPath = join(mkdtempSync(join(tmpdir(), "vellum-setup-")), ".env");
+    await expect(
+      runSetup(
+        {
+          mnemonic,
+          personaName: "Solo",
+          telegramBotToken: "123456:ABC-token",
+          telegramPrincipalChatId: "not-a-number",
+        },
+        { envPath, createEngine: make },
+      ),
+    ).rejects.toThrow(/integer/);
+    // The throw happens before upsertEnvFile, so the .env is never written —
+    // a typo can't become a boot blocker.
+    expect(() => readFileSync(envPath, "utf8")).toThrow();
+  });
 });

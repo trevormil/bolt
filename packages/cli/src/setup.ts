@@ -63,8 +63,14 @@ export async function runSetup(
   // Telegram is OPTIONAL (#49) — only persisted when a token was provided.
   if (answers.telegramBotToken?.trim())
     updates.TELEGRAM_BOT_TOKEN = answers.telegramBotToken.trim();
-  if (answers.telegramPrincipalChatId?.trim())
-    updates.TELEGRAM_PRINCIPAL_CHAT_ID = answers.telegramPrincipalChatId.trim();
+  if (answers.telegramPrincipalChatId?.trim()) {
+    // Validate before writing .env (mirrors the web setup route): a non-integer
+    // chat id is coerced to NaN by the env schema and would block the next boot.
+    const chat = answers.telegramPrincipalChatId.trim();
+    if (!/^-?[0-9]+$/.test(chat))
+      throw new Error("Telegram chat id must be an integer");
+    updates.TELEGRAM_PRINCIPAL_CHAT_ID = chat;
+  }
   const wroteKeys = upsertEnvFile(deps.envPath, updates);
 
   // Build the engine with the chosen mnemonic explicitly — env was just written
