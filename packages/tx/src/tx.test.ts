@@ -154,6 +154,59 @@ describe("TxManager — reconciliation invariant", () => {
     tm.close();
   });
 
+  test("auto-reconcile re-drives a left-pending tx WITHOUT a restart (#81)", async () => {
+    // Before #81, a confirm that timed out sat PENDING until the next daemon
+    // restart's reconcile(). reconcileStale() is the in-process safety net.
+    let mode: "timeout" | "ok" = "timeout";
+    const tm = mgr(
+      baseChain({
+        confirmTx: async () => {
+          if (mode === "timeout")
+            throw new Error("tx HASH not committed within 20s");
+          return { height: 77, code: 0 };
+        },
+      }),
+    );
+    const p = await tm.spend({ personaId: "a", to: DEST, amount: "1000000" });
+    await waitFor(() => tm.get(p.id)!.error !== null);
+    expect(tm.get(p.id)!.status).toBe("pending");
+
+    // The commit lands after the initial window. staleMs=0 so the just-touched
+    // row is eligible; the sweep re-confirms it with no restart.
+    mode = "ok";
+    expect(await tm.reconcileStale(0)).toBe(1);
+    expect(tm.get(p.id)!.status).toBe("confirmed");
+    expect(tm.get(p.id)!.height).toBe(77);
+    expect(ledger.list({ personaId: "a" })).toHaveLength(1);
+    tm.close();
+  });
+
+  test("startAutoReconcile settles a stuck-pending tx on its interval (#81)", async () => {
+    let mode: "timeout" | "ok" = "timeout";
+    const tm = mgr(
+      baseChain({
+        confirmTx: async () => {
+          if (mode === "timeout")
+            throw new Error("tx HASH not committed within 20s");
+          return { height: 88, code: 0 };
+        },
+      }),
+    );
+    const p = await tm.spend({ personaId: "a", to: DEST, amount: "1000000" });
+    await waitFor(() => tm.get(p.id)!.error !== null);
+    expect(tm.get(p.id)!.status).toBe("pending");
+
+    // Fast tick + staleMs=0 so each sweep re-drives the pending row; once the
+    // chain confirms, the loop settles it and stop() halts the timer.
+    const stop = tm.startAutoReconcile(10, 0);
+    mode = "ok";
+    await waitFor(() => tm.get(p.id)!.status === "confirmed");
+    stop();
+    expect(tm.get(p.id)!.height).toBe(88);
+    expect(ledger.list({ personaId: "a" })).toHaveLength(1);
+    tm.close();
+  });
+
   test("a pending tx (incl. after timeout) blocks the next spend until it settles", async () => {
     let mode: "timeout" | "ok" = "timeout";
     let broadcasts = 0;

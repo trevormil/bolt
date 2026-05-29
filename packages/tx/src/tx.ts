@@ -387,6 +387,50 @@ export class TxManager {
     return pendings.length;
   }
 
+  /**
+   * Re-drive broadcast txs that the initial out-of-band confirm left PENDING —
+   * a commit that landed AFTER confirmTx's window (#81). Only sweeps rows whose
+   * hash is recorded and that haven't been touched for `staleMs`, so it never
+   * races the in-flight initial confirm (which keeps `updated` fresh while it
+   * polls). Returns how many it re-drove.
+   */
+  async reconcileStale(staleMs: number): Promise<number> {
+    const cutoff = Date.now() - staleMs;
+    const stale = this.pending().filter(
+      (p) => p.status === "pending" && p.hash && p.updated <= cutoff,
+    );
+    for (const p of stale) await this.confirmPending(p.id);
+    return stale.length;
+  }
+
+  /**
+   * Periodic safety net behind submit()'s one-shot confirm: without it a tx that
+   * commits after confirmTx times out would sit PENDING until the next daemon
+   * restart's reconcile() — the withdrawal-stuck-pending bug (#81). A PENDING row
+   * also blocks the persona's next tx (the durable guard), so an orphaned confirm
+   * freezes the wallet entirely. Sweeps stale-pending rows every `intervalMs`;
+   * non-overlapping (skips a tick if the prior sweep is still running) and the
+   * timer is unref'd so it never keeps the process alive on its own. Returns a
+   * stop handle for clean shutdown.
+   */
+  startAutoReconcile(intervalMs = 15_000, staleMs = 20_000): () => void {
+    let sweeping = false;
+    const timer = setInterval(() => {
+      if (sweeping) return;
+      sweeping = true;
+      void this.reconcileStale(staleMs)
+        .then((n) => {
+          if (n) log.info(`auto-reconcile re-drove ${n} stale pending tx`);
+        })
+        .catch((e) => log.warn(`auto-reconcile sweep failed: ${e}`))
+        .finally(() => {
+          sweeping = false;
+        });
+    }, intervalMs);
+    (timer as unknown as { unref?: () => void }).unref?.();
+    return () => clearInterval(timer);
+  }
+
   get(id: string): PendingTx | null {
     const row = this.db
       .query("SELECT * FROM tx WHERE id = ?")

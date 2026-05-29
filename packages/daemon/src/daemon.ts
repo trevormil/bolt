@@ -31,6 +31,12 @@ export async function startDaemon(): Promise<void> {
   await engine.txManager
     .reconcile()
     .catch((e) => log.warn(`reconcile failed: ${e}`));
+  // Keep draining PENDING txs while we run (#81): the initial out-of-band confirm
+  // gives up after ~20s, so a withdrawal that commits later would otherwise sit
+  // PENDING — and freeze the persona's next tx (the durable guard) — until the
+  // next restart. This sweep re-confirms stale-pending rows on a cadence so they
+  // settle on their own.
+  const stopAutoReconcile = engine.txManager.startAutoReconcile();
 
   // Web/PWA server. Fail closed: never bind beyond loopback without a token.
   if (!isLoopback(env.WEB_HOST) && !env.VELLUM_API_TOKEN) {
@@ -71,6 +77,7 @@ export async function startDaemon(): Promise<void> {
   // stops us. Best-effort + idempotent (closeAll clears its own state).
   for (const sig of ["SIGTERM", "SIGINT"] as const)
     process.once(sig, () => {
+      stopAutoReconcile();
       void engine.mcp.closeAll().finally(() => process.exit(0));
     });
 
