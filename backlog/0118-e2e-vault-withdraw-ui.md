@@ -1,11 +1,12 @@
 ---
 id: 118
 title: "e2e: Vault withdraw — agent within-cap + pending→confirmed UI status"
-status: open
+status: in-progress
 priority: high
 type: testing
 source: trevor
 created: 2026-05-29
+updated: 2026-05-29
 refs: ["0106-test-coverage-backfill.md", "0099-tx-state-machine-hardening.md", "0081-vault-withdrawal-stuck-pending.md"]
 ---
 
