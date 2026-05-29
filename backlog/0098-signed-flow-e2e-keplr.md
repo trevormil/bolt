@@ -1,8 +1,8 @@
 ---
 id: 98
 title: "Signed-flow e2e via the Keplr mock — land the LCD route interception"
-status: open
-prs: []
+status: in-progress
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/89"]
 priority: medium
 type: testing
 source: observed
