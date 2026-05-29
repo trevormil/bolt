@@ -307,6 +307,67 @@ describe("web API", () => {
     ).toBe(true);
   });
 
+  test("unified observability feed merges events + ledger, keeps settlement, dedups dupes (#95)", async () => {
+    await post("/api/personas", { name: "Atlas" });
+    // An ops event (latency/ok) + a per-turn ledger "message" cost entry (no
+    // txHash) recorded together → the message should dedup into the event.
+    engine.events.emit({
+      personaId: "atlas",
+      kind: "chat_out",
+      summary: "reply sent",
+      latencyMs: 800,
+      costUsd: 0.002,
+      tokens: 100,
+      ok: true,
+    });
+    engine.ledger.recordAgentRun("atlas", "chat · hi", [
+      {
+        model: "m",
+        tier: "cheap",
+        promptTokens: 50,
+        completionTokens: 50,
+        totalTokens: 100,
+        costUsd: 0.002,
+        ms: 800,
+      },
+    ]);
+    // A settlement entry WITH a txHash → must always survive.
+    engine.ledger.recordOnchain({
+      personaId: "atlas",
+      kind: "spend",
+      summary: "sent 5 USDC",
+      authority: "agent",
+      costUsd: 0,
+      tokens: 0,
+      txHash: "SETTLE1",
+    });
+
+    const obs = (await (
+      await app.request("/api/personas/atlas/observability")
+    ).json()) as {
+      rows: { source: string; kind: string; txHash: string | null }[];
+      summary: { byKind: Record<string, number> };
+      latencyByKind: Record<string, number>;
+      budget: { burndown: { projectedUsd: number } };
+    };
+
+    // The settlement row is present and carries the on-chain hash.
+    expect(
+      obs.rows.some((r) => r.source === "ledger" && r.txHash === "SETTLE1"),
+    ).toBe(true);
+    // The chat_out event survives...
+    expect(
+      obs.rows.some((r) => r.source === "event" && r.kind === "chat_out"),
+    ).toBe(true);
+    // ...and the duplicate ledger "message" entry did NOT (deduped into it).
+    expect(
+      obs.rows.some((r) => r.source === "ledger" && r.kind === "message"),
+    ).toBe(false);
+    // Aggregates ride along.
+    expect(obs.latencyByKind.chat_out).toBe(800);
+    expect(typeof obs.budget.burndown.projectedUsd).toBe("number");
+  });
+
   test("vault lifecycle: create (agent) → list → withdraw (governed)", async () => {
     await post("/api/personas", { name: "Atlas" });
     const created = await post("/api/personas/atlas/vaults", {

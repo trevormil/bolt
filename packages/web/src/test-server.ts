@@ -68,6 +68,45 @@ function makeEngine(): Engine {
     role: "personal assistant",
     voice: "friendly and concise",
   });
+  // A little seeded activity (#95) so the unified Activity feed renders rows —
+  // an ops event, a tool call, an on-chain settlement (kept, with a tx), and the
+  // per-turn ledger cost (deduped into the chat_out event).
+  engine.events.emit({
+    personaId: "atlas",
+    kind: "chat_out",
+    summary: "reply sent",
+    latencyMs: 640,
+    costUsd: 0.0021,
+    tokens: 1200,
+    ok: true,
+  });
+  engine.events.emit({
+    personaId: "atlas",
+    kind: "tool_call",
+    summary: "tool:get_balance",
+    ok: true,
+    meta: { tool: "get_balance" },
+  });
+  engine.ledger.recordAgentRun("atlas", "chat · hello", [
+    {
+      model: "anthropic/claude-haiku-4.5",
+      tier: "cheap",
+      promptTokens: 600,
+      completionTokens: 600,
+      totalTokens: 1200,
+      costUsd: 0.0021,
+      ms: 640,
+    },
+  ]);
+  engine.ledger.recordOnchain({
+    personaId: "atlas",
+    kind: "spend",
+    summary: "sent 5 USDC",
+    authority: "agent",
+    costUsd: 0,
+    tokens: 0,
+    txHash: "E2ESPEND1",
+  });
   return engine;
 }
 

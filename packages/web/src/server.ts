@@ -26,6 +26,9 @@ import {
   voteTally,
   llmBudget,
   evaluateBudget,
+  mergeObservability,
+  latencyByKind,
+  projectMonthlySpend,
   BudgetLimits,
   BudgetLimitsSchema,
   Model,
@@ -759,6 +762,35 @@ export function buildApp(
     return c.json({
       summary: engine.events.summary(id),
       events: engine.events.recent(id, limit),
+    });
+  });
+
+  // Unified observability feed (#95): one timeline merging the operational event
+  // store (latency / errors / kind) with the proof-of-action ledger (authority +
+  // on-chain txHash), plus the summary, latency-by-kind, budget windows, and a
+  // month-end burn-down projection — everything the (now-retired) separate
+  // Activity + Ledger screens showed, in one payload.
+  app.get("/api/personas/:id/observability", (c) => {
+    const id = c.req.param("id");
+    if (!engine.store.getPersona(id))
+      return c.json({ error: "unknown persona" }, 404);
+    const limit = Math.min(
+      500,
+      Math.max(1, Number(c.req.query("limit")) || 200),
+    );
+    const events = engine.events.recent(id, limit);
+    const ledger = engine.ledger.list({ personaId: id, limit });
+    const llm = llmBudget(engine.ledger, id);
+    const monthlyCap = BudgetLimits.get(engine.settings, id).value.monthlyUsd;
+    return c.json({
+      summary: engine.events.summary(id),
+      latencyByKind: latencyByKind(events),
+      rows: mergeObservability(events, ledger),
+      budget: {
+        llm,
+        evaluation: evaluateBudget(engine, id),
+        burndown: projectMonthlySpend(llm.spentUsd, monthlyCap),
+      },
     });
   });
 

@@ -16,23 +16,6 @@ export interface Persona {
   created: number;
   address: string | null;
 }
-export interface LedgerEntry {
-  id: number;
-  ts: number;
-  personaId: string;
-  kind: string;
-  summary: string;
-  authority: string;
-  costUsd: number;
-  tokens: number;
-  txHash: string | null;
-}
-export interface LedgerSummary {
-  entries: number;
-  totalCostUsd: number;
-  totalTokens: number;
-  byKind: Record<string, number>;
-}
 export interface ChatReply {
   reply: string;
   personaId: string;
@@ -227,11 +210,6 @@ export const api = {
       json<{ id: string; hash: string | null; status: string }>(r),
     ),
 
-  ledger: (id: string) =>
-    fetch(`/api/personas/${id}/ledger`).then((r) =>
-      json<{ entries: LedgerEntry[]; summary: LedgerSummary }>(r),
-    ),
-
   chat: (input: {
     conversationId: string;
     personaId: string;
@@ -298,10 +276,12 @@ export const api = {
       body: JSON.stringify({ model }),
     }).then((r) => json<Resolved<string | null>>(r)),
 
-  // Observability event timeline + window summary (#42).
-  events: (id: string, limit = 100) =>
-    fetch(`/api/personas/${id}/events?limit=${limit}`).then((r) =>
-      json<{ summary: EventSummary; events: EventItem[] }>(r),
+  // Unified observability feed (#95) — merged events + ledger, summary, latency
+  // breakdown, budget windows + month-end burn-down. Replaces the separate
+  // events + ledger reads the Activity and Ledger screens used.
+  observability: (id: string, limit = 200) =>
+    fetch(`/api/personas/${id}/observability?limit=${limit}`).then((r) =>
+      json<ObservabilityResponse>(r),
     ),
 
   // PUBLIC multisig sign-off info for a vault (#45 slice 3) — for the /vote page.
@@ -517,17 +497,6 @@ export interface BudgetResponse {
 }
 
 // Observability events (#42).
-export interface EventItem {
-  id: number;
-  ts: number;
-  kind: string;
-  summary: string;
-  latencyMs: number;
-  costUsd: number;
-  tokens: number;
-  ok: boolean;
-  meta: Record<string, unknown>;
-}
 export interface EventSummaryWindow {
   events: number;
   costUsd: number;
@@ -539,6 +508,39 @@ export interface EventSummary {
   last24h: EventSummaryWindow;
   last7d: EventSummaryWindow;
   last30d: EventSummaryWindow;
+}
+
+// Unified observability feed (#95) — one timeline merging operational events with
+// proof-of-action ledger settlement (authority + on-chain tx).
+export type ObservabilitySource = "event" | "ledger";
+export interface UnifiedRow {
+  id: string;
+  ts: number;
+  kind: string;
+  summary: string;
+  source: ObservabilitySource;
+  latencyMs?: number;
+  costUsd: number;
+  tokens: number;
+  ok?: boolean;
+  authority?: string;
+  txHash?: string | null;
+  meta: Record<string, unknown>;
+}
+export interface Burndown {
+  projectedUsd: number;
+  capUsd?: number;
+  willBreach: boolean;
+}
+export interface ObservabilityResponse {
+  summary: EventSummary;
+  latencyByKind: Record<string, number>;
+  rows: UnifiedRow[];
+  budget: {
+    llm: BudgetWindow;
+    evaluation: BudgetResponse["evaluation"];
+    burndown: Burndown;
+  };
 }
 
 // Onboarding setup status (#19). Booleans/counts only — never secret values or

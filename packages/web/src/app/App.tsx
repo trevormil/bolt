@@ -5,15 +5,14 @@ import { BrandLogo } from "./BrandLogo.tsx";
 import { SetupFlow } from "./SetupFlow.tsx";
 import { PersonaForm } from "./PersonaForm.tsx";
 import { Chat } from "./Chat.tsx";
-import { LedgerView } from "./Ledger.tsx";
 import { VaultsView } from "./Vaults.tsx";
 import { ActivityView } from "./Activity.tsx";
 import { SettingsView } from "./Settings.tsx";
 import { WalletPanel } from "./WalletPanel.tsx";
 import { useWallet } from "./wallet-context.tsx";
 
-type Tab = "chat" | "vaults" | "ledger" | "activity" | "settings";
-const TABS: Tab[] = ["chat", "vaults", "ledger", "activity", "settings"];
+type Tab = "chat" | "vaults" | "activity" | "settings";
+const TABS: Tab[] = ["chat", "vaults", "activity", "settings"];
 
 export function App() {
   const [personas, setPersonas] = useState<Persona[]>([]);
@@ -181,10 +180,8 @@ export function App() {
                   <VaultsView personaId={selected.id} />
                 ) : tab === "activity" ? (
                   <ActivityView personaId={selected.id} />
-                ) : tab === "settings" ? (
-                  <SettingsView personaId={selected.id} />
                 ) : (
-                  <LedgerView personaId={selected.id} />
+                  <SettingsView personaId={selected.id} />
                 )}
               </div>
               <WalletPanel personaId={selected.id} />
