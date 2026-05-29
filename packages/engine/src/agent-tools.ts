@@ -1,5 +1,6 @@
 import { CapabilityDeniedError } from "@vellum/capabilities";
 import type { ToolInvoker, ToolSpec } from "@vellum/agent";
+import { getApprovalTracker } from "@vellum/chain";
 import { isBb1Address, TxRejectedError } from "@vellum/tx";
 import type { VaultGating } from "@vellum/tokenization";
 import { env } from "@vellum/shared";
@@ -304,7 +305,11 @@ export function vaultTools(
 export function balanceTools(
   engine: Engine,
   personaId: string,
+  // The on-chain usage-tracker reader (#94) — injectable so tests stay offline.
+  // Defaults to the real ABCI query over the RPC.
+  opts: { approvalTracker?: typeof getApprovalTracker } = {},
 ): { tools: ToolSpec[]; invoke: ToolInvoker } {
+  const readTracker = opts.approvalTracker ?? getApprovalTracker;
   const tools: ToolSpec[] = [
     {
       name: "check_balance",
@@ -428,7 +433,33 @@ export function balanceTools(
           `${v.gating.multisig.threshold}-of-${v.gating.multisig.signers.length} multisig sign-off`,
         );
       const rule = rules.length ? rules.join("; ") : "no withdrawal limits";
-      return `${v.symbol} (collection ${v.collectionId}): ${fmtUsdc(escrowedMicro)} USDC escrowed. Withdrawal rule: ${rule}.`;
+      // Per-period remaining allowance (#94): read the on-chain usage tracker.
+      // The vault's cap is per-initiatedBy (the agent), so the tracker is keyed by
+      // trackerType="initiatedBy" + the agent address. Best-effort — if the chain
+      // read fails, just omit it rather than block the (otherwise local) reply.
+      let allowance = "";
+      const cap = v.gating?.amount;
+      const agentAddress = engine.wallets.addressFor(personaId);
+      if (cap && agentAddress) {
+        try {
+          const tracker = await readTracker({
+            collectionId,
+            approvalId: v.withdrawApprovalId,
+            amountTrackerId: `withdrawal-${cap.period}`,
+            trackerType: "initiatedBy",
+            approvedAddress: agentAddress,
+          });
+          const usedMicro = Number(tracker?.amount ?? "0");
+          const remainingMicro = Math.max(
+            0,
+            Math.round(cap.limitUsd * 1e6) - usedMicro,
+          );
+          allowance = ` You have ${fmtUsdc(String(remainingMicro))} of ${cap.limitUsd} USDC left to withdraw this ${cap.period}.`;
+        } catch {
+          // chain unreachable — omit the live allowance
+        }
+      }
+      return `${v.symbol} (collection ${v.collectionId}): ${fmtUsdc(escrowedMicro)} USDC escrowed. Withdrawal rule: ${rule}.${allowance}`;
     }
 
     if (name === "request_status") {

@@ -164,16 +164,22 @@ describe("balance read/awareness tools (#88)", () => {
       withdrawLimit: 5,
       withdrawPeriod: "daily",
     });
-    const out = await balanceTools(e, "p").invoke("vault_details", {
-      collectionId: "777",
+    // Inject a fake usage tracker (#94) — 2 USDC used of the 5/day cap — so the
+    // test stays offline and asserts the remaining-allowance math.
+    const tools = balanceTools(e, "p", {
+      approvalTracker: async () => ({
+        numTransfers: "1",
+        amount: "2000000",
+        lastUpdatedAt: "0",
+      }),
     });
+    const out = await tools.invoke("vault_details", { collectionId: "777" });
     expect(out).toContain("vRENT");
     expect(out).toContain("escrowed");
     expect(out).toContain("5 USDC per daily");
+    expect(out).toContain("3.00 of 5 USDC left to withdraw this daily");
     expect(
-      await balanceTools(e, "p").invoke("vault_details", {
-        collectionId: "999",
-      }),
+      await tools.invoke("vault_details", { collectionId: "999" }),
     ).toContain("No vault");
   });
 
