@@ -175,6 +175,12 @@ function makeEngine(): Engine {
 
 const engine = makeEngine();
 await engine.wallets.ensureWallet("atlas"); // provision the wallet (address shown)
+// Atlas's deterministic signer address (derived from TEST_MNEMONIC, index 0).
+// Used by the LCD GET tx stub to fabricate a coin_received event that satisfies
+// /api/payment-requests/:id/confirm's verifyCredit check — without it, the
+// server-side credit verification reads zero credited and 400s, blocking the
+// public /pay/:id e2e (#121).
+const ATLAS_ADDRESS = engine.wallets.walletFor("atlas")!.address;
 const app = buildApp(engine);
 
 // Same-origin cosmos LCD stubs (#98). The page's `signAndBroadcast` hits these
@@ -211,6 +217,19 @@ function handleLcd(req: Request, url: URL): Response | null {
         txhash: "E2EHUMANTX",
         height: "1",
         raw_log: "",
+        // verifyCredit sums coin_received events that name `toAddress` as the
+        // receiver. The payment-request flow has the persona's signer address
+        // as the recipient; fabricating a 1000 USDC credit lets confirm pass
+        // for any reasonable request amount in tests.
+        events: [
+          {
+            type: "coin_received",
+            attributes: [
+              { key: "receiver", value: ATLAS_ADDRESS },
+              { key: "amount", value: `1000000000${DENOM}` },
+            ],
+          },
+        ],
       },
     });
   return null;
