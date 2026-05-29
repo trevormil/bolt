@@ -88,7 +88,17 @@ export function buildBot(
       }
       log.info(`${label} from @${who(ctx)}`);
       seen(ctx);
-      return handler(ctx);
+      // Catch-all (#89): a handler that throws must never become a silent no-op
+      // (grammY's default would swallow it). Reply with a generic failure so the
+      // user always gets *something* back, and log the cause. Handlers still
+      // catch their own known errors (CapabilityDenied/TxRejected) for a precise
+      // message; this is only the backstop for the unexpected.
+      return Promise.resolve(handler(ctx)).catch(async (e: unknown) => {
+        log.warn(`${label} failed: ${e instanceof Error ? e.message : e}`);
+        await ctx.reply(
+          "Sorry — something went wrong handling that. Please try again.",
+        );
+      });
     };
   // The text after a /command (grammy puts it on ctx.match). Used by commands
   // that take an argument (/switch, /new, /spend). Never logged.

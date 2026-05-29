@@ -105,6 +105,16 @@ describe("telegram handlers (engine-wired)", () => {
     expect(engine.wallets.addressFor("assistant")).toMatch(/^bb1/);
   });
 
+  test("/spend over the balance replies with the reason — never a silent no-op (#89)", async () => {
+    const engine = engineWithFakes();
+    const { c, replies } = ctx();
+    const dest = "bb1" + "q".repeat(39);
+    // The tx chain reports 10 USDC; spending 20 → insufficient → TxRejectedError.
+    // Before #89 this threw past the handler → grammY swallowed it → no reply.
+    await onSpend(c, engine, new Sessions(), `${dest} 20`);
+    expect(replies[0]).toMatch(/couldn't send|insufficient/i);
+  });
+
   test("/balance shows the USDC balance", async () => {
     const engine = engineWithFakes();
     const { c, replies } = ctx();

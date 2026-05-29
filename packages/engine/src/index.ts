@@ -16,7 +16,11 @@ export {
 } from "./agent-tools.ts";
 // Re-export the spend input guards (#65) so surfaces (telegram) can pre-validate
 // without a direct @vellum/tx dep; TxManager.spend stays the final chokepoint.
-export { isBb1Address, isPositiveMicroAmount } from "@vellum/tx";
+export {
+  isBb1Address,
+  isPositiveMicroAmount,
+  TxRejectedError,
+} from "@vellum/tx";
 export { PaymentRequests, type PaymentRequest } from "./payment-requests.ts";
 export { DepositRequests, type DepositRequest } from "./deposit-requests.ts";
 export {

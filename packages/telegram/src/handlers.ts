@@ -2,6 +2,7 @@ import {
   chat,
   grantDefaultCapabilities,
   CapabilityDeniedError,
+  TxRejectedError,
   isBb1Address,
   type Engine,
 } from "@vellum/engine";
@@ -272,6 +273,12 @@ export async function onSpend(
   } catch (e) {
     if (e instanceof CapabilityDeniedError) {
       await ctx.reply(`Denied: ${e.action.summary}.`);
+      return;
+    }
+    // Insufficient funds / pre-flight chain rejection → tell the user the reason
+    // instead of a silent no-op on the money path (#89).
+    if (e instanceof TxRejectedError) {
+      await ctx.reply(`Couldn't send that: ${e.message}.`);
       return;
     }
     throw e;

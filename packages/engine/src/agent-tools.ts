@@ -1,6 +1,6 @@
 import { CapabilityDeniedError } from "@vellum/capabilities";
 import type { ToolInvoker, ToolSpec } from "@vellum/agent";
-import { isBb1Address } from "@vellum/tx";
+import { isBb1Address, TxRejectedError } from "@vellum/tx";
 import type { VaultGating } from "@vellum/tokenization";
 import { env } from "@vellum/shared";
 import type { Engine } from "./engine.ts";
@@ -280,6 +280,14 @@ export function vaultTools(
       if (e instanceof CapabilityDeniedError) {
         emitVaultTool(name, false); // gate denied → record the blocked attempt
         return `Denied: ${e.action.summary}.`;
+      }
+      // Pre-flight rejection (over the vault cap / time-locked / unsigned-off /
+      // insufficient escrow). Return it as a clean tool result so the agent
+      // relays the reason, instead of throwing into the loop → a silent failure
+      // on every surface (#89). Mirrors send_usdc's handling.
+      if (e instanceof TxRejectedError) {
+        emitVaultTool(name, false);
+        return `Couldn't do that: ${e.message}.`;
       }
       throw e;
     }
