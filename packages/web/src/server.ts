@@ -1184,11 +1184,57 @@ export function buildApp(
     });
   });
 
+  // Chat sessions (#72): a persona can hold several named conversations, each
+  // with its own transcript. These surface engine.conversations; the store
+  // scopes every op by (id, personaId) so one persona's sessions can't be read
+  // or mutated under another (the memory wall).
+  app.get("/api/personas/:id/conversations", (c) => {
+    const id = c.req.param("id");
+    if (!engine.store.getPersona(id))
+      return c.json({ error: "unknown persona" }, 404);
+    return c.json({ conversations: engine.conversations.list(id) });
+  });
+
+  app.post("/api/personas/:id/conversations", async (c) => {
+    const id = c.req.param("id");
+    if (!engine.store.getPersona(id))
+      return c.json({ error: "unknown persona" }, 404);
+    const body = (await c.req.json().catch(() => ({}))) as { title?: unknown };
+    const title = typeof body.title === "string" ? body.title : undefined;
+    return c.json(engine.conversations.create(id, title), 201);
+  });
+
+  app.patch("/api/personas/:id/conversations/:cid", async (c) => {
+    const id = c.req.param("id");
+    const cid = c.req.param("cid");
+    const body = (await c.req.json().catch(() => ({}))) as { title?: unknown };
+    const title = typeof body.title === "string" ? body.title.trim() : "";
+    if (!title) return c.json({ error: "title is required" }, 400);
+    const updated = engine.conversations.rename(id, cid, title);
+    if (!updated) return c.json({ error: "unknown conversation" }, 404);
+    return c.json(updated);
+  });
+
+  app.delete("/api/personas/:id/conversations/:cid", (c) => {
+    const id = c.req.param("id");
+    const cid = c.req.param("cid");
+    if (!engine.conversations.remove(id, cid))
+      return c.json({ error: "unknown conversation" }, 404);
+    return c.json({ ok: true });
+  });
+
+  app.get("/api/personas/:id/conversations/:cid/messages", (c) => {
+    const id = c.req.param("id");
+    const cid = c.req.param("cid");
+    return c.json({ messages: engine.conversations.messages(id, cid) });
+  });
+
   app.post("/api/chat", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as {
       conversationId?: string;
       personaId?: string;
       message?: string;
+      humanAddress?: unknown;
     };
     const { conversationId, personaId, message } = body;
     if (!conversationId || !personaId || !message?.trim()) {
@@ -1200,10 +1246,35 @@ export function buildApp(
     if (!engine.store.getPersona(personaId)) {
       return c.json({ error: `unknown persona: ${personaId}` }, 404);
     }
+    // The human's connected Keplr address (#73) — per-turn context only. Reject a
+    // malformed value (client bug) rather than silently dropping it; absent is
+    // fine (not connected).
+    const humanAddress =
+      typeof body.humanAddress === "string" ? body.humanAddress.trim() : "";
+    if (humanAddress && !isBb1Address(humanAddress))
+      return c.json({ error: "humanAddress must be a bb1 address" }, 400);
+    // Bind/record the session (#72). ensure() throws if this conversation id
+    // belongs to a DIFFERENT persona (the wall) → 400.
+    try {
+      engine.conversations.ensure(conversationId, personaId);
+    } catch {
+      return c.json(
+        { error: "conversation belongs to a different persona" },
+        400,
+      );
+    }
+    engine.conversations.append(conversationId, "user", message);
     // Shared chat flow (budget gate → routing → agent loop + vault tools →
     // ledger + memory). Identical on web + Telegram.
     const trace = tracer.trace("chat", { personaId, conversationId });
-    const r = await chat(engine, { conversationId, personaId, message, trace });
+    const r = await chat(engine, {
+      conversationId,
+      personaId,
+      message,
+      trace,
+      humanAddress: humanAddress || undefined,
+    });
+    engine.conversations.append(conversationId, "agent", r.reply);
     trace.end();
     void tracer.flush();
     return c.json({

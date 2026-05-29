@@ -19,6 +19,11 @@ export {
 export { isBb1Address, isPositiveMicroAmount } from "@vellum/tx";
 export { PaymentRequests, type PaymentRequest } from "./payment-requests.ts";
 export { DepositRequests, type DepositRequest } from "./deposit-requests.ts";
+export {
+  Conversations,
+  type Conversation,
+  type ConversationMessage,
+} from "./conversations.ts";
 export { mcpTools } from "./mcp-tools.ts";
 export {
   McpServers,

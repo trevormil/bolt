@@ -17,6 +17,7 @@ import { env, createLogger } from "@vellum/shared";
 import { VaultService, type VaultServiceDeps } from "./vaults.ts";
 import { PaymentRequests } from "./payment-requests.ts";
 import { DepositRequests } from "./deposit-requests.ts";
+import { Conversations } from "./conversations.ts";
 import { Model } from "./model-setting.ts";
 import { McpManager, type McpConnector } from "./mcp-manager.ts";
 
@@ -47,6 +48,9 @@ export interface Engine {
   // agent's request_* tools, and Telegram so every surface mints the same links.
   paymentRequests: PaymentRequests;
   depositRequests: DepositRequests;
+  // Per-persona chat sessions (#72) — the verbatim transcript + session list the
+  // web UI renders. Distinct from the routing table + persona memory.
+  conversations: Conversations;
   claimFaucet: FaucetClaim;
 }
 
@@ -140,6 +144,8 @@ export function createEngine(opts: EngineOptions = {}): Engine {
   // request_* tools), same sqlite file as everything else.
   const paymentRequests = new PaymentRequests(dbPath);
   const depositRequests = new DepositRequests(dbPath);
+  // Chat sessions (#72): same sqlite file, own tables. Surfaces share one store.
+  const conversations = new Conversations(dbPath);
   const claimFaucet = opts.claimFaucet ?? chainClaimFaucet;
   log.info(`engine ready · db=${dbPath}`);
   return {
@@ -156,6 +162,7 @@ export function createEngine(opts: EngineOptions = {}): Engine {
     vaults,
     paymentRequests,
     depositRequests,
+    conversations,
     claimFaucet,
   };
 }

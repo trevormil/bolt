@@ -168,3 +168,35 @@ describe("dispatch bounds", () => {
     orch.close();
   });
 });
+
+describe("connected human wallet context (#73)", () => {
+  const ADDR = `bb1${"q".repeat(39)}`;
+
+  test("the connected address is injected into the system context for the turn", async () => {
+    const orch = new Orchestrator(
+      store,
+      { defaultPersonaId: "atlas" },
+      captureLoop,
+    );
+    await orch.handle("conv1", "send funds to my wallet", {
+      humanAddress: ADDR,
+    });
+    const sys = systemOf(captured[0]!);
+    expect(sys).toContain(ADDR);
+    expect(sys).toContain("wallet connected");
+    orch.close();
+  });
+
+  test("nothing is injected when no address is provided (no hallucinated wallet)", async () => {
+    const orch = new Orchestrator(
+      store,
+      { defaultPersonaId: "atlas" },
+      captureLoop,
+    );
+    await orch.handle("conv1", "hello");
+    const sys = systemOf(captured[0]!);
+    expect(sys).not.toContain("wallet connected");
+    expect(sys).not.toMatch(/bb1[0-9a-z]{38,}/);
+    orch.close();
+  });
+});

@@ -26,6 +26,10 @@ export interface ChatInput {
   // vaults. Filesystem stays capability-gated either way (default-deny).
   // Interactive chats default to full tools.
   readOnly?: boolean;
+  // The human's connected Keplr address (#73), passed from the web client when a
+  // wallet is connected. Surfaced as per-turn context so the agent knows "my
+  // wallet". A public address — never persisted, never stored as a secret.
+  humanAddress?: string;
 }
 export interface ChatResult {
   reply: string;
@@ -44,7 +48,8 @@ export async function chat(
   engine: Engine,
   input: ChatInput,
 ): Promise<ChatResult> {
-  const { conversationId, personaId, message, trace, readOnly } = input;
+  const { conversationId, personaId, message, trace, readOnly, humanAddress } =
+    input;
   const t0 = Date.now();
   // chat_in (#42): one event per user turn. Metadata ONLY — never the raw body
   // (that lives in persona memory). The timeline records that a turn happened +
@@ -116,6 +121,7 @@ export async function chat(
     trace,
     tools,
     invoke,
+    humanAddress,
   });
   const costUsd = res.meters.reduce((n, m) => n + m.costUsd, 0);
   const tokens = res.meters.reduce((n, m) => n + m.totalTokens, 0);

@@ -37,6 +37,22 @@ export interface ChatReply {
   tokens: number;
 }
 
+// A chat session (#72) — one of possibly many conversations under a persona.
+export interface Conversation {
+  id: string;
+  personaId: string;
+  title: string;
+  created: number;
+  updated: number;
+}
+export interface ConversationMessage {
+  id: number;
+  conversationId: string;
+  role: "user" | "agent";
+  text: string;
+  created: number;
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -186,12 +202,45 @@ export const api = {
     conversationId: string;
     personaId: string;
     message: string;
+    // The connected Keplr address (#73) — sent so the agent knows "my wallet".
+    humanAddress?: string;
   }) =>
     fetch("/api/chat", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(input),
     }).then((r) => json<ChatReply>(r)),
+
+  // Chat sessions per persona (#72) — list / create / rename / delete + the
+  // persisted transcript. Scoped per persona server-side (memory wall).
+  listConversations: (personaId: string) =>
+    fetch(`/api/personas/${personaId}/conversations`)
+      .then((r) => json<{ conversations: Conversation[] }>(r))
+      .then((b) => b.conversations),
+
+  createConversation: (personaId: string, title?: string) =>
+    fetch(`/api/personas/${personaId}/conversations`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(title ? { title } : {}),
+    }).then((r) => json<Conversation>(r)),
+
+  renameConversation: (personaId: string, cid: string, title: string) =>
+    fetch(`/api/personas/${personaId}/conversations/${cid}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title }),
+    }).then((r) => json<Conversation>(r)),
+
+  deleteConversation: (personaId: string, cid: string) =>
+    fetch(`/api/personas/${personaId}/conversations/${cid}`, {
+      method: "DELETE",
+    }).then((r) => json<{ ok: boolean }>(r)),
+
+  conversationMessages: (personaId: string, cid: string) =>
+    fetch(`/api/personas/${personaId}/conversations/${cid}/messages`)
+      .then((r) => json<{ messages: ConversationMessage[] }>(r))
+      .then((b) => b.messages),
 
   budget: (id: string) =>
     fetch(`/api/personas/${id}/budget`).then((r) => json<BudgetResponse>(r)),

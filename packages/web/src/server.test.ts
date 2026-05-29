@@ -495,6 +495,106 @@ describe("web API", () => {
     ).toBe(404);
   });
 
+  // Chat sessions (#72) + connected-wallet context (#73).
+  test("conversation CRUD round-trips per persona", async () => {
+    await post("/api/personas", { name: "Atlas" });
+    // None to start.
+    const empty = (await (
+      await app.request("/api/personas/atlas/conversations")
+    ).json()) as { conversations: unknown[] };
+    expect(empty.conversations).toHaveLength(0);
+    // Create.
+    const created = (await post("/api/personas/atlas/conversations", {
+      title: "Taxes",
+    })) as Response;
+    expect(created.status).toBe(201);
+    const conv = (await created.json()) as { id: string; title: string };
+    expect(conv.title).toBe("Taxes");
+    // List shows it.
+    const list = (await (
+      await app.request("/api/personas/atlas/conversations")
+    ).json()) as { conversations: { id: string }[] };
+    expect(list.conversations.map((c) => c.id)).toEqual([conv.id]);
+    // Rename.
+    const renamed = await app.request(
+      `/api/personas/atlas/conversations/${conv.id}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title: "Q2 taxes" }),
+      },
+    );
+    expect(((await renamed.json()) as { title: string }).title).toBe(
+      "Q2 taxes",
+    );
+    // Delete.
+    const del = await app.request(
+      `/api/personas/atlas/conversations/${conv.id}`,
+      { method: "DELETE" },
+    );
+    expect(del.status).toBe(200);
+    const after = (await (
+      await app.request("/api/personas/atlas/conversations")
+    ).json()) as { conversations: unknown[] };
+    expect(after.conversations).toHaveLength(0);
+  });
+
+  test("chat persists the transcript to the session (survives reload)", async () => {
+    await post("/api/personas", { name: "Atlas" });
+    const conv = (await (
+      await post("/api/personas/atlas/conversations", {})
+    ).json()) as { id: string };
+    const res = await post("/api/chat", {
+      conversationId: conv.id,
+      personaId: "atlas",
+      message: "what's my balance?",
+    });
+    expect(res.status).toBe(200);
+    const msgs = (await (
+      await app.request(`/api/personas/atlas/conversations/${conv.id}/messages`)
+    ).json()) as { messages: { role: string; text: string }[] };
+    expect(msgs.messages.map((m) => m.role)).toEqual(["user", "agent"]);
+    expect(msgs.messages[0]!.text).toBe("what's my balance?");
+    expect(msgs.messages[1]!.text.length).toBeGreaterThan(0);
+  });
+
+  test("chat rejects a malformed connected wallet address (#73)", async () => {
+    await post("/api/personas", { name: "Atlas" });
+    const res = await post("/api/chat", {
+      conversationId: "c-bad-addr",
+      personaId: "atlas",
+      message: "hi",
+      humanAddress: "0xdeadbeef", // not a bb1 address
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("chat accepts a valid connected wallet address (#73)", async () => {
+    await post("/api/personas", { name: "Atlas" });
+    const res = await post("/api/chat", {
+      conversationId: "c-good-addr",
+      personaId: "atlas",
+      message: "send to my wallet",
+      humanAddress: "bb1" + "q".repeat(39),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  test("chat refuses a conversation id owned by another persona (wall)", async () => {
+    await post("/api/personas", { name: "Atlas" });
+    await post("/api/personas", { name: "Nova" });
+    const conv = (await (
+      await post("/api/personas/atlas/conversations", {})
+    ).json()) as { id: string };
+    // Nova tries to post into Atlas's conversation → refused.
+    const res = await post("/api/chat", {
+      conversationId: conv.id,
+      personaId: "nova",
+      message: "leak atlas",
+    });
+    expect(res.status).toBe(400);
+  });
+
   test("config exposes public chain settings (no secrets)", async () => {
     const body = (await (await app.request("/api/config")).json()) as {
       chainId: string;
