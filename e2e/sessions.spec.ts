@@ -19,7 +19,7 @@ test.describe("chat sessions", () => {
     await input.press("Enter");
     await expect(log.getByRole("link", { name: "link" }).first()).toBeVisible();
     await expect(
-      rail.getByRole("button", { name: /Plan my taxes e2e/ }),
+      rail.getByRole("button", { name: "Plan my taxes e2e", exact: true }),
     ).toBeVisible();
 
     // A second session starts empty (its own thread).
@@ -32,20 +32,24 @@ test.describe("chat sessions", () => {
     await input.fill("Book a flight e2e");
     await input.press("Enter");
     await expect(
-      rail.getByRole("button", { name: /Book a flight e2e/ }),
+      rail.getByRole("button", { name: "Book a flight e2e", exact: true }),
     ).toBeVisible();
 
     // Switch back to the first → its persisted history is restored.
-    await rail.getByRole("button", { name: /Plan my taxes e2e/ }).click();
+    await rail
+      .getByRole("button", { name: "Plan my taxes e2e", exact: true })
+      .click();
     await expect(log.getByText("Plan my taxes e2e")).toBeVisible();
 
     // Rename via double-click → inline edit.
-    await rail.getByRole("button", { name: /Plan my taxes e2e/ }).dblclick();
+    await rail
+      .getByRole("button", { name: "Plan my taxes e2e", exact: true })
+      .dblclick();
     const editor = rail.locator("input").first();
     await editor.fill("Q2 taxes e2e");
     await editor.press("Enter");
     await expect(
-      rail.getByRole("button", { name: /Q2 taxes e2e/ }),
+      rail.getByRole("button", { name: "Q2 taxes e2e", exact: true }),
     ).toBeVisible();
 
     // Delete it (accept the confirm dialog); the rail entry disappears.
@@ -54,7 +58,7 @@ test.describe("chat sessions", () => {
     await item.hover();
     await item.getByTitle("Delete chat").click();
     await expect(
-      rail.getByRole("button", { name: /Q2 taxes e2e/ }),
+      rail.getByRole("button", { name: "Q2 taxes e2e", exact: true }),
     ).toHaveCount(0);
   });
 });
