@@ -1,24 +1,23 @@
 import type { Page } from "@playwright/test";
 
-// Keplr mock harness (#90). The vault / wallet / multisig-vote flows are gated on
-// a connected Keplr wallet — the human is the vault manager + the tx signer — so
-// offline e2e can't drive them without a fake `window.keplr`. Call BEFORE
-// `page.goto`. Two tiers:
-//   • CONNECT (experimentalSuggestChain/enable/getKey) — VERIFIED: unlocks the
-//     address-gated flows (e.g. vault create, where the connected wallet is just
-//     the manager and the create itself is server-side). vaults.spec exercises it.
-//   • SIGN+BROADCAST (getOfflineSigner + the LCD account/broadcast/tx-query stubs
-//     below) — scaffolded for signed-flow specs (human send, escrow fund, vote),
-//     but NOT yet covered by a passing test: the LCD route interception isn't
-//     catching the cross-origin calls (signAndBroadcast still hits the real LCD →
-//     "unregistered"). The `getKey` pubKey/address/algo fields are required by the
-//     SDK's fromKeplr (omitting them throws a buffer error). See #90 for the
-//     remaining work to land the first signed-flow spec.
+// Keplr mock harness (#90 / #98). The vault / wallet / multisig-vote flows are
+// gated on a connected Keplr wallet — the human is the vault manager + the tx
+// signer — so offline e2e can't drive them without a fake `window.keplr`. Call
+// BEFORE `page.goto`. The connect tier (experimentalSuggestChain/enable/getKey)
+// unlocks address-gated flows (vault create — the wallet is just the manager and
+// the create is server-side). The sign tier is an OfflineDirectSigner whose
+// signed bytes are broadcast to the cosmos LCD — which the test-server serves
+// same-origin under /lcd/* (test-server.ts), so the human-signed flows run
+// fully offline. `getKey` returns pubKey/address/algo in full because the
+// bitbadges SDK's `fromKeplr` reads them and throws a buffer error otherwise.
 
-// A syntactically valid bb1 address — the app validates with /^bb1[0-9a-z]{38,}$/
-// (regex only, no bech32 checksum), so a fixed fake passes the manager/signer
-// guards. Distinct from the seeded "atlas" agent wallet.
-export const MOCK_HUMAN_ADDRESS = "bb1humanmocke2e0000000000000000000000000000";
+// A *checksum-valid* bb1 address (derived from a real test mnemonic during an
+// earlier devnet smoke verification, so the bech32 checksum is real). The server
+// only regex-checks (`/^bb1[0-9a-z]{38,}$/`), but the bitbadges SDK on the
+// client validates the full bech32 checksum in `fromKeplr` — a syntactically
+// valid fake is rejected with "Account address must be a validly formatted
+// BitBadges address." Distinct from the seeded "atlas" agent wallet.
+export const MOCK_HUMAN_ADDRESS = "bb1gsvdpdxec8hsu57lhxg5xem7refr233zlva7x9";
 
 export async function mockKeplr(
   page: Page,
@@ -56,49 +55,35 @@ export async function mockKeplr(
       isNanoLedger: false,
       isKeystone: false,
     };
+    // Real Keplr exposes signDirect AS A TOP-LEVEL window.keplr method (not just
+    // via getOfflineSigner) — the bitbadges SDK's fromKeplr calls
+    // `this.wallet.signDirect(chainId, signer, signDoc, opts?)`. Returns a
+    // DirectSignResponse-shaped object; the LCD broadcast (test-server /lcd/*)
+    // never verifies the signature.
+    const cannedSig = {
+      signed: null as unknown,
+      signature: {
+        pub_key: { type: "tendermint/PubKeySecp256k1", value: "" },
+        signature: "ZmFrZS1lMmUtc2lnbmF0dXJl",
+      },
+    };
     (window as unknown as { keplr: unknown }).keplr = {
       experimentalSuggestChain: async () => {},
       enable: async () => {},
       getKey: async () => key,
+      signDirect: async (
+        _chainId: string,
+        _signerAddress: string,
+        signDoc: unknown,
+      ) => ({ ...cannedSig, signed: signDoc }),
       getOfflineSigner: () => signer,
       getOfflineSignerOnlyAmino: () => signer,
       getOfflineSignerAuto: async () => signer,
     };
   }, address);
 
-  // Stub every LCD call the wallet path makes so nothing hits the real devnet:
-  //  - balances → empty (the connected-wallet USDC readout shows 0)
-  //  - account  → registered (else signAndBroadcast aborts "unregistered")
-  //  - broadcast (POST .../txs) → committed success
-  //  - tx query  (GET .../txs/<hash>) → committed (confirmTx poll)
-  const json = (route: import("@playwright/test").Route, value: unknown) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(value),
-    });
-  await page.route("**/cosmos/bank/v1beta1/balances/**", (route) =>
-    json(route, { balances: [] }),
-  );
-  await page.route("**/cosmos/auth/v1beta1/accounts/**", (route) =>
-    json(route, {
-      account: {
-        "@type": "/cosmos.auth.v1beta1.BaseAccount",
-        address: MOCK_HUMAN_ADDRESS,
-        account_number: "1",
-        sequence: "0",
-      },
-    }),
-  );
-  // Broadcast (POST .../txs) → committed; tx query (GET .../txs/<hash>) → confirmTx.
-  await page.route("**/cosmos/tx/v1beta1/txs", (route) =>
-    json(route, {
-      tx_response: { code: 0, txhash: "E2EHUMANTX", raw_log: "" },
-    }),
-  );
-  await page.route("**/cosmos/tx/v1beta1/txs/*", (route) =>
-    json(route, {
-      tx_response: { code: 0, txhash: "E2EHUMANTX", height: "1", raw_log: "" },
-    }),
-  );
+  // The LCD reads/broadcast are served same-origin by the test-server at /lcd/*
+  // (test-server.ts) — `BITBADGES_LCD` points at `http://127.0.0.1:<port>/lcd`,
+  // so this helper only needs to inject `window.keplr`; no cross-origin route
+  // stubbing required.
 }
