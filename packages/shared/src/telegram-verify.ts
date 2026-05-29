@@ -21,7 +21,9 @@ export async function verifyTelegramToken(
       ok?: boolean;
       result?: { username?: string };
     };
-    return body.ok ? { ok: true, username: body.result?.username } : { ok: false };
+    return body.ok
+      ? { ok: true, username: body.result?.username }
+      : { ok: false };
   } catch {
     // Unreachable / timeout → can't confirm, so don't accept it.
     return { ok: false };
