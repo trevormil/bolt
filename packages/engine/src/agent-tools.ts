@@ -342,6 +342,12 @@ export function balanceTools(
         required: ["collectionId"],
       },
     },
+    {
+      name: "request_status",
+      description:
+        "List this persona's OUTSTANDING share-link requests it has raised — payment requests (awaiting the human to fund) and vault deposit requests (awaiting a deposit). Use to follow up on what you're still waiting on. Note: a fulfilled deposit request drops off this list, and incoming funding lands in the ledger (see recent_activity). Read-only.",
+      parameters: { type: "object", properties: {} },
+    },
   ];
 
   const emitRead = (tool: string) =>
@@ -423,6 +429,24 @@ export function balanceTools(
         );
       const rule = rules.length ? rules.join("; ") : "no withdrawal limits";
       return `${v.symbol} (collection ${v.collectionId}): ${fmtUsdc(escrowedMicro)} USDC escrowed. Withdrawal rule: ${rule}.`;
+    }
+
+    if (name === "request_status") {
+      const pays = engine.paymentRequests.listForPersona(personaId);
+      const deps = engine.depositRequests.listForPersona(personaId);
+      emitRead("request_status");
+      if (!pays.length && !deps.length)
+        return "No outstanding payment or deposit requests.";
+      const lines: string[] = [];
+      for (const p of pays)
+        lines.push(
+          `payment request ${p.id.slice(0, 8)} · ${fmtUsdc(p.amount)} USDC${p.memo ? ` · "${p.memo}"` : ""} — awaiting funding`,
+        );
+      for (const d of deps)
+        lines.push(
+          `deposit request ${d.id.slice(0, 8)} · ${fmtUsdc(d.amount)} USDC → ${d.vaultSymbol} — awaiting deposit`,
+        );
+      return lines.join("\n");
     }
 
     return `unknown tool: ${name}`;

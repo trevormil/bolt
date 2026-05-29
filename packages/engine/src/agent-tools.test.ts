@@ -176,4 +176,21 @@ describe("balance read/awareness tools (#88)", () => {
       }),
     ).toContain("No vault");
   });
+
+  test("request_status lists outstanding payment + deposit requests (#94)", async () => {
+    const e = eng();
+    expect(await balanceTools(e, "p").invoke("request_status", {})).toContain(
+      "No outstanding",
+    );
+    e.paymentRequests.create({
+      personaId: "p",
+      toAddress: "bb1" + "q".repeat(39),
+      denom: "ibc/TESTUSDC",
+      amount: "5000000",
+      memo: "rent",
+    });
+    const out = await balanceTools(e, "p").invoke("request_status", {});
+    expect(out).toContain("payment request");
+    expect(out).toContain("rent");
+  });
 });
