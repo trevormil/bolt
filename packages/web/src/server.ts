@@ -33,6 +33,7 @@ import {
   type VaultGating,
   type GatingPeriod,
 } from "@vellum/tokenization";
+import { isBb1Address, isPositiveMicroAmount } from "@vellum/tx";
 import { PaymentRequests } from "./payment-requests.ts";
 import { DepositRequests } from "./deposit-requests.ts";
 
@@ -438,6 +439,23 @@ export function buildApp(
         400,
       );
 
+    // Telegram remote control (#49) — OPTIONAL. Parse + validate the principal
+    // chat id BEFORE generating the wallet or writing .env (#65 review): a typo
+    // like "abc" would otherwise persist TELEGRAM_PRINCIPAL_CHAT_ID, and the
+    // next-boot zod env coercion (Number(...)) turns it into NaN and fails
+    // startup — an optional onboarding field must never become a boot blocker.
+    // Telegram chat ids may be negative (group chats), so allow a leading "-".
+    const tgToken =
+      typeof body.telegramBotToken === "string"
+        ? body.telegramBotToken.trim()
+        : "";
+    const tgChat =
+      typeof body.telegramPrincipalChatId === "string"
+        ? body.telegramPrincipalChatId.trim()
+        : "";
+    if (tgChat && !/^-?[0-9]+$/.test(tgChat))
+      return c.json({ error: "Telegram chat id must be an integer" }, 400);
+
     // Agent wallets are ALWAYS generated fresh (#59) — no import. The phrase
     // is the agent's key; it never enters the app from the user side.
     const mnemonic = (await generateWallet()).mnemonic;
@@ -457,18 +475,11 @@ export function buildApp(
     // Telegram remote control (#49) — OPTIONAL. Telegram is the agent's remote
     // entrypoint (the bot polls OUT, so no daemon exposure is needed). Persisted
     // + adopted into runtime env; the long-poller is attached on the next daemon
-    // start (attachTelegram reads env at boot — it isn't hot-attached here).
-    const tgToken =
-      typeof body.telegramBotToken === "string"
-        ? body.telegramBotToken.trim()
-        : "";
+    // start (attachTelegram reads env at boot — it isn't hot-attached here). The
+    // chat id was already validated as an integer above, before any persistence.
     if (tgToken) {
       updates.TELEGRAM_BOT_TOKEN = tgToken;
       runtime.TELEGRAM_BOT_TOKEN = tgToken;
-      const tgChat =
-        typeof body.telegramPrincipalChatId === "string"
-          ? body.telegramPrincipalChatId.trim()
-          : "";
       if (tgChat) {
         updates.TELEGRAM_PRINCIPAL_CHAT_ID = tgChat;
         runtime.TELEGRAM_PRINCIPAL_CHAT_ID = Number(tgChat);
@@ -712,9 +723,15 @@ export function buildApp(
     };
     const to = body.to?.trim();
     const amount = body.amount?.trim();
-    if (!to?.startsWith("bb1") || !amount || !/^[0-9]+$/.test(amount)) {
+    // Full bb1 structural check + strictly-positive integer amount at the
+    // boundary (#65 review) — a clean 400 here, rather than letting a malformed
+    // recipient or "0" reach the TxManager.spend chokepoint and surface as a 500.
+    if (!to || !isBb1Address(to) || !amount || !isPositiveMicroAmount(amount)) {
       return c.json(
-        { error: "to (bb1…) and amount (base-unit integer) are required" },
+        {
+          error:
+            "to (a valid bb1 address) and amount (a positive base-unit integer) are required",
+        },
         400,
       );
     }

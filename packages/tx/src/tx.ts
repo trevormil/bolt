@@ -121,6 +121,16 @@ function usdc(base: string): string {
   return `${(Number(base) / 1e6).toFixed(2)} USDC`;
 }
 
+// Structural guards for free-form spends (#65 review). A FULL bb1 recipient (not
+// just the "bb1" prefix) and a strictly-positive integer µ-amount (rejects "0",
+// "-1", "1.5", "abc"). Exported so each spend surface can return a clean
+// 400/tool/chat message at its boundary while TxManager.spend stays the final
+// chokepoint that no malformed input can slip past.
+export const isBb1Address = (addr: string): boolean =>
+  /^bb1[0-9a-z]{38,}$/.test(addr);
+export const isPositiveMicroAmount = (amount: string): boolean =>
+  /^[1-9][0-9]*$/.test(amount);
+
 export class TxManager {
   private db: Database;
   private wallets: PersonaWallets;
@@ -288,6 +298,15 @@ export class TxManager {
    */
   async spend(input: SpendInput): Promise<PendingTx> {
     const { personaId, to, amount } = input;
+    // Structural input guards at THE chokepoint (#65 review): a malformed bb1
+    // recipient or a zero/non-integer amount must never reach the signing +
+    // broadcast lifecycle, even when a surface's own check is weaker. Every spend
+    // surface (web /spend, agent send_usdc, Telegram /spend) funnels through here.
+    if (!isBb1Address(to)) throw new Error(`invalid recipient address: ${to}`);
+    if (!isPositiveMicroAmount(amount))
+      throw new Error(
+        `invalid amount (a positive integer of µUSDC is required): ${amount}`,
+      );
     // Note: the capability gate lives in submit() (the true chokepoint) so a
     // direct submit({kind:"spend"}) can't bypass it either.
     const from = this.wallets.addressFor(personaId);

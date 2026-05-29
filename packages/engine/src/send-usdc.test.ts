@@ -98,15 +98,19 @@ describe("send_usdc — free-form MsgSend from the persona wallet (#65)", () => 
     expect(ev?.meta).toMatchObject({ tool: "send_usdc", source: "spend" });
   });
 
-  test("a non-bb1 recipient is rejected with a clean message — no broadcast", async () => {
+  test("a malformed recipient is rejected with a clean message — no broadcast", async () => {
     const { chain, broadcasts } = captureChain();
     const e = eng(chain);
     await provision(e);
-    const out = await spendTools(e, "p").invoke("send_usdc", {
-      to: "0xdeadbeef",
-      amountUsdc: 1,
-    });
-    expect(out).toMatch(/bb1 wallet address/);
+    // Includes "bb1d" — a bb1-PREFIXED but structurally-invalid address the old
+    // prefix-only check would have let through to the signing lifecycle (#65).
+    for (const bad of ["0xdeadbeef", "bb1d", "cosmos1abc"]) {
+      const out = await spendTools(e, "p").invoke("send_usdc", {
+        to: bad,
+        amountUsdc: 1,
+      });
+      expect(out).toMatch(/bb1 wallet address/);
+    }
     expect(broadcasts.length).toBe(0);
   });
 

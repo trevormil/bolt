@@ -2,6 +2,7 @@ import {
   chat,
   grantDefaultCapabilities,
   CapabilityDeniedError,
+  isBb1Address,
   type Engine,
 } from "@vellum/engine";
 import { env } from "@vellum/shared";
@@ -246,8 +247,8 @@ export async function onSpend(
     return;
   }
   const [to, amountStr] = parts;
-  if (!to!.startsWith("bb1")) {
-    await ctx.reply("Recipient must be a bb1… address.");
+  if (!isBb1Address(to!)) {
+    await ctx.reply("Recipient must be a valid bb1… address.");
     return;
   }
   const n = Number(amountStr);

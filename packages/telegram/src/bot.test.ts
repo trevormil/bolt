@@ -7,6 +7,9 @@ import { buildBot } from "./bot.ts";
 const TEST_MNEMONIC =
   "test test test test test test test test test test test junk";
 
+// A structurally-valid bb1 recipient — /spend now does a full bb1 check (#65).
+const VALID = `bb1${"q".repeat(39)}`;
+
 // Offline tx chain so /spend's pre-check + (if allowed) broadcast never hit the
 // network. Funded so the only thing that can stop a spend is the capability gate.
 const fakeTxChain: TxChain = {
@@ -170,7 +173,7 @@ describe("command surface is wired into the bot (#49)", () => {
     const { bot, sent } = fakeBot();
     // /new bootstraps a persona with the #37 default grants (spend = allow).
     await bot.handleUpdate(commandUpdate(1, "new", "Atlas"));
-    await bot.handleUpdate(commandUpdate(1, "spend", "bb1dest 1.00"));
+    await bot.handleUpdate(commandUpdate(1, "spend", `${VALID} 1.00`));
     expect(sent.some((t) => t.includes("submitted"))).toBe(true);
   });
 
@@ -178,7 +181,7 @@ describe("command surface is wired into the bot (#49)", () => {
     const { bot, engine, sent } = fakeBot();
     await bot.handleUpdate(commandUpdate(1, "new", "Atlas"));
     engine.capabilities.revoke("atlas", "spend", null); // pull the default grant
-    await bot.handleUpdate(commandUpdate(1, "spend", "bb1dest 1.00"));
+    await bot.handleUpdate(commandUpdate(1, "spend", `${VALID} 1.00`));
     expect(sent.some((t) => t.includes("Denied"))).toBe(true);
     expect(
       engine.ledger

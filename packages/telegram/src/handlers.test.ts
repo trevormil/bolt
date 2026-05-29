@@ -20,6 +20,10 @@ import { Sessions } from "./sessions.ts";
 const TEST_MNEMONIC =
   "test test test test test test test test test test test junk";
 
+// A structurally-valid bb1 recipient — the spend chokepoint now does a full bb1
+// check (#65), so /spend tests use a well-formed address.
+const VALID = `bb1${"q".repeat(39)}`;
+
 // Fully offline tx chain: funded in USDC, deterministic spend hash, confirms.
 // Lets /spend exercise the real TxManager chokepoint without a live chain.
 const fakeTxChain: TxChain = {
@@ -183,7 +187,7 @@ describe("/spend goes through the capability gate + ledger (#37, security crux)"
     // Create via the handler → grantDefaultCapabilities makes spend "allow".
     await onNew(ctx(undefined, 1).c, engine, session, "Atlas");
     const { c, replies } = ctx(undefined, 1);
-    await onSpend(c, engine, session, "bb1dest 1.50");
+    await onSpend(c, engine, session, `${VALID} 1.50`);
     expect(replies[0]).toContain("submitted");
     expect(replies[0]).toContain("SPENDHASH".slice(0, 10));
     // The capability decision was ledgered (proof-of-action), not bypassed.
@@ -198,7 +202,7 @@ describe("/spend goes through the capability gate + ledger (#37, security crux)"
     // Revoke the default spend grant → the gate denies (default-deny).
     engine.capabilities.revoke("atlas", "spend", null);
     const { c, replies } = ctx(undefined, 1);
-    await onSpend(c, engine, session, "bb1dest 1.00");
+    await onSpend(c, engine, session, `${VALID} 1.00`);
     expect(replies[0]).toContain("Denied");
     // No spend tx was submitted — the chokepoint stopped it before broadcast.
     const led = engine.ledger.list({ personaId: "atlas" });
@@ -213,7 +217,7 @@ describe("/spend goes through the capability gate + ledger (#37, security crux)"
     await onSpend(bad.c, engine, session, "notanaddr 1.00");
     expect(bad.replies[0]).toContain("bb1");
     const zero = ctx(undefined, 1);
-    await onSpend(zero.c, engine, session, "bb1dest 0");
+    await onSpend(zero.c, engine, session, `${VALID} 0`);
     expect(zero.replies[0]).toContain("positive");
     const led = engine.ledger.list({ personaId: "atlas" });
     expect(led.some((e) => e.kind === "spend")).toBe(false);

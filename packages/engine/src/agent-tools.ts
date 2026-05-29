@@ -1,5 +1,6 @@
 import { CapabilityDeniedError } from "@vellum/capabilities";
 import type { ToolInvoker, ToolSpec } from "@vellum/agent";
+import { isBb1Address } from "@vellum/tx";
 import { env } from "@vellum/shared";
 import type { Engine } from "./engine.ts";
 
@@ -245,7 +246,8 @@ export function spendTools(
     const micro = microOrNull(args.amountUsdc);
     if (!micro) return "Amount must be a positive number of USDC.";
     const to = String(args.to).trim();
-    if (!to.startsWith("bb1")) return "Recipient must be a bb1 wallet address.";
+    if (!isBb1Address(to))
+      return "Recipient must be a valid bb1 wallet address.";
     // Unlike the vault tools (which rethrow non-capability errors), send_usdc
     // returns a clean message for ALL failures: txManager.spend() runs a
     // SYNCHRONOUS insufficient-funds pre-check that throws, and that's a normal,

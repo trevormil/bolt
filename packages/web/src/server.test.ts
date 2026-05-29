@@ -220,7 +220,7 @@ describe("web API", () => {
   test("spend route returns a PENDING tx; ledger fills from confirmed state", async () => {
     await post("/api/personas", { name: "Atlas" });
     const res = await post("/api/personas/atlas/spend", {
-      to: "bb1dest",
+      to: "bb1" + "q".repeat(39),
       amount: "1000000",
     });
     expect(res.status).toBe(200);
@@ -355,6 +355,16 @@ describe("web API", () => {
     expect(
       (await post("/api/personas/atlas/spend", { to: "nothex", amount: "100" }))
         .status,
+    ).toBe(400);
+    // amount "0" is rejected even with a well-formed recipient (#65 — the route
+    // now requires a strictly-positive integer, matching the TxManager chokepoint).
+    expect(
+      (
+        await post("/api/personas/atlas/spend", {
+          to: "bb1" + "q".repeat(39),
+          amount: "0",
+        })
+      ).status,
     ).toBe(400);
   });
 
@@ -1267,6 +1277,21 @@ describe("first-run web setup (/api/setup)", () => {
     expect(written).toContain("TELEGRAM_BOT_TOKEN=123456:ABC-token");
     expect(written).toContain("TELEGRAM_PRINCIPAL_CHAT_ID=42");
     rmSync(envFilePath, { force: true });
+  });
+
+  test("rejects an invalid (non-integer) Telegram chat id with no side effects (#65 review)", async () => {
+    env.AGENT_SIGNER_MNEMONIC = undefined;
+    const { app, envFilePath, applied } = setupApp();
+    const res = await postSetup(app, {
+      openRouterKey: "sk-or-test",
+      telegramBotToken: "123456:ABC-token",
+      telegramPrincipalChatId: "not-a-number",
+    });
+    expect(res.status).toBe(400);
+    // A typo must never persist (next-boot zod coercion → NaN → startup fail),
+    // and must not generate a wallet or mutate runtime env.
+    expect(applied).toHaveLength(0);
+    expect(() => readFileSync(envFilePath, "utf8")).toThrow(); // .env never written
   });
 
   test("Telegram stays optional: no token → nothing written, telegramEnabled false (#49)", async () => {
