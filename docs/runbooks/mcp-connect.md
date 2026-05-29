@@ -5,7 +5,7 @@ last-verified: 2026-05-28
 
 # Connect an external MCP server to a persona
 
-Vellum personas can use tools from any [Model Context Protocol](https://modelcontextprotocol.io)
+Bolt personas can use tools from any [Model Context Protocol](https://modelcontextprotocol.io)
 stdio server (#46). The daemon holds the connections open for its lifetime and
 merges each server's tools into the persona's agent loop — gated on the `mcp`
 capability (#37) and recorded on the ledger + observability timeline (#42).

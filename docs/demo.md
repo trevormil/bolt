@@ -1,4 +1,4 @@
-# Vellum E2E demo — the thesis, live on devnet (0020)
+# Bolt E2E demo — the thesis, live on devnet (0020)
 
 **Pinned scenario: C + A** — a recurring payment plus the vault-creation moment.
 ~5–7 minutes live on the Meridian devnet. The thesis in one run: **the agent does
