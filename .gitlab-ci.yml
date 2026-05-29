@@ -7,6 +7,7 @@
 # commit (0022 budget guardrail) — trigger it from the pipeline view when ready.
 stages:
   - quality
+  - e2e
   - eval
 
 default:
@@ -35,7 +36,7 @@ quality:
 # keeps between runs, so it's a one-time download. The webServer step (in
 # playwright.config.ts) builds the SPA and boots the test server itself.
 e2e:
-  stage: quality
+  stage: e2e
   script:
     - bun run test:e2e:install
     - bun run test:e2e
