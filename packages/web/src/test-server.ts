@@ -7,7 +7,11 @@
 // This is a TEST entrypoint, never shipped in the daemon. The seams mirror the
 // ones packages/web/src/server.test.ts already uses, so e2e and unit exercise
 // the same fakes.
-import { createEngine, type Engine } from "@vellum/engine";
+import {
+  createEngine,
+  grantDefaultCapabilities,
+  type Engine,
+} from "@vellum/engine";
 import { env, setRuntimeEnv, createLogger } from "@vellum/shared";
 import { buildApp } from "./server.ts";
 
@@ -38,28 +42,43 @@ const balance = [{ denom: DENOM, amount: "5000000" }]; // $5 of mock USDC
 const REPLY =
   "Here is a **markdown** reply with a [link](https://example.com) and `inline code`.\n\n- bullet one\n- bullet two";
 
-// A fake create-vault tx whose events parse to a VaultRef (mirrors server.test),
-// so the Vaults UI can create a vault offline (collection 777 + deposit/withdraw
-// approvals) once a (mocked) Keplr wallet supplies the human manager address.
-const fakeCreateTxEvents = {
-  events: [
-    {
-      type: "message",
-      attributes: [
-        { key: "collectionId", value: "777" },
-        {
-          key: "msg",
-          value: JSON.stringify({
-            collectionApprovals: [
-              { approvalId: "vault-deposit", toListId: "!bb1backing" },
-              { approvalId: "vault-withdraw-x", toListId: "bb1backing" },
-            ],
-          }),
-        },
-      ],
-    },
-  ],
-};
+// Fake create-vault tx whose events parse to a VaultRef (mirrors server.test).
+// Both txHash and collectionId must be unique per call so multiple specs in one
+// suite run don't collide on the vaults PK or the ledger.tx_hash UNIQUE index.
+// createVault returns a fresh txHash and records the mapping; fetchTx returns
+// the matching collectionId envelope.
+let nextVaultIdx = 0;
+const vaultSeamCollection: Record<string, string> = {};
+function nextVaultTxHash(): string {
+  const idx = nextVaultIdx++;
+  const txHash = `VAULTCREATE${idx + 1}`;
+  vaultSeamCollection[txHash] = String(777 + idx);
+  return txHash;
+}
+function fakeCreateTxEventsFor(txHash: string): {
+  events: { type: string; attributes: { key: string; value: string }[] }[];
+} {
+  const collectionId = vaultSeamCollection[txHash] ?? "777";
+  return {
+    events: [
+      {
+        type: "message",
+        attributes: [
+          { key: "collectionId", value: collectionId },
+          {
+            key: "msg",
+            value: JSON.stringify({
+              collectionApprovals: [
+                { approvalId: "vault-deposit", toListId: "!bb1backing" },
+                { approvalId: "vault-withdraw-x", toListId: "bb1backing" },
+              ],
+            }),
+          },
+        ],
+      },
+    ],
+  };
+}
 
 function makeEngine(): Engine {
   const engine = createEngine({
@@ -95,18 +114,23 @@ function makeEngine(): Engine {
     // from the connected (mocked) Keplr wallet; defaultManager is the fallback.
     vault: {
       defaultManager: "bb1human",
-      createVault: async () => ({ txHash: "VAULTCREATE1" }),
+      createVault: async () => ({ txHash: nextVaultTxHash() }),
       confirmTx: async () => ({ height: 9, code: 0 }),
-      fetchTx: async () => fakeCreateTxEvents,
+      fetchTx: async (txHash: string) => fakeCreateTxEventsFor(txHash),
       fetchTokenBalance: async () => "2000000",
     },
   });
-  // Seed one persona so the app opens straight into a usable state.
+  // Seed one persona so the app opens straight into a usable state. The web
+  // POST /api/personas route also calls grantDefaultCapabilities (server.ts);
+  // bypass the route to seed → must mirror the surface's grant policy here, or
+  // the gated flows (vault.create / spend / vault.withdraw) silently 403 and
+  // specs that don't assert on outcome state false-positive.
   engine.store.createPersona("atlas", "Atlas", {
     name: "Atlas",
     role: "personal assistant",
     voice: "friendly and concise",
   });
+  grantDefaultCapabilities(engine.capabilities, "atlas");
   // A little seeded activity (#95) so the unified Activity feed renders rows —
   // an ops event, a tool call, an on-chain settlement (kept, with a tx), and the
   // per-turn ledger cost (deduped into the chat_out event).

@@ -1,11 +1,12 @@
 ---
 id: 117
 title: "e2e: Vault deposit — in-app human funds escrow via Keplr"
-status: open
+status: in-progress
 priority: high
 type: testing
 source: trevor
 created: 2026-05-29
+updated: 2026-05-29
 refs: ["0106-test-coverage-backfill.md", "0098-signed-flow-e2e-keplr.md"]
 ---
 
