@@ -122,7 +122,8 @@ export function castVoteMsg(input: {
   collectionId: string;
   approvalId: string;
   proposalId: string;
-  yesWeight?: number; // this signer's weight (default 1)
+  yesWeight?: number; // 0–100 PERCENT allocated to "yes" (default 100 = approve).
+  // NOT the signer's weight — the chain scales by the configured signer weight.
 }): MsgJson {
   return {
     typeUrl: "/tokenization.MsgCastVote",
@@ -133,7 +134,7 @@ export function castVoteMsg(input: {
       approverAddress: "",
       approvalId: input.approvalId,
       proposalId: input.proposalId,
-      yesWeight: String(input.yesWeight ?? 1),
+      yesWeight: String(input.yesWeight ?? 100),
     },
   };
 }
