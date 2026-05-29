@@ -2,6 +2,7 @@
 id: 117
 title: "e2e: Vault deposit — in-app human funds escrow via Keplr"
 status: in-progress
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/96"]
 priority: high
 type: testing
 source: trevor
