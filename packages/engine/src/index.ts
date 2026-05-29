@@ -52,6 +52,15 @@ export { execTools } from "./exec-tools.ts";
 export { chat, type ChatInput, type ChatResult } from "./chat.ts";
 export { llmBudget, type LlmBudget } from "./budgets.ts";
 export { voteTally, type VoteTally } from "./vote-tally.ts";
+// Re-export the unified-observability helpers (#95) so the web layer composes the
+// merged Activity feed without a direct @vellum/observability dep.
+export {
+  mergeObservability,
+  latencyByKind,
+  projectMonthlySpend,
+  type UnifiedRow,
+  type ObservabilitySource,
+} from "@vellum/observability";
 // Re-export the persona card renderer (#25) + the default PERSONA.md template
 // (#91) so the CLI/wizard can show a card + seed instructions without a direct
 // @vellum/persona dep.

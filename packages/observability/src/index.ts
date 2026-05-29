@@ -9,6 +9,14 @@ export {
   type EventSummary,
   type EventSummaryWindow,
 } from "./events.ts";
+export {
+  mergeObservability,
+  latencyByKind,
+  projectMonthlySpend,
+  type UnifiedRow,
+  type ObservabilitySource,
+  type LedgerLike,
+} from "./merge.ts";
 
 if (import.meta.main) {
   const { createLogger } = await import("@vellum/shared");
