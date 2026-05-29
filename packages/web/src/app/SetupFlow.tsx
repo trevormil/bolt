@@ -14,8 +14,10 @@ type Step = "secrets" | "persona";
 export function SetupFlow({ onDone }: { onDone: (personaId: string) => void }) {
   const [step, setStep] = useState<Step>("secrets");
   const [openRouterKey, setKey] = useState("");
-  // Optional Telegram remote control (#49) — collapsed by default, skippable.
-  const [showTelegram, setShowTelegram] = useState(false);
+  // Telegram remote control (#49) — shown EXPANDED by default in onboarding (#86)
+  // so it's a first-class step, not hidden behind a click. Still skippable (leave
+  // the token blank) and collapsible (the panel header hides it).
+  const [showTelegram, setShowTelegram] = useState(true);
   const [telegramBotToken, setTelegramToken] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -119,9 +121,16 @@ export function SetupFlow({ onDone }: { onDone: (personaId: string) => void }) {
                 </button>
               ) : (
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-accent">
+                  <button
+                    type="button"
+                    onClick={() => setShowTelegram(false)}
+                    className="flex w-full items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-accent hover:text-fg"
+                  >
                     <Icon name="zap" size={13} /> Telegram remote control
-                  </div>
+                    <span className="ml-auto normal-case tracking-normal text-soft">
+                      hide
+                    </span>
+                  </button>
                   <p className="text-xs leading-relaxed text-muted">
                     Reach the agent from anywhere — the bot polls out to
                     Telegram, so nothing is exposed on this machine. Optional;
