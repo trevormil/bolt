@@ -1,7 +1,7 @@
 ---
 id: 58
 title: "Unify persona-creation UX (onboarding == add-persona)"
-status: in-progress
+status: closed
 priority: medium
 type: ux
 source: review

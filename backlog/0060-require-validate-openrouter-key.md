@@ -1,7 +1,7 @@
 ---
 id: 60
 title: "Require + validate the OpenRouter key at onboarding; change it in Settings"
-status: in-progress
+status: closed
 priority: medium
 type: feature
 source: review

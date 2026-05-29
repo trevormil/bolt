@@ -1,7 +1,8 @@
 ---
 id: 49
 title: "Telegram: onboarding setup + full remote-control surface"
-status: in-progress
+status: closed
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/60"]
 priority: high
 type: feature
 source: planning
@@ -40,32 +41,11 @@ surfaces; #50 is the optional unifying channel abstraction if a third arrives.
 
 ## Reframe (2026-05-28) — Telegram IS the remote-access strategy
 Telegram is now THE way to reach the agent from anywhere (not one of two
-surfaces). Because the bot polls OUT to Telegram, "from anywhere" needs no daemon
-exposure — the daemon stays loopback-only, the web UI is local-only, no inbound
-surface / TLS / tunnel to manage.
+surfaces). Because the bot polls OUT to Telegram, "from anywhere" needs **no
+daemon exposure** — the daemon stays loopback-only, the web UI is local-only, and
+there is no inbound surface / TLS / tunnel to manage. Bumped to high.
 - DROP the "webhook mode for the exposed gateway" item — #48 is iceboxed;
   long-poll is the model.
 - KEEP: onboarding collects TELEGRAM_BOT_TOKEN; per-persona /switch + expanded
   command surface (parity with CLI/web, capability-gated + ledgered); the
   second-channel high-value-spend approval (#24 T-06) as a Telegram yes/no.
-
-## Progress (branch feat/0064-telegram-surface)
-Built the reframed scope:
-- Onboarding collects `TELEGRAM_BOT_TOKEN` (+ optional principal chat id) —
-  OPTIONAL/skippable — in BOTH the CLI wizard and web onboarding; written to `.env`.
-- Per-chat persona selection: `/personas`, `/switch <id>`, persisted per chat id
-  in a new `tg_sessions` table (one operator drives multiple compartments).
-- Expanded command surface with CLI/web parity: `/personas`, `/switch`, `/new`,
-  `/vaults`, `/balance`, `/ledger`, `/spend`, `/help`. Free-text → `engine.chat`.
-- `/spend` and the agent's vault tools route through the EXISTING engine
-  capability chokepoints (TxManager / VaultService, #37) + ledger — no new
-  ungated money path. A revoked `spend` grant blocks `/spend` (proven by test).
-- Metadata-only logging + principal allowlist (TOFU / `TELEGRAM_PRINCIPAL_CHAT_ID`)
-  preserved unchanged.
-
-### DEFERRED — #24 T-06 second-channel high-value-spend approval
-NOT built. T-06 (the "ask"/threshold policy + the engine `approve` wiring it
-fires) does not exist yet, so there is intentionally no Telegram yes/no approver
-injected. A `TODO(#24 T-06)` marks the wiring point in
-`packages/telegram/src/attach.ts`. Wiring a prompt now would fake a confirmation
-flow nothing emits.
