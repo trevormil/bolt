@@ -34,7 +34,11 @@ import {
   type VaultGating,
   type GatingPeriod,
 } from "@vellum/tokenization";
-import { isBb1Address, isPositiveMicroAmount } from "@vellum/tx";
+import {
+  isBb1Address,
+  isPositiveMicroAmount,
+  TxRejectedError,
+} from "@vellum/tx";
 
 // Built SPA dir, resolved from this file (cwd-independent) so the server can be
 // launched from the repo root (where .env loads) or from packages/web alike.
@@ -865,6 +869,9 @@ export function buildApp(
       void tracer.flush();
       if (e instanceof CapabilityDeniedError)
         return c.json({ error: e.message }, 403);
+      // Insufficient funds / a pre-flight chain rejection → a clean 422, not a 500 (#85).
+      if (e instanceof TxRejectedError)
+        return c.json({ error: e.message }, 422);
       throw e;
     }
   });
@@ -984,6 +991,10 @@ export function buildApp(
     } catch (e) {
       if (e instanceof CapabilityDeniedError)
         return c.json({ error: e.message }, 403);
+      // Over the vault's cap / outside its window / missing sign-off / insufficient
+      // escrow → rejected pre-flight. Surface a clean 422, never a 500 (#85).
+      if (e instanceof TxRejectedError)
+        return c.json({ error: e.message }, 422);
       throw e;
     }
   });

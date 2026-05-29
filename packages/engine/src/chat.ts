@@ -1,5 +1,6 @@
 import type { TraceSpan } from "@vellum/trace";
 import type { ToolInvoker, ToolSpec } from "@vellum/agent";
+import { LlmAuthError } from "@vellum/llm";
 import { createLogger } from "@vellum/shared";
 import type { Engine } from "./engine.ts";
 import {
@@ -122,12 +123,37 @@ export async function chat(
     }
   }
   const { tools, invoke } = combineTools(...sets);
-  const res = await engine.orchestrator.handle(conversationId, message, {
-    trace,
-    tools,
-    invoke,
-    humanAddress,
-  });
+  let res;
+  try {
+    res = await engine.orchestrator.handle(conversationId, message, {
+      trace,
+      tools,
+      invoke,
+      humanAddress,
+    });
+  } catch (e) {
+    // A revoked/invalid OpenRouter key surfaces here as LlmAuthError (#85). Turn
+    // it into a clean in-chat message — pointing the user at Settings — instead of
+    // bubbling an opaque upstream error up to a 500 on the web route / a crash on
+    // the Telegram poller. Same surface contract as the budget-exceeded path.
+    if (e instanceof LlmAuthError) {
+      const reply =
+        "Your OpenRouter API key is invalid or expired — update it in Settings → OpenRouter to keep chatting.";
+      engine.conversations.append(conversationId, "agent", reply);
+      engine.events.emit({
+        personaId,
+        kind: "chat_out",
+        summary: "reply sent",
+        latencyMs: Date.now() - t0,
+        costUsd: 0,
+        tokens: 0,
+        ok: false,
+        meta: { conversationId, error: "llm_auth" },
+      });
+      return { reply, costUsd: 0, tokens: 0, budgetExceeded: false };
+    }
+    throw e;
+  }
   const costUsd = res.meters.reduce((n, m) => n + m.costUsd, 0);
   const tokens = res.meters.reduce((n, m) => n + m.totalTokens, 0);
   engine.ledger.recordAgentRun(

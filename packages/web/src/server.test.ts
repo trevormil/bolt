@@ -8,7 +8,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Meter } from "@vellum/llm";
+import { LlmAuthError, type Meter } from "@vellum/llm";
 import type { RunLoop } from "@vellum/orchestrator";
 import type { TxChain } from "@vellum/tx";
 import { env } from "@vellum/shared";
@@ -1866,5 +1866,76 @@ describe("telegram settings route — set / rotate / clear (#63)", () => {
       body: JSON.stringify({ token: "123:ABC" }),
     });
     expect(res.status).toBe(403);
+  });
+});
+
+describe("edge/failure hardening (#85)", () => {
+  const appWith = (over: Parameters<typeof createEngine>[0]) =>
+    buildApp(
+      makeEngine(over),
+      new PaymentRequests(":memory:"),
+      new DepositRequests(":memory:"),
+    );
+  const send = (a: ReturnType<typeof buildApp>, path: string, body: unknown) =>
+    a.request(path, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  test("spend over the wallet balance → clean 422, not a 500", async () => {
+    // fakeTxChain reports 10 USDC; spend 20 → insufficient → TxRejectedError → 422.
+    await post("/api/personas", { name: "Atlas" });
+    const res = await post("/api/personas/atlas/spend", {
+      to: "bb1" + "q".repeat(39),
+      amount: "20000000",
+    });
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { error: string }).error).toMatch(
+      /insufficient/i,
+    );
+  });
+
+  test("a vault withdrawal rejected pre-flight → clean 422, not a 500", async () => {
+    const a = appWith({
+      txChain: {
+        ...fakeTxChain,
+        signAndBroadcast: async () => {
+          throw new Error(
+            "rejected: amount exceeds the approval's per-day limit",
+          );
+        },
+      },
+    });
+    await send(a, "/api/personas", { name: "Atlas" });
+    await send(a, "/api/personas/atlas/vaults", {
+      name: "Groceries",
+      symbol: "vUSDC",
+      dailyWithdrawLimit: 5,
+    });
+    const wd = await send(a, "/api/personas/atlas/vaults/777/withdraw", {
+      amount: "1000000",
+    });
+    expect(wd.status).toBe(422);
+    expect(((await wd.json()) as { error: string }).error).toMatch(/rejected/i);
+  });
+
+  test("an invalid OpenRouter key surfaces a clean in-chat message, not a 500", async () => {
+    const a = appWith({
+      runLoop: async () => {
+        throw new LlmAuthError(401);
+      },
+    });
+    await send(a, "/api/personas", { name: "Atlas" });
+    const res = await send(a, "/api/chat", {
+      conversationId: "c1",
+      personaId: "atlas",
+      message: "hi",
+    });
+    // Caught in chat() → a clean 200 reply pointing at Settings (mirrors budget).
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { reply: string }).reply).toMatch(
+      /OpenRouter.*(invalid|expired)/i,
+    );
   });
 });

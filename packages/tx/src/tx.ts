@@ -131,6 +131,18 @@ export const isBb1Address = (addr: string): boolean =>
 export const isPositiveMicroAmount = (amount: string): boolean =>
   /^[1-9][0-9]*$/.test(amount);
 
+// A transaction that can't proceed and definitively moved no value (#85): a
+// pre-flight CheckTx rejection (over a vault cap / outside the time window /
+// missing multisig sign-off / bad sig) or a failed balance pre-check. Distinct
+// from a raw/ambiguous error so every surface (web routes, agent tools, Telegram)
+// can map it to a clean 4xx / plain message instead of a 500 / opaque failure.
+export class TxRejectedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TxRejectedError";
+  }
+}
+
 export class TxManager {
   private db: Database;
   private wallets: PersonaWallets;
@@ -266,15 +278,17 @@ export class TxManager {
         });
       } catch (e) {
         const error = e instanceof Error ? e.message : String(e);
-        if (/rejected/.test(error)) {
-          // Definitive CheckTx rejection — nothing landed; safe to fail the row.
-          this.setStatus(id, "failed", { error });
-        } else {
-          // Ambiguous (network) — the tx MAY have reached the node. Leave the
-          // intent "submitting" (discoverable, never auto-rebroadcast).
-          this.setStatus(id, "submitting", { error });
-        }
         releaseOnce();
+        if (/rejected/.test(error)) {
+          // Definitive CheckTx rejection (over a vault cap / time-locked / missing
+          // sign-off / bad sig) — nothing landed; fail the row and surface a typed,
+          // user-mappable error instead of the raw chain string (#85).
+          this.setStatus(id, "failed", { error });
+          throw new TxRejectedError(error);
+        }
+        // Ambiguous (network) — the tx MAY have reached the node. Leave the intent
+        // "submitting" (discoverable, never auto-rebroadcast) and rethrow as-is.
+        this.setStatus(id, "submitting", { error });
         throw e;
       }
       chainSpan.end({ hash });
@@ -317,7 +331,7 @@ export class TxManager {
         ?.amount ?? "0",
     );
     if (have < BigInt(amount)) {
-      throw new Error(
+      throw new TxRejectedError(
         `insufficient USDC: have ${usdc(have.toString())}, need ${usdc(amount)}`,
       );
     }
