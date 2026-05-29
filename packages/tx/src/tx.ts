@@ -121,6 +121,28 @@ function usdc(base: string): string {
   return `${(Number(base) / 1e6).toFixed(2)} USDC`;
 }
 
+// Structural guards for free-form spends (#65 review). A FULL bb1 recipient (not
+// just the "bb1" prefix) and a strictly-positive integer µ-amount (rejects "0",
+// "-1", "1.5", "abc"). Exported so each spend surface can return a clean
+// 400/tool/chat message at its boundary while TxManager.spend stays the final
+// chokepoint that no malformed input can slip past.
+export const isBb1Address = (addr: string): boolean =>
+  /^bb1[0-9a-z]{38,}$/.test(addr);
+export const isPositiveMicroAmount = (amount: string): boolean =>
+  /^[1-9][0-9]*$/.test(amount);
+
+// A transaction that can't proceed and definitively moved no value (#85): a
+// pre-flight CheckTx rejection (over a vault cap / outside the time window /
+// missing multisig sign-off / bad sig) or a failed balance pre-check. Distinct
+// from a raw/ambiguous error so every surface (web routes, agent tools, Telegram)
+// can map it to a clean 4xx / plain message instead of a 500 / opaque failure.
+export class TxRejectedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TxRejectedError";
+  }
+}
+
 export class TxManager {
   private db: Database;
   private wallets: PersonaWallets;
@@ -256,15 +278,17 @@ export class TxManager {
         });
       } catch (e) {
         const error = e instanceof Error ? e.message : String(e);
-        if (/rejected/.test(error)) {
-          // Definitive CheckTx rejection — nothing landed; safe to fail the row.
-          this.setStatus(id, "failed", { error });
-        } else {
-          // Ambiguous (network) — the tx MAY have reached the node. Leave the
-          // intent "submitting" (discoverable, never auto-rebroadcast).
-          this.setStatus(id, "submitting", { error });
-        }
         releaseOnce();
+        if (/rejected/.test(error)) {
+          // Definitive CheckTx rejection (over a vault cap / time-locked / missing
+          // sign-off / bad sig) — nothing landed; fail the row and surface a typed,
+          // user-mappable error instead of the raw chain string (#85).
+          this.setStatus(id, "failed", { error });
+          throw new TxRejectedError(error);
+        }
+        // Ambiguous (network) — the tx MAY have reached the node. Leave the intent
+        // "submitting" (discoverable, never auto-rebroadcast) and rethrow as-is.
+        this.setStatus(id, "submitting", { error });
         throw e;
       }
       chainSpan.end({ hash });
@@ -288,6 +312,15 @@ export class TxManager {
    */
   async spend(input: SpendInput): Promise<PendingTx> {
     const { personaId, to, amount } = input;
+    // Structural input guards at THE chokepoint (#65 review): a malformed bb1
+    // recipient or a zero/non-integer amount must never reach the signing +
+    // broadcast lifecycle, even when a surface's own check is weaker. Every spend
+    // surface (web /spend, agent send_usdc, Telegram /spend) funnels through here.
+    if (!isBb1Address(to)) throw new Error(`invalid recipient address: ${to}`);
+    if (!isPositiveMicroAmount(amount))
+      throw new Error(
+        `invalid amount (a positive integer of µUSDC is required): ${amount}`,
+      );
     // Note: the capability gate lives in submit() (the true chokepoint) so a
     // direct submit({kind:"spend"}) can't bypass it either.
     const from = this.wallets.addressFor(personaId);
@@ -298,7 +331,7 @@ export class TxManager {
         ?.amount ?? "0",
     );
     if (have < BigInt(amount)) {
-      throw new Error(
+      throw new TxRejectedError(
         `insufficient USDC: have ${usdc(have.toString())}, need ${usdc(amount)}`,
       );
     }
@@ -366,6 +399,50 @@ export class TxManager {
     for (const p of pendings) await this.confirmPending(p.id);
     if (pendings.length) log.info(`reconciled ${pendings.length} unsettled tx`);
     return pendings.length;
+  }
+
+  /**
+   * Re-drive broadcast txs that the initial out-of-band confirm left PENDING —
+   * a commit that landed AFTER confirmTx's window (#81). Only sweeps rows whose
+   * hash is recorded and that haven't been touched for `staleMs`, so it never
+   * races the in-flight initial confirm (which keeps `updated` fresh while it
+   * polls). Returns how many it re-drove.
+   */
+  async reconcileStale(staleMs: number): Promise<number> {
+    const cutoff = Date.now() - staleMs;
+    const stale = this.pending().filter(
+      (p) => p.status === "pending" && p.hash && p.updated <= cutoff,
+    );
+    for (const p of stale) await this.confirmPending(p.id);
+    return stale.length;
+  }
+
+  /**
+   * Periodic safety net behind submit()'s one-shot confirm: without it a tx that
+   * commits after confirmTx times out would sit PENDING until the next daemon
+   * restart's reconcile() — the withdrawal-stuck-pending bug (#81). A PENDING row
+   * also blocks the persona's next tx (the durable guard), so an orphaned confirm
+   * freezes the wallet entirely. Sweeps stale-pending rows every `intervalMs`;
+   * non-overlapping (skips a tick if the prior sweep is still running) and the
+   * timer is unref'd so it never keeps the process alive on its own. Returns a
+   * stop handle for clean shutdown.
+   */
+  startAutoReconcile(intervalMs = 15_000, staleMs = 20_000): () => void {
+    let sweeping = false;
+    const timer = setInterval(() => {
+      if (sweeping) return;
+      sweeping = true;
+      void this.reconcileStale(staleMs)
+        .then((n) => {
+          if (n) log.info(`auto-reconcile re-drove ${n} stale pending tx`);
+        })
+        .catch((e) => log.warn(`auto-reconcile sweep failed: ${e}`))
+        .finally(() => {
+          sweeping = false;
+        });
+    }, intervalMs);
+    (timer as unknown as { unref?: () => void }).unref?.();
+    return () => clearInterval(timer);
   }
 
   get(id: string): PendingTx | null {

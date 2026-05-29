@@ -18,6 +18,12 @@ export {
   parseAccountResponse,
   type MsgJson,
 } from "./sdk.ts";
+export {
+  getVotes,
+  getApprovalTracker,
+  type VoteProof,
+  type ApprovalTrackerView,
+} from "./query.ts";
 
 if (import.meta.main) {
   const { createLogger, env } = await import("@vellum/shared");

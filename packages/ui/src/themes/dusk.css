@@ -6,6 +6,7 @@
 
 :root,
 [data-theme="dusk"] {
+  color-scheme: dark; /* native controls in dark mode (#54) */
   --bg: #11131a;
   --surface: #181b25;
   --surface-2: #21253246;

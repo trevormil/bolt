@@ -1,8 +1,16 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Button, Icon, Input } from "@vellum/ui";
 import { api, type PaymentRequest } from "./api.ts";
+import { BrandLogo } from "./BrandLogo.tsx";
 import { bankSendMsg, loadConfig, signAndBroadcast } from "./keplr.ts";
 import { useWallet } from "./wallet-context.tsx";
+
+// Section label — mono, gold-soft, wide tracking (the terminal-luxe motif).
+const Label = ({ children }: { children: ReactNode }) => (
+  <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-soft">
+    {children}
+  </div>
+);
 
 const fmtUsdc = (base: string) =>
   (Number(base) / 1e6).toLocaleString(undefined, {
@@ -10,8 +18,10 @@ const fmtUsdc = (base: string) =>
     maximumFractionDigits: 2,
   });
 
-// Shows the persona's bb1 wallet + live USDC balance, with a devnet faucet tap.
-// Vellum is single-asset (USDC); agent-initiated funding (PaymentRequests) is 0014.
+// Shows the persona's bb1 wallet + live USDC balance, with a devnet faucet tap,
+// inbound funding (Fund / Request), and outbound Send (#65 — the persona spends
+// its OWN funds via the gated /spend route, mirroring the agent's send_usdc tool
+// and Telegram /spend). Vellum is single-asset (USDC).
 export function WalletPanel({ personaId }: { personaId: string }) {
   const [address, setAddress] = useState("");
   const [usdc, setUsdc] = useState("0");
@@ -61,36 +71,41 @@ export function WalletPanel({ personaId }: { personaId: string }) {
   return (
     <div className="w-72 shrink-0 border-l border-border bg-surface p-4">
       <div className="flex items-center justify-between">
-        <h3 className="flex items-center gap-2 text-sm font-medium">
-          <Icon name="wallet" size={15} /> Wallet
+        <h3 className="flex items-center gap-2 font-serif text-base text-fg">
+          <Icon name="wallet" size={15} className="text-accent" /> Wallet
         </h3>
         <button
           onClick={refresh}
-          className="text-soft hover:text-fg"
+          className="text-soft transition-colors hover:text-accent"
           title="Refresh balance"
         >
           <Icon name="refresh" size={14} />
         </button>
       </div>
 
-      <div className="mt-3 text-xs uppercase tracking-wide text-soft">
-        bb1 address
+      <div className="mt-4 flex items-center gap-1.5">
+        <BrandLogo name="bitbadges" size={11} /> <Label>bb1 address</Label>
       </div>
       <button
         onClick={copy}
-        className="mt-1 flex w-full items-center gap-2 rounded-md border border-border bg-surface-3 px-2.5 py-2 text-left font-mono text-xs text-muted hover:text-fg"
+        className="mt-1 flex w-full items-center gap-2 rounded-lg border border-border bg-surface-3 px-2.5 py-2 text-left font-mono text-xs text-fg transition-colors hover:border-border-gold"
         title="Copy address"
       >
         <span className="truncate">{address || "…"}</span>
         <Icon name={copied ? "check" : "copy"} size={13} />
       </button>
 
-      <div className="mt-4 text-xs uppercase tracking-wide text-soft">
-        Balance
+      <div className="mt-5">
+        <Label>Balance</Label>
       </div>
-      <div className="mt-1 font-mono text-2xl text-fg">
-        {loading ? "…" : fmtUsdc(usdc)}{" "}
-        <span className="text-sm text-muted">USDC</span>
+      <div className="mt-1.5 flex items-center gap-2">
+        <BrandLogo name="usdc" size={26} />
+        <span className="font-mono text-3xl leading-none text-accent">
+          {loading ? "…" : fmtUsdc(usdc)}
+        </span>
+        <span className="self-end pb-0.5 font-mono text-xs text-soft">
+          USDC
+        </span>
       </div>
 
       <Button
@@ -113,6 +128,7 @@ export function WalletPanel({ personaId }: { personaId: string }) {
             onFunded={refresh}
             onRequested={bumpRequests}
           />
+          <SendActions personaId={personaId} onSent={refresh} />
           <PendingRequests
             personaId={personaId}
             version={reqVersion}
@@ -186,8 +202,8 @@ function FundActions({
   }
 
   return (
-    <div className="mt-4 border-t border-border pt-4">
-      <div className="text-xs uppercase tracking-wide text-soft">Fund</div>
+    <div className="mt-5 border-t border-border pt-4">
+      <Label>Fund</Label>
       <Input
         value={amount}
         onChange={(e) => setAmount(e.target.value)}
@@ -218,6 +234,82 @@ function FundActions({
       <p className="mt-3 text-xs leading-relaxed text-soft">
         “From my wallet” signs with Keplr (your address). “Request” raises a
         payment request you can pay inline below or share as a link.
+      </p>
+    </div>
+  );
+}
+
+// Outbound send (#65): spend USDC from THIS persona's own wallet to any bb1
+// address. Server-signed via the gated /spend route (txManager.spend chokepoint,
+// capability "spend", ledgered) — the same path the agent's send_usdc tool and
+// Telegram /spend use. No Keplr: these are the agent's own funds, not the human's.
+function SendActions({
+  personaId,
+  onSent,
+}: {
+  personaId: string;
+  onSent: () => void;
+}) {
+  const [to, setTo] = useState("");
+  const [amount, setAmount] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function send() {
+    const usd = Number(amount);
+    if (!usd || usd <= 0 || !to.startsWith("bb1")) {
+      setError("Enter a bb1 recipient and a positive USDC amount.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setNote(null);
+    try {
+      const micro = String(Math.round(usd * 1e6));
+      const tx = await api.spend(personaId, { to: to.trim(), amount: micro });
+      setNote(`Sent ${usd} USDC (${(tx.hash ?? tx.id).slice(0, 10)}…)`);
+      setTo("");
+      setAmount("");
+      // Spend settles on-chain shortly; refresh after a beat.
+      await new Promise((r) => setTimeout(r, 1500));
+      onSent();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-5 border-t border-border pt-4">
+      <Label>Send</Label>
+      <Input
+        value={to}
+        onChange={(e) => setTo(e.target.value)}
+        placeholder="Recipient (bb1…)"
+        className="mt-1 font-mono text-xs"
+      />
+      <Input
+        value={amount}
+        onChange={(e) => setAmount(e.target.value)}
+        placeholder="Amount (USDC)"
+        className="mt-2"
+      />
+      <Button
+        size="sm"
+        variant="secondary"
+        className="mt-2 w-full"
+        onClick={send}
+        disabled={busy || !to || !amount}
+      >
+        <Icon name="send" size={13} /> {busy ? "Sending…" : "Send USDC"}
+      </Button>
+      {note && <p className="mt-2 text-xs text-muted">{note}</p>}
+      {error && <p className="mt-2 text-xs text-danger">{error}</p>}
+      <p className="mt-3 text-xs leading-relaxed text-soft">
+        Sends from this persona’s wallet (the agent’s funds) — gated by the
+        spend capability and recorded in the ledger.
       </p>
     </div>
   );
@@ -288,10 +380,8 @@ function PendingRequests({
   if (requests.length === 0) return null;
 
   return (
-    <div className="mt-4 border-t border-border pt-4">
-      <div className="text-xs uppercase tracking-wide text-soft">
-        Pending requests
-      </div>
+    <div className="mt-5 border-t border-border pt-4">
+      <Label>Pending requests</Label>
       {error && <p className="mt-2 text-xs text-danger">{error}</p>}
       <div className="mt-2 space-y-2">
         {requests.map((r) => (
@@ -300,8 +390,9 @@ function PendingRequests({
             className="rounded-md border border-border bg-surface-3 p-2.5"
           >
             <div className="flex items-baseline justify-between">
-              <span className="font-mono text-sm">
-                {fmtUsdc(r.amount)} USDC
+              <span className="flex items-center gap-1.5 font-mono text-sm text-fg">
+                <BrandLogo name="usdc" size={14} />
+                {fmtUsdc(r.amount)}
               </span>
               <span className="truncate pl-2 text-[11px] text-soft">
                 {r.memo}

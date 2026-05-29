@@ -1,7 +1,7 @@
 ---
 id: 52
 title: "Agent dev capability: command execution + YOLO filesystem/exec by default"
-status: open
+status: in-progress
 priority: high
 type: feature
 source: planning

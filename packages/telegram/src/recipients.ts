@@ -2,13 +2,13 @@ import { Database } from "bun:sqlite";
 
 /**
  * Persistent set of Telegram chat ids the bot has interacted with. Persisted so
- * proactive output (check-ins #18, scheduled tasks #36) survives a restart.
- * Stores only the chat id (metadata), never message content.
+ * the principal allowlist (#28) survives a restart. Stores only the chat id
+ * (metadata), never message content.
  *
  * Vellum is a PERSONAL agent serving one principal — the human who runs it. The
- * principal is the first chat to interact; proactive output goes ONLY to them
- * (principal()), never broadcast to every chat that ever messaged the bot, so a
- * persona's task output can't leak to a stranger who happened to /start it.
+ * principal is the first chat to interact (TOFU); only that chat is authorized
+ * to drive the bot (principal()), so a stranger who happens to /start it can't
+ * issue commands to the shared persona.
  */
 export class Recipients {
   private db: Database;
@@ -36,8 +36,8 @@ export class Recipients {
     ).map((r) => r.chat_id);
   }
 
-  /** The principal: the first chat to interact (the owner). Proactive output
-   *  goes here only — never broadcast to every recipient. */
+  /** The principal: the first chat to interact (the owner). Only this chat is
+   *  authorized to drive the bot (#28). */
   principal(): number | null {
     const r = this.db
       .query(

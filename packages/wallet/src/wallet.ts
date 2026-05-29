@@ -4,7 +4,7 @@ import {
   getBalances as chainGetBalances,
   type Coin,
 } from "@vellum/chain";
-import { env, createLogger } from "@vellum/shared";
+import { createLogger, getAgentMnemonic } from "@vellum/shared";
 
 const log = createLogger("wallet");
 
@@ -16,8 +16,9 @@ export type Signer = Awaited<ReturnType<typeof deriveAdapter>>;
 // One bb1 wallet per persona, all derived from a SINGLE master mnemonic at
 // distinct SDK HD indices (m/44'/60'/0'/0/index). The DB stores only derivation
 // metadata (hd_index + the public bb1 address) — never a private key or the
-// mnemonic. The mnemonic lives in env (AGENT_SIGNER_MNEMONIC), committed nowhere;
-// the signer is re-derived at runtime.
+// mnemonic. The master seed is resolved via getAgentMnemonic (ADR-0007): an
+// explicit env override first, else the OS keychain — never plaintext on disk;
+// the signer is re-derived at runtime and never persisted.
 export interface WalletRecord {
   personaId: string;
   address: string;
@@ -28,7 +29,7 @@ export interface WalletRecord {
 type BalanceFetcher = (address: string) => Promise<readonly Coin[]>;
 
 export interface PersonaWalletsOptions {
-  mnemonic?: string; // defaults to env.AGENT_SIGNER_MNEMONIC
+  mnemonic?: string; // explicit override; else resolved via getAgentMnemonic
   dbPath?: string;
   getBalances?: BalanceFetcher; // injectable for tests
 }
@@ -45,7 +46,9 @@ export class PersonaWallets {
   private writeQueue: Promise<unknown> = Promise.resolve();
 
   constructor(opts: PersonaWalletsOptions = {}) {
-    this.mnemonic = opts.mnemonic ?? env.AGENT_SIGNER_MNEMONIC;
+    // No eager env read: the seed is resolved lazily (env override → OS keychain)
+    // on first use, so a daemon can boot with the seed only in the keychain.
+    this.mnemonic = opts.mnemonic;
     this.getBalances = opts.getBalances ?? chainGetBalances;
     this.db = new Database(opts.dbPath ?? ":memory:");
     this.db.run(`CREATE TABLE IF NOT EXISTS wallets (
@@ -55,13 +58,29 @@ export class PersonaWallets {
       created INTEGER NOT NULL)`);
   }
 
-  private requireMnemonic(): string {
-    if (!this.mnemonic) {
+  /** Adopt a master mnemonic at runtime (#54 web onboarding): a daemon that
+   *  booted with no AGENT_SIGNER_MNEMONIC can derive persona wallets right after
+   *  first-run setup, without a restart. Existing rows' addresses still re-derive
+   *  from this mnemonic + their stored HD index (the mismatch guard catches a
+   *  swap to a different mnemonic). */
+  setMnemonic(mnemonic: string): void {
+    this.mnemonic = mnemonic;
+  }
+
+  // Resolve the master seed once, then memoize on the instance for the tx hot
+  // path: an explicit override (test seam OR setMnemonic runtime-adopt) wins,
+  // else getAgentMnemonic (env → OS keychain, ADR-0007).
+  private async resolveMnemonic(): Promise<string> {
+    if (this.mnemonic) return this.mnemonic;
+    const m = await getAgentMnemonic();
+    if (!m) {
       throw new Error(
-        "AGENT_SIGNER_MNEMONIC not set — cannot derive persona wallets",
+        "No agent signer seed — set AGENT_SIGNER_MNEMONIC, run the setup " +
+          "wizard, or `vellum keys migrate` to store it in the OS keychain",
       );
     }
-    return this.mnemonic;
+    this.mnemonic = m;
+    return m;
   }
 
   private rowToRecord(r: {
@@ -100,7 +119,7 @@ export class PersonaWallets {
       const won = this.walletFor(personaId);
       if (won) return won;
 
-      const mnemonic = this.requireMnemonic();
+      const mnemonic = await this.resolveMnemonic();
       const next =
         (
           this.db
@@ -148,14 +167,17 @@ export class PersonaWallets {
   }
 
   /**
-   * Re-derive the persona's hot signer (SDK adapter) at runtime from the env
-   * mnemonic + its HD index. The key is never persisted — only the index is.
-   * Used by the tx layer; callers must not log or store the result.
+   * Re-derive the persona's hot signer (SDK adapter) at runtime from the master
+   * seed + its HD index. The key is never persisted — only the index is. Used by
+   * the tx layer; callers must not log or store the result.
    */
   async signerFor(personaId: string): Promise<Signer> {
     const w = this.walletFor(personaId);
     if (!w) throw new Error(`no wallet for persona: ${personaId}`);
-    const adapter = await deriveAdapter(this.requireMnemonic(), w.hdIndex);
+    const adapter = await deriveAdapter(
+      await this.resolveMnemonic(),
+      w.hdIndex,
+    );
     // The persisted address must match what the current derivation path + master
     // mnemonic produce for this HD index. A mismatch means the row predates a
     // derivation change (or the mnemonic differs): addressFor() would report one

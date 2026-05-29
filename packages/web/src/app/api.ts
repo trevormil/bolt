@@ -5,6 +5,9 @@ export interface Soul {
   role: string;
   voice: string;
   values?: string[];
+  // PERSONA.md (#87): freeform instructions appended to every request; supersedes
+  // role/voice when set.
+  instructions?: string;
 }
 export interface Persona {
   id: string;
@@ -13,28 +16,29 @@ export interface Persona {
   created: number;
   address: string | null;
 }
-export interface LedgerEntry {
-  id: number;
-  ts: number;
-  personaId: string;
-  kind: string;
-  summary: string;
-  authority: string;
-  costUsd: number;
-  tokens: number;
-  txHash: string | null;
-}
-export interface LedgerSummary {
-  entries: number;
-  totalCostUsd: number;
-  totalTokens: number;
-  byKind: Record<string, number>;
-}
 export interface ChatReply {
   reply: string;
   personaId: string;
   costUsd: number;
   tokens: number;
+}
+
+// A chat session (#72) — one of possibly many conversations under a persona.
+export interface Conversation {
+  id: string;
+  personaId: string;
+  title: string;
+  created: number;
+  updated: number;
+  // Origin surface (#78): "telegram" threads sync in from the bot; "web" is the app.
+  source: "web" | "telegram";
+}
+export interface ConversationMessage {
+  id: number;
+  conversationId: string;
+  role: "user" | "agent";
+  text: string;
+  created: number;
 }
 
 export class ApiError extends Error {
@@ -55,6 +59,21 @@ async function json<T>(res: Response): Promise<T> {
       body.error || `${res.status} ${res.statusText}`,
     );
   return body;
+}
+
+// Multisig vault sign-off progress (#83), mirrored from the server's voteTally.
+export interface VoteTally {
+  threshold: number;
+  totalWeight: number;
+  yesWeight: number;
+  signedCount: number;
+  totalSigners: number;
+  quorumMet: boolean;
+  signers: {
+    address: string;
+    weight: number;
+    vote: "yes" | "no" | "pending";
+  }[];
 }
 
 export const api = {
@@ -88,21 +107,86 @@ export const api = {
     ),
 
   // Onboarding setup status (#19) — what's configured, so the UI can guide a
-  // from-scratch user to the terminal wizard for secrets.
+  // from-scratch user through web onboarding.
   setupStatus: () =>
     fetch("/api/setup-status").then((r) => json<SetupStatus>(r)),
+
+  // First-run web setup (#19): persist the LLM key (REQUIRED + health-checked,
+  // #60) + auto-generate the agent wallet (#59, no import) so the running daemon
+  // adopts them. The generated phrase is the agent's key — NEVER returned to the
+  // browser (reveal it deliberately from Settings → Export, #57).
+  setup: (input: {
+    openRouterKey: string;
+    apiToken?: string;
+    // Optional Telegram remote control (#49) — the bot polls OUT, so no daemon
+    // exposure is needed. Blank = no bot. Takes effect on the next daemon start.
+    telegramBotToken?: string;
+    telegramPrincipalChatId?: string;
+  }) =>
+    fetch("/api/setup", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    }).then((r) =>
+      json<{
+        ok: boolean;
+        telegramEnabled?: boolean;
+        telegramUsername?: string;
+      }>(r),
+    ),
+
+  // Set / change / reset the OpenRouter key after onboarding (#60). Validated
+  // server-side before it's persisted.
+  setOpenRouterKey: (key: string) =>
+    fetch("/api/settings/openrouter-key", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ key }),
+    }).then((r) => json<{ ok: boolean }>(r)),
+
+  // Set / rotate / clear the Telegram bot token after onboarding (#63).
+  // getMe-validated server-side; empty token clears it. Returns the bot @username
+  // on success so the UI can confirm the connection.
+  setTelegramToken: (input: { token: string; principalChatId?: string }) =>
+    fetch("/api/settings/telegram", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    }).then((r) =>
+      json<{ ok: boolean; configured: boolean; username?: string }>(r),
+    ),
+
+  // Reveal the agent's master mnemonic for backup (#57). Loopback + authed; the
+  // one place the phrase travels to the browser, fetched only on a deliberate
+  // Settings → Export action.
+  agentMnemonic: () =>
+    fetch("/api/agent/mnemonic").then((r) => json<{ mnemonic: string }>(r)),
 
   listPersonas: () =>
     fetch("/api/personas")
       .then((r) => json<{ personas: Persona[] }>(r))
       .then((b) => b.personas),
 
-  createPersona: (input: { name: string; role?: string; voice?: string }) =>
+  createPersona: (input: {
+    name: string;
+    role?: string;
+    voice?: string;
+    // PERSONA.md (#87) — the freeform instructions doc for this persona.
+    instructions?: string;
+  }) =>
     fetch("/api/personas", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(input),
     }).then((r) => json<{ persona: Persona; address: string }>(r)),
+
+  // Update a persona's PERSONA.md instructions (#87). Empty string clears it.
+  updatePersonaInstructions: (id: string, instructions: string) =>
+    fetch(`/api/personas/${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ instructions }),
+    }).then((r) => json<{ persona: Persona }>(r)),
 
   wallet: (id: string) =>
     fetch(`/api/personas/${id}/wallet`).then((r) =>
@@ -114,21 +198,61 @@ export const api = {
       json<{ txHash?: string; amount?: string; denom?: string }>(r),
     ),
 
-  ledger: (id: string) =>
-    fetch(`/api/personas/${id}/ledger`).then((r) =>
-      json<{ entries: LedgerEntry[]; summary: LedgerSummary }>(r),
+  // Send USDC from this persona's wallet (#65). Server-signed through the gated
+  // txManager.spend chokepoint — the same path the agent's send_usdc tool and
+  // Telegram /spend use. `amount` is a base-unit (µUSDC) integer string.
+  spend: (id: string, body: { to: string; amount: string }) =>
+    fetch(`/api/personas/${id}/spend`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((r) =>
+      json<{ id: string; hash: string | null; status: string }>(r),
     ),
 
   chat: (input: {
     conversationId: string;
     personaId: string;
     message: string;
+    // The connected Keplr address (#73) — sent so the agent knows "my wallet".
+    humanAddress?: string;
   }) =>
     fetch("/api/chat", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(input),
     }).then((r) => json<ChatReply>(r)),
+
+  // Chat sessions per persona (#72) — list / create / rename / delete + the
+  // persisted transcript. Scoped per persona server-side (memory wall).
+  listConversations: (personaId: string) =>
+    fetch(`/api/personas/${personaId}/conversations`)
+      .then((r) => json<{ conversations: Conversation[] }>(r))
+      .then((b) => b.conversations),
+
+  createConversation: (personaId: string, title?: string) =>
+    fetch(`/api/personas/${personaId}/conversations`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(title ? { title } : {}),
+    }).then((r) => json<Conversation>(r)),
+
+  renameConversation: (personaId: string, cid: string, title: string) =>
+    fetch(`/api/personas/${personaId}/conversations/${cid}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title }),
+    }).then((r) => json<Conversation>(r)),
+
+  deleteConversation: (personaId: string, cid: string) =>
+    fetch(`/api/personas/${personaId}/conversations/${cid}`, {
+      method: "DELETE",
+    }).then((r) => json<{ ok: boolean }>(r)),
+
+  conversationMessages: (personaId: string, cid: string) =>
+    fetch(`/api/personas/${personaId}/conversations/${cid}/messages`)
+      .then((r) => json<{ messages: ConversationMessage[] }>(r))
+      .then((b) => b.messages),
 
   budget: (id: string) =>
     fetch(`/api/personas/${id}/budget`).then((r) => json<BudgetResponse>(r)),
@@ -152,10 +276,12 @@ export const api = {
       body: JSON.stringify({ model }),
     }).then((r) => json<Resolved<string | null>>(r)),
 
-  // Observability event timeline + window summary (#42).
-  events: (id: string, limit = 100) =>
-    fetch(`/api/personas/${id}/events?limit=${limit}`).then((r) =>
-      json<{ summary: EventSummary; events: EventItem[] }>(r),
+  // Unified observability feed (#95) — merged events + ledger, summary, latency
+  // breakdown, budget windows + month-end burn-down. Replaces the separate
+  // events + ledger reads the Activity and Ledger screens used.
+  observability: (id: string, limit = 200) =>
+    fetch(`/api/personas/${id}/observability?limit=${limit}`).then((r) =>
+      json<ObservabilityResponse>(r),
     ),
 
   // PUBLIC multisig sign-off info for a vault (#45 slice 3) — for the /vote page.
@@ -169,6 +295,10 @@ export const api = {
         proposalId: string;
         threshold: number;
         signers: { address: string; weight?: number }[];
+        // Live on-chain sign-off progress (#83); null + tallyError when the chain
+        // read failed (distinct from a genuine zero).
+        tally: VoteTally | null;
+        tallyError: boolean;
       }>(r),
     ),
 
@@ -176,25 +306,6 @@ export const api = {
   vaultEscrow: (id: string, collectionId: string) =>
     fetch(`/api/personas/${id}/vaults/${collectionId}/escrow`).then((r) =>
       json<EscrowInfo>(r),
-    ),
-
-  // Scheduled tasks (#36) over HTTP.
-  tasks: (id: string) =>
-    fetch(`/api/personas/${id}/tasks`)
-      .then((r) => json<{ tasks: Task[] }>(r))
-      .then((b) => b.tasks),
-  createTask: (
-    id: string,
-    input: { prompt: string; everyMinutes: number; armed: boolean },
-  ) =>
-    fetch(`/api/personas/${id}/tasks`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(input),
-    }).then((r) => json<Task>(r)),
-  cancelTask: (id: string, taskId: string) =>
-    fetch(`/api/personas/${id}/tasks/${taskId}`, { method: "DELETE" }).then(
-      (r) => json<{ ok: boolean }>(r),
     ),
 
   listVaults: (id: string) =>
@@ -209,6 +320,8 @@ export const api = {
       symbol: string;
       dailyWithdrawLimit?: number;
       gating?: VaultGating;
+      // The human manager (#75) — the connected Keplr address.
+      managerAddress?: string;
     },
   ) =>
     fetch(`/api/personas/${id}/vaults`, {
@@ -222,7 +335,22 @@ export const api = {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ amount: amountMicro }),
-    }).then((r) => json<{ hash: string; status: string }>(r)),
+    }).then((r) =>
+      json<{ id: string; hash: string | null; status: string }>(r),
+    ),
+
+  // Poll a submitted tx toward its terminal state (#81) so a withdrawal shows
+  // pending → confirmed/failed instead of appearing to hang.
+  txStatus: (id: string, txId: string) =>
+    fetch(`/api/personas/${id}/tx/${txId}`).then((r) =>
+      json<{
+        id: string;
+        hash: string | null;
+        status: "submitting" | "pending" | "confirmed" | "failed";
+        height: number | null;
+        error: string | null;
+      }>(r),
+    ),
 
   createPaymentRequest: (
     id: string,
@@ -255,6 +383,35 @@ export const api = {
     fetch(`/api/payment-requests/${reqId}`, { method: "DELETE" }).then((r) =>
       json<{ ok: boolean }>(r),
     ),
+
+  // Vault deposit requests (#62) — the "fund this vault" analog, mirroring the
+  // payment-request methods above.
+  createDepositRequest: (
+    id: string,
+    input: { collectionId: string; amountUsdc: number; memo?: string },
+  ) =>
+    fetch(`/api/personas/${id}/deposit-requests`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    }).then((r) => json<DepositRequest>(r)),
+
+  listDepositRequests: (id: string) =>
+    fetch(`/api/personas/${id}/deposit-requests`)
+      .then((r) => json<{ requests: DepositRequest[] }>(r))
+      .then((b) => b.requests),
+
+  getDepositRequest: (reqId: string) =>
+    fetch(`/api/deposit-requests/${reqId}`).then((r) =>
+      json<{ request: DepositRequest; personaName: string }>(r),
+    ),
+
+  // No confirm method (#62): a third-party funder just signs the deposit; the
+  // persona owner dismisses the (authed) request once the vault shows funded.
+  dismissDepositRequest: (reqId: string) =>
+    fetch(`/api/deposit-requests/${reqId}`, { method: "DELETE" }).then((r) =>
+      json<{ ok: boolean }>(r),
+    ),
 };
 
 // A pending (outstanding) payment request. Filled ones are deleted — the ledger
@@ -269,12 +426,29 @@ export interface PaymentRequest {
   created: number;
 }
 
+// A pending vault deposit request (#62) — the "fund this vault" analog. Carries
+// the vault context the /deposit page needs to build `vaultDepositMsg`. Filled
+// ones are deleted (the deposit is on-chain), so any request returned is pending.
+export interface DepositRequest {
+  id: string;
+  personaId: string;
+  collectionId: string;
+  vaultSymbol: string;
+  vaultName: string;
+  backingAddress: string;
+  agentAddress: string; // recipient of the minted vault tokens (the persona)
+  denom: string;
+  amount: string; // base µUSDC
+  memo: string;
+  created: number;
+}
+
 // Vault withdrawal gating (#45 slice 2): amount cap per rolling period + a time
 // unlock. (Multi-sig via votingChallenges is slice 3.)
 export type GatingPeriod = "daily" | "weekly" | "monthly";
 export interface VaultGating {
   amount?: { limitUsd: number; period: GatingPeriod };
-  time?: { unlockAt?: number }; // epoch ms
+  time?: { unlockAt?: number; expiresAt?: number }; // epoch ms; start / end
   multisig?: {
     signers: { address: string; weight?: number }[];
     threshold: number;
@@ -323,17 +497,6 @@ export interface BudgetResponse {
 }
 
 // Observability events (#42).
-export interface EventItem {
-  id: number;
-  ts: number;
-  kind: string;
-  summary: string;
-  latencyMs: number;
-  costUsd: number;
-  tokens: number;
-  ok: boolean;
-  meta: Record<string, unknown>;
-}
 export interface EventSummaryWindow {
   events: number;
   costUsd: number;
@@ -347,6 +510,39 @@ export interface EventSummary {
   last30d: EventSummaryWindow;
 }
 
+// Unified observability feed (#95) — one timeline merging operational events with
+// proof-of-action ledger settlement (authority + on-chain tx).
+export type ObservabilitySource = "event" | "ledger";
+export interface UnifiedRow {
+  id: string;
+  ts: number;
+  kind: string;
+  summary: string;
+  source: ObservabilitySource;
+  latencyMs?: number;
+  costUsd: number;
+  tokens: number;
+  ok?: boolean;
+  authority?: string;
+  txHash?: string | null;
+  meta: Record<string, unknown>;
+}
+export interface Burndown {
+  projectedUsd: number;
+  capUsd?: number;
+  willBreach: boolean;
+}
+export interface ObservabilityResponse {
+  summary: EventSummary;
+  latencyByKind: Record<string, number>;
+  rows: UnifiedRow[];
+  budget: {
+    llm: BudgetWindow;
+    evaluation: BudgetResponse["evaluation"];
+    burndown: Burndown;
+  };
+}
+
 // Onboarding setup status (#19). Booleans/counts only — never secret values or
 // local path material (the route is unauthenticated).
 export interface SetupStatus {
@@ -354,6 +550,7 @@ export interface SetupStatus {
   hasWallet: boolean;
   personaCount: number;
   daemonExposed: boolean;
+  telegramConfigured?: boolean;
 }
 
 export interface EscrowInfo {
@@ -361,16 +558,4 @@ export interface EscrowInfo {
   backingAddress: string;
   denom: string;
   escrowedMicro: string;
-}
-
-// Scheduled task (#36) — armed=false runs read-only (#24/T-13).
-export interface Task {
-  id: string;
-  personaId: string;
-  prompt: string;
-  intervalMs: number;
-  nextRun: number;
-  enabled: boolean;
-  armed: boolean;
-  created: number;
 }

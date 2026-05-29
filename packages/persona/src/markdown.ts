@@ -1,15 +1,16 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dataPath } from "@vellum/shared";
 
-// Per-persona markdown directory (#41), filesystem-first under ~/.vellum:
-//   ~/.vellum/PERSONA.md                       — global, applies to ALL personas
-//   ~/.vellum/personas/<id>/PERSONA.md         — this persona's always-on steering
-//   ~/.vellum/personas/<id>/*.md (other)       — referenceable docs/skills (on demand)
+// Persona markdown, filesystem-first under ~/.vellum (#41), reconciled with the
+// DB-stored PERSONA.md (#87, #93):
+//   ~/.vellum/PERSONA.md            — GLOBAL, applies to ALL personas (always-on)
+//   ~/.vellum/personas/<id>/*.md    — referenceable docs/skills (on demand, not injected)
 //
-// PERSONA.md is the OpenClaw/CLAUDE.md-style steering layer the user edits on
-// disk; it's appended to EVERY request for that persona (after the system
-// prompt). The other .md files are NOT auto-injected — they're loadable on
-// demand (a future skill/memory tool).
+// CANONICAL MODEL (#93): the per-persona PERSONA.md is the DB `soul.instructions`
+// (web/CLI-editable, rendered by renderSoul). This file layer no longer carries a
+// per-persona always-on doc — that was a second source of truth that double-
+// injected with renderSoul. What remains here is the GLOBAL cross-persona steering
+// (one file) plus referenceable on-demand docs (`listPersonaDocs`, NOT auto-injected).
 
 /** Path to a persona's markdown directory (does not create it). */
 export function personaDir(personaId: string): string {
@@ -17,32 +18,26 @@ export function personaDir(personaId: string): string {
 }
 
 /**
- * The always-on markdown for a persona, composed in order: the global
- * `PERSONA.md` (if any) then the persona's own `PERSONA.md` (if any). Read fresh
- * each call so on-disk edits take effect next turn. Returns "" when neither
- * exists — a no-op for the system context.
+ * The GLOBAL always-on markdown applied to EVERY persona — `~/.vellum/PERSONA.md`.
+ * Read fresh each call so on-disk edits take effect next turn; "" when absent.
+ * Per-persona steering is the DB `soul.instructions` (#87), rendered separately by
+ * renderSoul — deliberately NOT read here, so there's a single per-persona source
+ * (#93). The `personaId` arg is accepted (the orchestrator's injectable seam passes
+ * it) but the global layer is persona-independent.
  */
-export function readPersonaMarkdown(personaId: string): string {
-  const parts: string[] = [];
-  for (const file of [dataPath("PERSONA.md"), personaDirFile(personaId)]) {
-    if (existsSync(file)) {
-      const text = readFileSync(file, "utf8").trim();
-      if (text) parts.push(text);
-    }
-  }
-  return parts.join("\n\n");
+export function readPersonaMarkdown(_personaId: string): string {
+  const file = dataPath("PERSONA.md");
+  if (!existsSync(file)) return "";
+  return readFileSync(file, "utf8").trim();
 }
 
-/** The other (non-PERSONA.md) markdown docs in a persona's dir — referenceable
- *  on demand, not auto-injected. Names only; callers read them when relevant. */
+/** The (non-PERSONA.md) markdown docs in a persona's dir — referenceable on
+ *  demand, NOT auto-injected. Names only; an on-demand read tool loads them when
+ *  relevant (#41/#93 follow-on). */
 export function listPersonaDocs(personaId: string): string[] {
   const dir = personaDir(personaId);
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
     .filter((f) => f.endsWith(".md") && f !== "PERSONA.md")
     .sort();
-}
-
-function personaDirFile(personaId: string): string {
-  return dataPath("personas", personaId, "PERSONA.md");
 }

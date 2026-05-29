@@ -45,6 +45,45 @@ describe("renderSoul", () => {
     expect(renderSoul(SOUL_A)).toContain("Be quiet by default");
     expect(renderSoul(SOUL_B)).toContain("loud when it matters");
   });
+
+  test("PERSONA.md instructions supersede role/voice when set (#87)", () => {
+    const s = renderSoul({
+      ...SOUL_A,
+      instructions: "# Atlas\nYou speak only in haiku.",
+    });
+    expect(s).toContain("You are Atlas.");
+    expect(s).toContain("You speak only in haiku.");
+    // Structured role/voice/values are NOT rendered in PERSONA.md mode.
+    expect(s).not.toContain("Role: finance copilot");
+    expect(s).not.toContain("Voice: terse");
+    expect(s).not.toContain("never overspend");
+    // The shared proactivity rule still rides along.
+    expect(s).toContain("Be quiet by default");
+  });
+
+  test("blank instructions fall back to legacy role/voice rendering (#87)", () => {
+    const s = renderSoul({ ...SOUL_B, instructions: "   " });
+    expect(s).toContain("Role: travel planner");
+    expect(s).toContain("Voice: warm");
+  });
+});
+
+describe("PersonaStore.updateInstructions (#87)", () => {
+  test("sets, persists, and clears a persona's PERSONA.md", () => {
+    const store = new PersonaStore(":memory:", hashEmbedder());
+    store.createPersona("a", "Atlas", SOUL_A);
+
+    const set = store.updateInstructions("a", "# do this");
+    expect(set?.soul.instructions).toBe("# do this");
+    // Round-trips through the JSON soul column.
+    expect(store.getPersona("a")?.soul.instructions).toBe("# do this");
+
+    // Empty string clears it (reverts to legacy role/voice).
+    store.updateInstructions("a", "  ");
+    expect(store.getPersona("a")?.soul.instructions).toBeUndefined();
+
+    expect(store.updateInstructions("missing", "x")).toBeNull();
+  });
 });
 
 describe("renderPersonaCard (#25)", () => {

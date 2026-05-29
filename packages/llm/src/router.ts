@@ -5,7 +5,38 @@ import { env, createLogger } from "@vellum/shared";
 // signals complexity. Every call emits a privacy-safe metering record.
 
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
+const KEY_ENDPOINT = "https://openrouter.ai/api/v1/key";
 const log = createLogger("llm");
+
+// OpenRouter rejected the credentials (401/403): the key is missing, invalid, or
+// revoked (#85). Typed so a chat surface can tell the user to fix their key in
+// Settings rather than bubbling an opaque upstream error up to a 500.
+export class LlmAuthError extends Error {
+  constructor(public readonly status: number) {
+    super(`OpenRouter rejected the API key (${status})`);
+    this.name = "LlmAuthError";
+  }
+}
+
+// Health-check an OpenRouter key (#60). The key-info endpoint is free + fast: it
+// returns 200 with the key's limits when valid, 401 when not. Used to block an
+// invalid key at onboarding instead of failing silently on the first chat.
+// `fetchImpl` is injectable so callers (the web setup route) are testable offline.
+export async function verifyOpenRouterKey(
+  key: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<boolean> {
+  if (!key.trim()) return false;
+  try {
+    const res = await fetchImpl(KEY_ENDPOINT, {
+      headers: { Authorization: `Bearer ${key.trim()}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    return res.ok; // 200 = valid; 401/403 = bad key
+  } catch {
+    return false; // unreachable / timeout → can't confirm, so don't accept it
+  }
+}
 
 export type Tier = "cheap" | "frontier";
 export type Role = "system" | "user" | "assistant" | "tool";
@@ -120,6 +151,8 @@ async function callOpenRouter(
     signal: opts.signal ?? AbortSignal.timeout(60_000),
   });
   if (!res.ok) {
+    if (res.status === 401 || res.status === 403)
+      throw new LlmAuthError(res.status);
     throw new Error(
       `OpenRouter ${res.status}: ${(await res.text()).slice(0, 300)}`,
     );

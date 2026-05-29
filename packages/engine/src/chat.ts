@@ -1,10 +1,16 @@
 import type { TraceSpan } from "@vellum/trace";
 import type { ToolInvoker, ToolSpec } from "@vellum/agent";
+import { LlmAuthError } from "@vellum/llm";
 import { createLogger } from "@vellum/shared";
 import type { Engine } from "./engine.ts";
-import { vaultTools } from "./agent-tools.ts";
+import {
+  balanceTools,
+  requestTools,
+  spendTools,
+  vaultTools,
+} from "./agent-tools.ts";
 import { combineTools, filesystemTools } from "./fs-tools.ts";
-import { scheduleTools } from "./schedule-tools.ts";
+import { execTools } from "./exec-tools.ts";
 import { mcpTools } from "./mcp-tools.ts";
 import { McpServers } from "./mcp-setting.ts";
 import { evaluateBudget } from "./budget-setting.ts";
@@ -16,11 +22,15 @@ export interface ChatInput {
   personaId: string;
   message: string;
   trace?: TraceSpan;
-  // Read-only run (#24 / T-13): omit the value-moving vault tools, so a
-  // proactive/scheduled run can observe + reply but cannot create or withdraw
-  // from vaults unless explicitly armed. Filesystem stays capability-gated
-  // either way (default-deny). Interactive chats default to full tools.
+  // Read-only run (#24 / T-13): omit the value-moving vault tools, so an
+  // unattended run can observe + reply but cannot create or withdraw from
+  // vaults. Filesystem stays capability-gated either way (default-deny).
+  // Interactive chats default to full tools.
   readOnly?: boolean;
+  // The human's connected Keplr address (#73), passed from the web client when a
+  // wallet is connected. Surfaced as per-turn context so the agent knows "my
+  // wallet". A public address — never persisted, never stored as a secret.
+  humanAddress?: string;
 }
 export interface ChatResult {
   reply: string;
@@ -39,7 +49,8 @@ export async function chat(
   engine: Engine,
   input: ChatInput,
 ): Promise<ChatResult> {
-  const { conversationId, personaId, message, trace, readOnly } = input;
+  const { conversationId, personaId, message, trace, readOnly, humanAddress } =
+    input;
   const t0 = Date.now();
   // chat_in (#42): one event per user turn. Metadata ONLY — never the raw body
   // (that lives in persona memory). The timeline records that a turn happened +
@@ -51,37 +62,50 @@ export async function chat(
     meta: { conversationId, chars: message.length },
   });
 
+  // Persist the turn to the shared session store (#78) so EVERY surface — web,
+  // Telegram, CLI — writes ONE source of truth: a Telegram conversation shows up
+  // in the web session rail, and a thread is resumable from either side. ensure()
+  // binds the id to this persona (throws on a cross-persona id — the memory wall);
+  // append() auto-titles the session from the first user message.
+  engine.conversations.ensure(conversationId, personaId);
+  engine.conversations.append(conversationId, "user", message);
+
   const budget = evaluateBudget(engine, personaId);
   if (!budget.ok && budget.breached) {
     const w = budget.windows[budget.breached]!;
     const which =
       budget.breached.charAt(0).toUpperCase() + budget.breached.slice(1);
-    return {
-      reply: `${which} LLM budget of $${w.capUsd.toFixed(2)} reached (spent $${w.spentUsd.toFixed(4)}). It resets on a rolling window.`,
-      costUsd: 0,
-      tokens: 0,
-      budgetExceeded: true,
-    };
+    const reply = `${which} LLM budget of $${w.capUsd.toFixed(2)} reached (spent $${w.spentUsd.toFixed(4)}). It resets on a rolling window.`;
+    engine.conversations.append(conversationId, "agent", reply);
+    return { reply, costUsd: 0, tokens: 0, budgetExceeded: true };
   }
 
   engine.orchestrator.resolve(conversationId, `/switch ${personaId}`);
-  // Vault tools + capability-gated filesystem tools (#35). Both share the
-  // persona's compartment; the FS tools enforce grants via engine.authorizer.
-  // In a read-only run (T-13) the value-moving vault tools are withheld entirely
-  // — the agent simply has no create/withdraw tool to call.
+  // Vault tools + free-form spend (#65) + capability-gated filesystem tools
+  // (#35) + command execution (#52). All share the persona's compartment and
+  // enforce grants via engine.authorizer. In a read-only run (T-13) the
+  // value-moving vault tools (create/withdraw/pay), the free-form send_usdc
+  // tool, the mutating fs_write tool, AND command execution are all withheld
+  // entirely — an unattended read-only run can observe disk/state but cannot
+  // modify the host or move value. fs_read/fs_list stay so it can still inspect.
+  // The read-only balance tool (#51) is exposed in BOTH runs — it moves no
+  // value, and the agent must know its funds before it acts.
   const sets: { tools: ToolSpec[]; invoke: ToolInvoker }[] = readOnly
     ? [
-        filesystemTools(engine, personaId),
-        scheduleTools(engine, personaId, { readOnly: true }),
+        balanceTools(engine, personaId),
+        filesystemTools(engine, personaId, { readOnly: true }),
       ]
     : [
+        balanceTools(engine, personaId),
+        spendTools(engine, personaId),
         vaultTools(engine, personaId),
+        requestTools(engine, personaId),
         filesystemTools(engine, personaId),
-        scheduleTools(engine, personaId),
+        execTools(engine, personaId),
       ];
   // MCP servers (#46): merge the persona's configured external tools, reusing
   // the daemon's pooled connections. Withheld from read-only runs for the same
-  // reason vault tools are (T-13) — an unarmed proactive run must not reach
+  // reason vault tools are (T-13) — an unattended read-only run must not reach
   // external tools that could move value. Each server's tools stay gated on the
   // "mcp" capability scoped to the server name (#37); a server that's down is
   // simply absent from `ensure`, so chat degrades gracefully.
@@ -99,11 +123,37 @@ export async function chat(
     }
   }
   const { tools, invoke } = combineTools(...sets);
-  const res = await engine.orchestrator.handle(conversationId, message, {
-    trace,
-    tools,
-    invoke,
-  });
+  let res;
+  try {
+    res = await engine.orchestrator.handle(conversationId, message, {
+      trace,
+      tools,
+      invoke,
+      humanAddress,
+    });
+  } catch (e) {
+    // A revoked/invalid OpenRouter key surfaces here as LlmAuthError (#85). Turn
+    // it into a clean in-chat message — pointing the user at Settings — instead of
+    // bubbling an opaque upstream error up to a 500 on the web route / a crash on
+    // the Telegram poller. Same surface contract as the budget-exceeded path.
+    if (e instanceof LlmAuthError) {
+      const reply =
+        "Your OpenRouter API key is invalid or expired — update it in Settings → OpenRouter to keep chatting.";
+      engine.conversations.append(conversationId, "agent", reply);
+      engine.events.emit({
+        personaId,
+        kind: "chat_out",
+        summary: "reply sent",
+        latencyMs: Date.now() - t0,
+        costUsd: 0,
+        tokens: 0,
+        ok: false,
+        meta: { conversationId, error: "llm_auth" },
+      });
+      return { reply, costUsd: 0, tokens: 0, budgetExceeded: false };
+    }
+    throw e;
+  }
   const costUsd = res.meters.reduce((n, m) => n + m.costUsd, 0);
   const tokens = res.meters.reduce((n, m) => n + m.totalTokens, 0);
   engine.ledger.recordAgentRun(
@@ -130,5 +180,6 @@ export async function chat(
     meta: { conversationId, steps: res.meters.length, chars: res.reply.length },
   });
 
+  engine.conversations.append(conversationId, "agent", res.reply);
   return { reply: res.reply, costUsd, tokens, budgetExceeded: false };
 }

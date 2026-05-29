@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { createLogger } from "@vellum/shared";
 import { scanForInjection } from "./injection.ts";
+import { PERSONA_MD_WARN_CHARS } from "./soul.ts";
 import type {
   Embedder,
   MemoryRecord,
@@ -112,6 +113,30 @@ export class PersonaStore {
       .run(id, name, JSON.stringify(soul), created);
     log.info(`persona created · ${id}`);
     return { id, name, soul, created };
+  }
+
+  // Update a persona's PERSONA.md instructions (#87). Reads the stored soul JSON,
+  // sets `instructions`, writes it back. Returns the updated persona, or null if
+  // the persona doesn't exist. An empty string clears it (reverts to legacy soul
+  // rendering). Only the instructions field is touched — name/role/voice unchanged.
+  updateInstructions(id: string, instructions: string): Persona | null {
+    const persona = this.getPersona(id);
+    if (!persona) return null;
+    const trimmed = instructions.trim();
+    // The PERSONA.md rides every request, so warn when it's large (#93) — it
+    // inflates token cost on every turn.
+    if (trimmed.length > PERSONA_MD_WARN_CHARS)
+      log.warn(
+        `persona ${id} PERSONA.md is large (${trimmed.length} chars) — it's appended to every request`,
+      );
+    const soul: SoulIdentity = {
+      ...persona.soul,
+      instructions: trimmed || undefined,
+    };
+    this.db
+      .query("UPDATE personas SET soul = ? WHERE id = ?")
+      .run(JSON.stringify(soul), id);
+    return { ...persona, soul };
   }
 
   getPersona(id: string): Persona | null {

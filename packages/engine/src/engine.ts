@@ -15,7 +15,9 @@ import { SettingsStore } from "@vellum/settings";
 import { EventStore } from "@vellum/observability";
 import { env, createLogger } from "@vellum/shared";
 import { VaultService, type VaultServiceDeps } from "./vaults.ts";
-import { TaskStore } from "./tasks.ts";
+import { PaymentRequests } from "./payment-requests.ts";
+import { DepositRequests } from "./deposit-requests.ts";
+import { Conversations } from "./conversations.ts";
 import { Model } from "./model-setting.ts";
 import { McpManager, type McpConnector } from "./mcp-manager.ts";
 
@@ -39,10 +41,16 @@ export interface Engine {
   vaults: VaultService;
   capabilities: CapabilityStore; // per-persona grants (#37)
   authorizer: Authorizer; // the single gate for filesystem/cron/mcp/spend (#37)
-  tasks: TaskStore; // agent-settable scheduled tasks (#36)
   settings: SettingsStore; // global + per-persona settings (#40)
   events: EventStore; // per-persona product telemetry (#42)
   mcp: McpManager; // long-lived MCP server connections (#46)
+  // Pending fund/deposit request stores (#67) — shared by web routes, the
+  // agent's request_* tools, and Telegram so every surface mints the same links.
+  paymentRequests: PaymentRequests;
+  depositRequests: DepositRequests;
+  // Per-persona chat sessions (#72) — the verbatim transcript + session list the
+  // web UI renders. Distinct from the routing table + persona memory.
+  conversations: Conversations;
   claimFaucet: FaucetClaim;
 }
 
@@ -129,10 +137,15 @@ export function createEngine(opts: EngineOptions = {}): Engine {
     // query; tests inject it via opts.vault.
     ...opts.vault,
   });
-  const tasks = new TaskStore(dbPath);
   // MCP connections live on the engine so they're pooled across chat turns and
   // shared by every surface; the daemon warms the global set + closes on exit.
   const mcp = new McpManager(opts.mcpConnect);
+  // Request stores (#67): one shared instance per surface (web routes + agent
+  // request_* tools), same sqlite file as everything else.
+  const paymentRequests = new PaymentRequests(dbPath);
+  const depositRequests = new DepositRequests(dbPath);
+  // Chat sessions (#72): same sqlite file, own tables. Surfaces share one store.
+  const conversations = new Conversations(dbPath);
   const claimFaucet = opts.claimFaucet ?? chainClaimFaucet;
   log.info(`engine ready · db=${dbPath}`);
   return {
@@ -140,7 +153,6 @@ export function createEngine(opts: EngineOptions = {}): Engine {
     wallets,
     capabilities,
     authorizer,
-    tasks,
     settings,
     events,
     mcp,
@@ -148,6 +160,9 @@ export function createEngine(opts: EngineOptions = {}): Engine {
     orchestrator,
     txManager,
     vaults,
+    paymentRequests,
+    depositRequests,
+    conversations,
     claimFaucet,
   };
 }

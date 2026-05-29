@@ -18,9 +18,15 @@ export default {
         "accent-strong": "var(--accent-strong)",
         "accent-fg": "var(--accent-fg)",
         "accent-soft": "var(--accent-soft)",
+        copper: "var(--copper)",
+        "copper-soft": "var(--copper-soft)",
+        "border-gold": "var(--border-gold)",
         danger: "var(--danger)",
         warn: "var(--warn)",
         info: "var(--info)",
+      },
+      backgroundImage: {
+        gold: "var(--grad-gold)",
       },
       borderRadius: {
         sm: "var(--r-sm)",
@@ -35,9 +41,9 @@ export default {
         glow: "var(--glow)",
       },
       fontFamily: {
-        sans: ["Geist", "system-ui", "-apple-system", "sans-serif"],
-        mono: ["Geist Mono", "ui-monospace", "monospace"],
-        serif: ["Instrument Serif", "Georgia", "serif"],
+        sans: ["Hanken Grotesk", "system-ui", "-apple-system", "sans-serif"],
+        mono: ["JetBrains Mono", "ui-monospace", "SF Mono", "monospace"],
+        serif: ["Bricolage Grotesque", "system-ui", "sans-serif"],
       },
     },
   },

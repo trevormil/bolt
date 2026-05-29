@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bolt — the agent with a wallet</title>
+    <meta
+      name="description"
+      content="Bolt is a local-first personal agent with its own wallet. Paste three lines into a terminal. Nothing hosted but the LLM."
+    />
+    <meta name="theme-color" content="#0b0b0e" />
+    <link rel="icon" type="image/png" href="bolt.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=Hanken+Grotesk:wght@300..800&family=JetBrains+Mono:wght@400..700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #0b0b0e; --surface: #141318; --border: #2a2731;
+        --border-gold: rgba(212, 175, 55, 0.22);
+        --text: #f2ede0; --muted: #a8a08c; --soft: #6f6a5c;
+        --gold: #d4af37; --gold-bright: #ecca6e; --copper: #b87333;
+        --grad-gold: linear-gradient(135deg, #ecca6e 0%, #d4af37 42%, #b87333 100%);
+        --sans: "Hanken Grotesk", system-ui, sans-serif;
+        --serif: "Bricolage Grotesque", system-ui, sans-serif;
+        --mono: "JetBrains Mono", ui-monospace, monospace;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body { height: 100%; }
+      body {
+        background: var(--bg); color: var(--text); font-family: var(--sans);
+        -webkit-font-smoothing: antialiased; height: 100dvh;
+        display: flex; flex-direction: column; overflow: hidden;
+      }
+      body::before {
+        content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+        background:
+          radial-gradient(56rem 38rem at 50% -12%, rgba(212, 175, 55, 0.13), transparent 60%),
+          radial-gradient(46rem 36rem at 88% 4%, rgba(184, 115, 51, 0.07), transparent 55%);
+      }
+      body::after {
+        content: ""; position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: 0.035;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      }
+      .wrap { position: relative; z-index: 2; width: 100%; max-width: 60rem; margin: 0 auto; padding: 0 1.5rem; }
+
+      nav { display: flex; align-items: center; justify-content: space-between; padding: 1.4rem 0; }
+      .word { display: flex; align-items: center; gap: 0.55rem; font-family: var(--serif); font-size: 1.3rem; font-weight: 600; }
+      .mark { width: 1.7rem; height: 1.7rem; border-radius: 8px; object-fit: cover; box-shadow: 0 0 14px rgba(212, 175, 55, 0.35); }
+      .mark-lg {
+        width: 4rem; height: 4rem; border-radius: 18px; object-fit: cover; display: block; margin: 0 auto 1.3rem;
+        box-shadow: 0 16px 44px rgba(0, 0, 0, 0.5), 0 0 34px rgba(212, 175, 55, 0.28);
+        animation: rise 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+      }
+      nav a { color: var(--muted); text-decoration: none; font-size: 0.9rem; transition: color 0.2s; }
+      nav a:hover { color: var(--gold); }
+
+      main { flex: 1; display: grid; place-items: center; text-align: center; min-height: 0; padding: 0.5rem 0; }
+      .eyebrow {
+        font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.34em; text-transform: uppercase;
+        color: var(--copper); margin-bottom: 1.1rem; animation: fade 0.8s ease both;
+      }
+      h1 {
+        font-family: var(--serif); font-weight: 600; font-size: clamp(2.3rem, 7vw, 4.4rem);
+        line-height: 0.96; letter-spacing: -0.02em; margin-bottom: 0.9rem;
+        animation: rise 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+      }
+      h1 em { font-style: italic; font-weight: 400; }
+      h1 .grad { background: var(--grad-gold); -webkit-background-clip: text; background-clip: text; color: transparent; }
+      .sub {
+        font-size: clamp(0.98rem, 2vw, 1.18rem); color: var(--muted); max-width: 30rem; margin: 0 auto 1.6rem;
+        animation: rise 0.9s 0.1s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+      }
+      .sub b { color: var(--text); font-weight: 600; }
+
+      .caption { font-size: 0.82rem; color: var(--soft); margin-bottom: 0.6rem; }
+      .terminal {
+        position: relative; text-align: left; background: var(--surface); border: 1px solid var(--border-gold);
+        border-radius: 14px; padding: 1rem 3.4rem 1rem 1.2rem; font-family: var(--mono); font-size: 0.84rem; line-height: 1.75;
+        max-width: 38rem; margin: 0 auto;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(212, 175, 55, 0.06);
+        animation: rise 0.9s 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+      }
+      /* Long commands wrap with a hanging indent so continuation sits just past
+         the gold $ prompt instead of scrolling off / clipping. */
+      .terminal .ln { display: block; padding-left: 1.2rem; text-indent: -1.2rem; }
+      .terminal .ln + .ln { margin-top: 0.2rem; }
+      .terminal .p { color: var(--gold); user-select: none; margin-right: 0.5rem; }
+      .terminal .c { color: var(--soft); }
+      .terminal code { color: var(--text); overflow-wrap: anywhere; word-break: break-word; }
+      .terminal .copy {
+        position: absolute; top: 0.7rem; right: 0.7rem; font-family: var(--sans); font-size: 0.74rem;
+        color: var(--soft); border: 1px solid var(--border); border-radius: 8px; padding: 0.28rem 0.55rem;
+        background: var(--surface); cursor: pointer; transition: all 0.2s;
+      }
+      .terminal .copy:hover { color: var(--gold); border-color: var(--border-gold); }
+      .meta {
+        margin-top: 1rem; font-family: var(--mono); font-size: 0.76rem; color: var(--soft);
+        display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; animation: fade 1s 0.4s ease both;
+      }
+      .meta .g { color: var(--gold); }
+      .meta a { color: var(--copper); text-decoration: none; }
+      .meta a:hover { color: var(--gold); }
+
+      footer {
+        position: relative; z-index: 2; display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+        color: var(--soft); font-size: 0.78rem; padding: 1.2rem 0; border-top: 1px solid var(--border);
+        width: 100%; max-width: 60rem; margin: 0 auto;
+      }
+      footer .mark { width: 1.05rem; height: 1.05rem; border-radius: 5px; }
+      @keyframes rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+      @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+      @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <nav>
+        <span class="word"><img class="mark" src="bolt.png" alt="Bolt" /> Bolt</span>
+        <a href="https://labs.gauntletai.com/trevormiller/vellum-project">Source ↗</a>
+      </nav>
+    </div>
+
+    <main>
+      <div class="wrap">
+        <img class="mark-lg" src="bolt.png" alt="Bolt" />
+        <p class="eyebrow">local-first · agentic · payment-native</p>
+        <h1>The agent <em>with a</em> <span class="grad">wallet.</span></h1>
+        <p class="sub">
+          A personal AI agent that <b>holds its own USDC</b> and acts within rules
+          you set — entirely on your machine. <b>Nothing hosted</b> but the model.
+        </p>
+
+        <p class="caption">From a fresh terminal — paste these three lines:</p>
+        <div class="terminal" id="t">
+          <button
+            class="copy"
+            onclick="navigator.clipboard?.writeText(document.getElementById('cmds').innerText);this.textContent='copied'"
+          >
+            copy
+          </button>
+          <span id="cmds">
+            <span class="ln"><span class="c"># 1 · install bun (skip if you already have it)</span></span>
+            <span class="ln"><span class="p">$</span><code>curl -fsSL https://bun.sh/install | bash</code></span>
+            <span class="ln"><span class="p">$</span><code>git clone https://labs.gauntletai.com/trevormiller/vellum-project bolt &amp;&amp; cd bolt</code></span>
+            <span class="ln"><span class="p">$</span><code>bun run setup</code></span>
+          </span>
+        </div>
+
+        <div class="meta">
+          <span><span class="g">⚑</span> its own wallet</span>
+          <span><span class="g">⚙</span> any MCP tool</span>
+          <span><span class="g">⌂</span> 100% local</span>
+          <span>~1 min to first chat</span>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <img class="mark" src="bolt.png" alt="" /> Bolt — the agent with a wallet · local-first, yours
+    </footer>
+  </body>
+</html>

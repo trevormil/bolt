@@ -58,7 +58,7 @@ export function launchdPlist(spec: ServiceSpec): string {
 export function systemdUnit(spec: ServiceSpec): string {
   const entry = join(spec.repo, DAEMON_ENTRY);
   return `[Unit]
-Description=Vellum local agent daemon (web + Telegram + scheduler)
+Description=Bolt local agent daemon (web + Telegram)
 After=network.target
 
 [Service]

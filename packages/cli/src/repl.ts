@@ -1,5 +1,10 @@
 import { createInterface } from "node:readline";
-import { chat, grantDefaultCapabilities, type Engine } from "@vellum/engine";
+import {
+  chat,
+  grantDefaultCapabilities,
+  DEFAULT_PERSONA_INSTRUCTIONS,
+  type Engine,
+} from "@vellum/engine";
 
 // Interactive terminal chat (#34) — the OpenClaw-style REPL. Each line is a turn
 // against the held persona, run through the shared engine (so memory, tools,
@@ -14,10 +19,11 @@ export async function repl(
   const initial = startPersona ?? engine.store.listPersonas()[0]?.id;
   let personaId: string;
   if (!initial) {
-    engine.store.createPersona("assistant", "Vellum", {
-      name: "Vellum",
-      role: "payment-first personal agent",
-      voice: "warm, concise, plain-English",
+    engine.store.createPersona("assistant", "Bolt", {
+      name: "Bolt",
+      role: "",
+      voice: "",
+      instructions: DEFAULT_PERSONA_INSTRUCTIONS,
     });
     await engine.wallets.ensureWallet("assistant");
     grantDefaultCapabilities(engine.capabilities, "assistant");
@@ -29,7 +35,7 @@ export async function repl(
   }
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
-  console.log(`Vellum · talking to "${personaId}". ${HELP}`);
+  console.log(`Bolt · talking to "${personaId}". ${HELP}`);
   const reprompt = () => {
     rl.setPrompt(`${personaId} › `);
     rl.prompt();
@@ -70,8 +76,9 @@ export async function repl(
         else {
           engine.store.createPersona(id, name, {
             name,
-            role: "personal assistant",
-            voice: "friendly and concise",
+            role: "",
+            voice: "",
+            instructions: DEFAULT_PERSONA_INSTRUCTIONS,
           });
           await engine.wallets.ensureWallet(id);
           grantDefaultCapabilities(engine.capabilities, id);

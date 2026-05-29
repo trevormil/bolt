@@ -1,20 +1,34 @@
+import { join } from "node:path";
 import { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
-import { confirmTx } from "@vellum/chain";
+import { confirmTx, generateWallet, getVotes } from "@vellum/chain";
+import { verifyOpenRouterKey } from "@vellum/llm";
 import { tracer } from "@vellum/trace";
 import {
   createLogger,
   env,
+  setRuntimeEnv,
+  upsertEnvFile,
   ensureDataDir,
   migrateLegacyDb,
+  verifyTelegramToken,
+  getAgentMnemonic,
+  setAgentMnemonic,
+  defaultBackend,
+  type SecretBackend,
 } from "@vellum/shared";
 import {
   createEngine,
   chat,
   grantDefaultCapabilities,
+  DEFAULT_PERSONA_INSTRUCTIONS,
   CapabilityDeniedError,
+  voteTally,
   llmBudget,
   evaluateBudget,
+  mergeObservability,
+  latencyByKind,
+  projectMonthlySpend,
   BudgetLimits,
   BudgetLimitsSchema,
   Model,
@@ -29,7 +43,11 @@ import {
   type VaultGating,
   type GatingPeriod,
 } from "@vellum/tokenization";
-import { PaymentRequests } from "./payment-requests.ts";
+import {
+  isBb1Address,
+  isPositiveMicroAmount,
+  TxRejectedError,
+} from "@vellum/tx";
 
 // Built SPA dir, resolved from this file (cwd-independent) so the server can be
 // launched from the repo root (where .env loads) or from packages/web alike.
@@ -120,12 +138,25 @@ export function parseGating(raw: unknown): VaultGating | undefined | "invalid" {
     out.amount = { limitUsd: a.limitUsd, period: a.period as GatingPeriod };
   }
   if (g.time != null) {
-    const t = g.time as { unlockAt?: unknown };
+    const t = g.time as { unlockAt?: unknown; expiresAt?: unknown };
+    const time: { unlockAt?: number; expiresAt?: number } = {};
     if (t.unlockAt != null) {
       if (typeof t.unlockAt !== "number" || t.unlockAt < 0) return "invalid";
-      // An empty time:{} is a no-op (not a policy) — see !43.
-      out.time = { unlockAt: t.unlockAt };
+      time.unlockAt = t.unlockAt;
     }
+    if (t.expiresAt != null) {
+      if (typeof t.expiresAt !== "number" || t.expiresAt < 0) return "invalid";
+      time.expiresAt = t.expiresAt;
+    }
+    // A window that ends at/before it starts can never be withdrawn from.
+    if (
+      time.unlockAt != null &&
+      time.expiresAt != null &&
+      time.expiresAt <= time.unlockAt
+    )
+      return "invalid";
+    // An empty time:{} is a no-op (not a policy) — see !43.
+    if (time.unlockAt != null || time.expiresAt != null) out.time = time;
   }
   if (g.multisig != null) {
     const ms = g.multisig as {
@@ -137,7 +168,7 @@ export function parseGating(raw: unknown): VaultGating | undefined | "invalid" {
     const signers: { address: string; weight?: number }[] = [];
     for (const s of ms.signers) {
       const so = s as { address?: unknown; weight?: unknown };
-      if (typeof so.address !== "string" || !so.address.startsWith("bb1"))
+      if (typeof so.address !== "string" || !isBb1Address(so.address))
         return "invalid";
       if (
         so.weight != null &&
@@ -175,8 +206,14 @@ export function parseGating(raw: unknown): VaultGating | undefined | "invalid" {
 export function isPublicRoute(method: string, path: string): boolean {
   if (path === "/api/health" || path === "/api/config") return true;
   // Setup status drives the onboarding screen before anything is configured.
-  // No secrets — just booleans + the local data-dir path (#19).
+  // No secrets — booleans + counts only, no local path material (#19/!48).
   if (method === "GET" && path === "/api/setup-status") return true;
+  // NOTE: POST /api/setup is deliberately NOT public. It persists a wallet
+  // mnemonic, so it must stay behind the Host/Origin cross-site guard below
+  // (else a page the user visits could POST localhost on a fresh install and
+  // plant an attacker mnemonic — !51 HIGH). The auth middleware already lets it
+  // through on loopback without a token (the first-run dev path), and the route
+  // itself is additionally loopback-only + first-run-only.
   // Auth status + login/logout must be reachable to authenticate in the first place.
   if (method === "GET" && path === "/api/auth") return true;
   if (method === "POST" && (path === "/api/login" || path === "/api/logout"))
@@ -187,6 +224,14 @@ export function isPublicRoute(method: string, path: string): boolean {
     method === "POST" &&
     /^\/api\/payment-requests\/[^/]+\/confirm$/.test(path)
   )
+    return true;
+  // Vault deposit-request share link (#62): the /deposit/:id page is opened by
+  // anyone the funder shares it with, so READING the request is public (like the
+  // pay link). There is deliberately NO public confirm/delete — unlike the
+  // payment-request confirm (which verifies the on-chain credit), a deposit has
+  // nothing to verify, so an unauthenticated delete would just be a griefing
+  // vector. The persona owner dismisses the request (authed) once it's funded.
+  if (method === "GET" && /^\/api\/deposit-requests\/[^/]+$/.test(path))
     return true;
   // Vault sign-off info is public (collectionId + signers are on-chain) — the
   // third-party sign-off page (#45 slice 3) reads it without a persona session.
@@ -213,16 +258,52 @@ function slug(name: string): string {
 // determinism live in the engine packages; this layer just exposes them.
 export function buildApp(
   engine: Engine,
-  // Injectable so tests get an isolated store; prod shares the engine's sqlite
-  // file (own table). Defaults to the configured DB path.
-  paymentRequests = new PaymentRequests(env.VELLUM_DB_PATH),
+  // Injectable so tests get an isolated store; defaults to the engine's shared
+  // instances (#67) so web routes and the agent's request_* tools mint links
+  // against the same DB.
+  paymentRequests = engine.paymentRequests,
+  // Vault deposit requests (#62) — parallel to paymentRequests, own table.
+  depositRequests = engine.depositRequests,
   // Auth config (injectable for tests). Defaults to env.
   auth: { token?: string; host?: string } = {
     token: env.VELLUM_API_TOKEN,
     host: env.WEB_HOST,
   },
+  // First-run setup side-effects (injectable for tests so /api/setup doesn't
+  // write the real .env or mutate the global env singleton). Prod uses the
+  // cwd .env Bun auto-loads + the live env mutation.
+  setup: {
+    envFilePath?: string;
+    applyRuntime?: (partial: Partial<typeof env>) => void;
+    // Built-SPA directory (injectable so the cache-header behavior is testable
+    // against a fixture, not whatever dist a dev checkout happens to have).
+    distDir?: string;
+    // OpenRouter key health-check (#60), injectable so tests run offline.
+    verifyKey?: (key: string) => Promise<boolean>;
+    // Telegram bot-token health-check (#63, getMe) — injectable for offline tests.
+    verifyTelegram?: (
+      token: string,
+    ) => Promise<{ ok: boolean; username?: string }>;
+    // Hot-attach hook (#74): the daemon hands its TelegramController so a token
+    // set via /api/setup or Settings connects the poller live — no restart. Web
+    // stays decoupled from the telegram package via this duck-typed interface;
+    // absent in tests/CLI that don't run a poller.
+    telegram?: {
+      attach(token: string): Promise<void>;
+      detach(): Promise<void>;
+    };
+    // OS secret store for the agent master seed (ADR-0007), injectable so tests
+    // never touch the real keychain. Defaults to the platform backend.
+    secretBackend?: SecretBackend;
+  } = {},
 ) {
   const app = new Hono();
+  const setupEnvFilePath = setup.envFilePath ?? join(process.cwd(), ".env");
+  const applyRuntimeEnv = setup.applyRuntime ?? setRuntimeEnv;
+  const secretBackend = setup.secretBackend ?? defaultBackend();
+  const distDir = setup.distDir ?? DIST;
+  const verifyKey = setup.verifyKey ?? verifyOpenRouterKey;
+  const verifyTelegram = setup.verifyTelegram ?? verifyTelegramToken;
 
   // Security headers (#24 / T-11). Defense-in-depth even though the app binds
   // loopback by default: a malicious local page must not be able to frame the
@@ -332,22 +413,255 @@ export function buildApp(
     }),
   );
 
-  // Onboarding setup status (#19) — what's configured, so the web onboarding can
-  // guide a from-scratch user to the terminal wizard for secrets. Booleans/counts
-  // ONLY: never the key/mnemonic values, and never the local data-dir path
+  // Onboarding setup status (#19) — what's configured, so the web onboarding
+  // (SetupFlow) knows whether to show the first-run flow. Booleans/counts ONLY:
+  // never the key/mnemonic values, and never the local data-dir path
   // (unauthenticated route — no local filesystem disclosure; !48 review).
-  app.get("/api/setup-status", (c) =>
+  app.get("/api/setup-status", async (c) =>
     c.json({
       hasLlmKey: !!(
         env.OPENROUTER_API_KEY ||
         env.ANTHROPIC_API_KEY ||
         env.OPENAI_API_KEY
       ),
-      hasWallet: !!env.AGENT_SIGNER_MNEMONIC,
+      hasWallet: !!(await getAgentMnemonic(secretBackend)),
       personaCount: engine.store.listPersonas().length,
       daemonExposed: !isLoopback(env.WEB_HOST),
+      telegramConfigured: !!env.TELEGRAM_BOT_TOKEN,
     }),
   );
+
+  // First-run web onboarding (#54): persist the LLM key + agent wallet, and make
+  // the ALREADY-RUNNING daemon adopt them (no restart) so the next step (persona
+  // creation) works immediately. Loopback-only + first-run-only — secrets are
+  // never accepted over an exposed/network boundary, and never re-written once a
+  // wallet exists. The wallet can be generated server-side; the phrase is the
+  // AGENT's key and is NEVER returned to the browser (the user reveals it on
+  // demand from Settings → Export, #57). It also never travels TO the server.
+  app.post("/api/setup", async (c) => {
+    if (!isLoopback(auth.host ?? "127.0.0.1"))
+      return c.json(
+        {
+          error:
+            "setup is loopback-only; configure secrets via the CLI when exposed",
+        },
+        403,
+      );
+    if (await getAgentMnemonic(secretBackend))
+      return c.json({ error: "already set up" }, 409);
+
+    const body = (await c.req.json().catch(() => ({}))) as {
+      openRouterKey?: unknown;
+      apiToken?: unknown;
+      telegramBotToken?: unknown;
+      telegramPrincipalChatId?: unknown;
+    };
+
+    // The LLM key is REQUIRED + health-checked (#60) — block an empty or invalid
+    // key here, BEFORE generating the wallet / writing .env, so a bad key leaves
+    // nothing persisted.
+    const openRouterKey =
+      typeof body.openRouterKey === "string" ? body.openRouterKey.trim() : "";
+    if (!openRouterKey)
+      return c.json({ error: "an OpenRouter API key is required" }, 400);
+    if (!(await verifyKey(openRouterKey)))
+      return c.json(
+        { error: "that OpenRouter key didn't validate — check it and retry" },
+        400,
+      );
+
+    // Telegram remote control (#49) — OPTIONAL. Parse + validate the principal
+    // chat id BEFORE generating the wallet or writing .env (#65 review): a typo
+    // like "abc" would otherwise persist TELEGRAM_PRINCIPAL_CHAT_ID, and the
+    // next-boot zod env coercion (Number(...)) turns it into NaN and fails
+    // startup — an optional onboarding field must never become a boot blocker.
+    // Telegram chat ids may be negative (group chats), so allow a leading "-".
+    const tgToken =
+      typeof body.telegramBotToken === "string"
+        ? body.telegramBotToken.trim()
+        : "";
+    const tgChat =
+      typeof body.telegramPrincipalChatId === "string"
+        ? body.telegramPrincipalChatId.trim()
+        : "";
+    if (tgChat && !/^-?[0-9]+$/.test(tgChat))
+      return c.json({ error: "Telegram chat id must be an integer" }, 400);
+
+    // Agent wallets are ALWAYS generated fresh (#59) — no import. The phrase
+    // is the agent's key; it never enters the app from the user side.
+    const mnemonic = (await generateWallet()).mnemonic;
+
+    // The master seed goes to the OS keychain (ADR-0007), never plaintext .env;
+    // only the non-seed secrets persist to the env file. The seed is adopted into
+    // the running daemon below via wallets.setMnemonic (no env round-trip).
+    const updates: Record<string, string> = {
+      OPENROUTER_API_KEY: openRouterKey,
+    };
+    const runtime: Partial<typeof env> = {
+      OPENROUTER_API_KEY: openRouterKey,
+    };
+    if (typeof body.apiToken === "string" && body.apiToken.trim()) {
+      updates.VELLUM_API_TOKEN = body.apiToken.trim();
+      runtime.VELLUM_API_TOKEN = body.apiToken.trim();
+    }
+    // Telegram remote control (#49) — OPTIONAL. Telegram is the agent's remote
+    // entrypoint (the bot polls OUT, so no daemon exposure is needed). Persisted
+    // + adopted into runtime env; the long-poller is attached on the next daemon
+    // start (attachTelegram reads env at boot — it isn't hot-attached here). The
+    // chat id was already validated as an integer above, before any persistence;
+    // the token is getMe-validated below (#63) before anything is persisted.
+    let tgUsername: string | undefined;
+    if (tgToken) {
+      // Health-check the token via getMe (#63) before persisting — a bad token
+      // would otherwise fail silently at the next daemon boot. Nothing is
+      // persisted yet (the wallet is in-memory), so a 400 here leaves no state.
+      const tg = await verifyTelegram(tgToken);
+      if (!tg.ok)
+        return c.json(
+          {
+            error:
+              "that Telegram bot token didn't validate — create one with @BotFather and retry",
+          },
+          400,
+        );
+      tgUsername = tg.username;
+      updates.TELEGRAM_BOT_TOKEN = tgToken;
+      runtime.TELEGRAM_BOT_TOKEN = tgToken;
+      if (tgChat) {
+        updates.TELEGRAM_PRINCIPAL_CHAT_ID = tgChat;
+        runtime.TELEGRAM_PRINCIPAL_CHAT_ID = Number(tgChat);
+      }
+    }
+
+    // Store the master seed in the OS keychain (after all validation, so a bad
+    // Telegram token above leaves no persisted state). Then the non-seed secrets.
+    await setAgentMnemonic(mnemonic, secretBackend);
+    upsertEnvFile(setupEnvFilePath, updates); // persist for next boot
+    applyRuntimeEnv(runtime); // live daemon adopts it now (no restart)
+    engine.wallets.setMnemonic(mnemonic);
+
+    // Hot-attach the long-poller so the bot connects immediately (#74) — no
+    // daemon restart. Best-effort: the token already getMe-validated above, so
+    // a failure here is a poller hiccup, not a bad credential; persistence holds
+    // so the next boot still picks it up.
+    if (tgToken)
+      await setup.telegram
+        ?.attach(tgToken)
+        .catch((e) => log.warn(`telegram hot-attach failed: ${e}`));
+
+    log.info(
+      `web setup complete · wallet + LLM key configured${tgToken ? ` + telegram @${tgUsername ?? "?"} (connected)` : ""}`,
+    );
+    return c.json({
+      ok: true,
+      telegramEnabled: !!tgToken,
+      telegramUsername: tgUsername,
+    });
+  });
+
+  // Set / change / reset the OpenRouter key after onboarding (#60). Same trust
+  // boundary as /api/setup (loopback-only, behind the Host/Origin guard) but NOT
+  // first-run-gated — the key is health-checked before it's persisted + adopted.
+  app.post("/api/settings/openrouter-key", async (c) => {
+    if (!isLoopback(auth.host ?? "127.0.0.1"))
+      return c.json({ error: "key changes are loopback-only" }, 403);
+    const body = (await c.req.json().catch(() => ({}))) as { key?: unknown };
+    const key = typeof body.key === "string" ? body.key.trim() : "";
+    if (!key)
+      return c.json({ error: "an OpenRouter API key is required" }, 400);
+    if (!(await verifyKey(key)))
+      return c.json(
+        { error: "that OpenRouter key didn't validate — check it and retry" },
+        400,
+      );
+    upsertEnvFile(setupEnvFilePath, { OPENROUTER_API_KEY: key });
+    applyRuntimeEnv({ OPENROUTER_API_KEY: key });
+    log.info("openrouter key updated · settings");
+    return c.json({ ok: true });
+  });
+
+  // Set / rotate / clear the Telegram bot token after onboarding (#63). Same
+  // loopback-only boundary as the OpenRouter key route; the token is health-
+  // checked via getMe before it's persisted + adopted. An empty token clears
+  // Telegram. Hot-attaches the poller so the change takes effect immediately
+  // (#74) — set connects the bot, clear stops it, no daemon restart.
+  app.post("/api/settings/telegram", async (c) => {
+    if (!isLoopback(auth.host ?? "127.0.0.1"))
+      return c.json({ error: "telegram changes are loopback-only" }, 403);
+    const body = (await c.req.json().catch(() => ({}))) as {
+      token?: unknown;
+      principalChatId?: unknown;
+    };
+    const token = typeof body.token === "string" ? body.token.trim() : "";
+    const chat =
+      typeof body.principalChatId === "string"
+        ? body.principalChatId.trim()
+        : "";
+    if (chat && !/^-?[0-9]+$/.test(chat))
+      return c.json({ error: "Telegram chat id must be an integer" }, 400);
+
+    if (!token) {
+      // Empty token → disable Telegram + stop the poller. Clear the principal
+      // chat id too (!67 review): a stale id left behind would re-pin the NEXT
+      // bot to the old chat instead of letting TOFU /start re-claim ownership.
+      upsertEnvFile(setupEnvFilePath, {
+        TELEGRAM_BOT_TOKEN: "",
+        TELEGRAM_PRINCIPAL_CHAT_ID: "",
+      });
+      applyRuntimeEnv({
+        TELEGRAM_BOT_TOKEN: undefined,
+        TELEGRAM_PRINCIPAL_CHAT_ID: undefined,
+      });
+      await setup.telegram
+        ?.detach()
+        .catch((e) => log.warn(`telegram detach failed: ${e}`));
+      log.info("telegram disabled · settings");
+      return c.json({ ok: true, configured: false });
+    }
+
+    const tg = await verifyTelegram(token);
+    if (!tg.ok)
+      return c.json(
+        {
+          error:
+            "that Telegram bot token didn't validate — create one with @BotFather and retry",
+        },
+        400,
+      );
+    const updates: Record<string, string> = { TELEGRAM_BOT_TOKEN: token };
+    const runtime: Partial<typeof env> = { TELEGRAM_BOT_TOKEN: token };
+    if (chat) {
+      updates.TELEGRAM_PRINCIPAL_CHAT_ID = chat;
+      runtime.TELEGRAM_PRINCIPAL_CHAT_ID = Number(chat);
+    } else {
+      // No chat id given → drop any previous principal so the new bot isn't
+      // pinned to a stale chat (!67 review). Blank = first /start claims it
+      // (TOFU), matching what the UI promises.
+      updates.TELEGRAM_PRINCIPAL_CHAT_ID = "";
+      runtime.TELEGRAM_PRINCIPAL_CHAT_ID = undefined;
+    }
+    upsertEnvFile(setupEnvFilePath, updates);
+    applyRuntimeEnv(runtime);
+    // Hot-attach so the bot reconnects with the new token immediately (#74).
+    await setup.telegram
+      ?.attach(token)
+      .catch((e) => log.warn(`telegram hot-attach failed: ${e}`));
+    log.info(`telegram token updated · settings · @${tg.username ?? "?"}`);
+    return c.json({ ok: true, configured: true, username: tg.username });
+  });
+
+  // Reveal the agent's master mnemonic for backup/recovery (#57). The onboarding
+  // never shows it (it's the agent's key); the user exports it here deliberately
+  // (Settings → Export). Same trust boundary as POST /api/setup: NOT public, so it
+  // stays behind the Host/Origin guard + token auth, and the route itself is
+  // additionally loopback-only — the phrase never crosses a network boundary.
+  app.get("/api/agent/mnemonic", async (c) => {
+    if (!isLoopback(auth.host ?? "127.0.0.1"))
+      return c.json({ error: "seed export is loopback-only" }, 403);
+    const mnemonic = await getAgentMnemonic(secretBackend);
+    if (!mnemonic) return c.json({ error: "no agent wallet configured" }, 404);
+    return c.json({ mnemonic });
+  });
 
   app.get("/api/personas", (c) => {
     const personas = engine.store.listPersonas().map((p) => ({
@@ -363,10 +677,13 @@ export function buildApp(
       name?: string;
       role?: string;
       voice?: string;
+      instructions?: string;
       soul?: { name: string; role: string; voice: string; values?: string[] };
     };
     const name = (body.name ?? "").trim();
     if (!name) return c.json({ error: "name is required" }, 400);
+    const instructions =
+      typeof body.instructions === "string" ? body.instructions.trim() : "";
     // An explicit id must be slug-safe: routing encodes it into `/switch <id>`
     // (\S+) and it becomes a path param, so spaces/punctuation break chat.
     const explicit = body.id?.trim();
@@ -377,15 +694,34 @@ export function buildApp(
     if (engine.store.getPersona(id)) {
       return c.json({ error: `persona already exists: ${id}` }, 409);
     }
+    // Go all-in on PERSONA.md (#91): every new persona gets an instructions doc —
+    // the supplied one, or the default template when blank — instead of falling
+    // back to role/voice. Legacy role/voice are accepted (back-compat) but
+    // superseded by instructions at render time (renderSoul).
     const soul = body.soul ?? {
       name,
-      role: body.role?.trim() || "personal assistant",
-      voice: body.voice?.trim() || "friendly and concise",
+      role: body.role?.trim() || "",
+      voice: body.voice?.trim() || "",
+      instructions: instructions || DEFAULT_PERSONA_INSTRUCTIONS,
     };
     const persona = engine.store.createPersona(id, name, soul);
     const wallet = await engine.wallets.ensureWallet(id);
     grantDefaultCapabilities(engine.capabilities, id); // #37 baseline policy
     return c.json({ persona, address: wallet.address }, 201);
+  });
+
+  // Update a persona's PERSONA.md instructions (#87) — the freeform doc appended
+  // to every request. Empty string clears it (reverts to legacy role/voice).
+  app.patch("/api/personas/:id", async (c) => {
+    const id = c.req.param("id");
+    const body = (await c.req.json().catch(() => ({}))) as {
+      instructions?: unknown;
+    };
+    if (typeof body.instructions !== "string")
+      return c.json({ error: "instructions (string) is required" }, 400);
+    const persona = engine.store.updateInstructions(id, body.instructions);
+    if (!persona) return c.json({ error: "unknown persona" }, 404);
+    return c.json({ persona });
   });
 
   app.get("/api/personas/:id/wallet", async (c) => {
@@ -429,6 +765,35 @@ export function buildApp(
     });
   });
 
+  // Unified observability feed (#95): one timeline merging the operational event
+  // store (latency / errors / kind) with the proof-of-action ledger (authority +
+  // on-chain txHash), plus the summary, latency-by-kind, budget windows, and a
+  // month-end burn-down projection — everything the (now-retired) separate
+  // Activity + Ledger screens showed, in one payload.
+  app.get("/api/personas/:id/observability", (c) => {
+    const id = c.req.param("id");
+    if (!engine.store.getPersona(id))
+      return c.json({ error: "unknown persona" }, 404);
+    const limit = Math.min(
+      500,
+      Math.max(1, Number(c.req.query("limit")) || 200),
+    );
+    const events = engine.events.recent(id, limit);
+    const ledger = engine.ledger.list({ personaId: id, limit });
+    const llm = llmBudget(engine.ledger, id);
+    const monthlyCap = BudgetLimits.get(engine.settings, id).value.monthlyUsd;
+    return c.json({
+      summary: engine.events.summary(id),
+      latencyByKind: latencyByKind(events),
+      rows: mergeObservability(events, ledger),
+      budget: {
+        llm,
+        evaluation: evaluateBudget(engine, id),
+        burndown: projectMonthlySpend(llm.spentUsd, monthlyCap),
+      },
+    });
+  });
+
   app.get("/api/personas/:id/budget", (c) => {
     const id = c.req.param("id");
     if (!engine.store.getPersona(id))
@@ -462,53 +827,6 @@ export function buildApp(
       BudgetLimits.setPersona(engine.settings, id, parsed.data);
     }
     return c.json(BudgetLimits.get(engine.settings, id));
-  });
-
-  // Scheduled tasks (#36) over HTTP so the SPA can manage them (they were
-  // agent-tool-only). create is capability-gated ("schedule"); armed=false
-  // means the run is read-only (#24/T-13) — can't move money.
-  app.get("/api/personas/:id/tasks", (c) => {
-    const id = c.req.param("id");
-    if (!engine.store.getPersona(id))
-      return c.json({ error: "unknown persona" }, 404);
-    return c.json({ tasks: engine.tasks.list(id) });
-  });
-  app.post("/api/personas/:id/tasks", async (c) => {
-    const id = c.req.param("id");
-    if (!engine.store.getPersona(id))
-      return c.json({ error: "unknown persona" }, 404);
-    const body = (await c.req.json().catch(() => ({}))) as {
-      prompt?: string;
-      everyMinutes?: number;
-      armed?: boolean;
-    };
-    const prompt = body.prompt?.trim();
-    const everyMinutes = Number(body.everyMinutes);
-    if (!prompt || !(everyMinutes > 0))
-      return c.json({ error: "prompt and everyMinutes > 0 required" }, 400);
-    if (
-      !(await engine.authorizer.authorize(id, {
-        capability: "schedule",
-        summary: `schedule every ${everyMinutes}m: ${prompt.slice(0, 60)}`,
-      }))
-    )
-      return c.json({ error: "denied: persona lacks 'schedule'" }, 403);
-    const t = engine.tasks.create({
-      personaId: id,
-      prompt,
-      intervalMs: Math.round(everyMinutes * 60_000),
-      armed: body.armed === true,
-    });
-    return c.json(t, 201);
-  });
-  app.delete("/api/personas/:id/tasks/:taskId", (c) => {
-    const id = c.req.param("id");
-    if (!engine.store.getPersona(id))
-      return c.json({ error: "unknown persona" }, 404);
-    const t = engine.tasks.get(c.req.param("taskId"));
-    if (!t || t.personaId !== id) return c.json({ error: "unknown task" }, 404);
-    engine.tasks.delete(t.id);
-    return c.json({ ok: true });
   });
 
   // Per-persona OpenRouter model override (#43). GET returns {value, source};
@@ -589,9 +907,15 @@ export function buildApp(
     };
     const to = body.to?.trim();
     const amount = body.amount?.trim();
-    if (!to?.startsWith("bb1") || !amount || !/^[0-9]+$/.test(amount)) {
+    // Full bb1 structural check + strictly-positive integer amount at the
+    // boundary (#65 review) — a clean 400 here, rather than letting a malformed
+    // recipient or "0" reach the TxManager.spend chokepoint and surface as a 500.
+    if (!to || !isBb1Address(to) || !amount || !isPositiveMicroAmount(amount)) {
       return c.json(
-        { error: "to (bb1…) and amount (base-unit integer) are required" },
+        {
+          error:
+            "to (a valid bb1 address) and amount (a positive base-unit integer) are required",
+        },
         400,
       );
     }
@@ -613,6 +937,9 @@ export function buildApp(
       void tracer.flush();
       if (e instanceof CapabilityDeniedError)
         return c.json({ error: e.message }, 403);
+      // Insufficient funds / a pre-flight chain rejection → a clean 422, not a 500 (#85).
+      if (e instanceof TxRejectedError)
+        return c.json({ error: e.message }, 422);
       throw e;
     }
   });
@@ -646,10 +973,26 @@ export function buildApp(
   // PUBLIC sign-off info for a multisig vault (#45 slice 3) — what the
   // third-party /vote page needs to build a MsgCastVote. No persona session;
   // collectionId + signers are on-chain/public. 404 unless the vault is multisig.
-  app.get("/api/vaults/:collectionId/signoff", (c) => {
+  app.get("/api/vaults/:collectionId/signoff", async (c) => {
     const v = engine.vaults.getByCollection(c.req.param("collectionId"));
     if (!v || !v.gating?.multisig)
       return c.json({ error: "no multisig vault for this id" }, 404);
+    // Live sign-off progress (#83): read the on-chain votes via the protobuf ABCI
+    // query (approverAddress="" = collection-level) and compute the tally. If the
+    // chain read fails, surface tallyError instead of a misleading "0 signed".
+    let tally: ReturnType<typeof voteTally> | null = null;
+    let tallyError = false;
+    try {
+      const votes = await getVotes({
+        collectionId: v.collectionId,
+        approvalId: v.withdrawApprovalId,
+        proposalId: VAULT_WITHDRAW_PROPOSAL_ID,
+      });
+      tally = voteTally(v.gating.multisig, votes);
+    } catch (e) {
+      tallyError = true;
+      log.warn(`signoff tally read failed for ${v.collectionId}: ${e}`);
+    }
     return c.json({
       collectionId: v.collectionId,
       name: v.name,
@@ -658,6 +1001,8 @@ export function buildApp(
       proposalId: VAULT_WITHDRAW_PROPOSAL_ID,
       threshold: v.gating.multisig.threshold,
       signers: v.gating.multisig.signers,
+      tally, // null when unread
+      tallyError,
     });
   });
 
@@ -671,6 +1016,9 @@ export function buildApp(
       description?: string;
       dailyWithdrawLimit?: number;
       gating?: VaultGating;
+      // The human manager (#75) — the connected Keplr address from the UI. Falls
+      // back to VELLUM_PRINCIPAL_ADDRESS server-side when omitted.
+      managerAddress?: string;
     };
     if (!body.name?.trim() || !body.symbol?.trim()) {
       return c.json({ error: "name and symbol are required" }, 400);
@@ -678,6 +1026,12 @@ export function buildApp(
     const gating = parseGating(body.gating);
     if (gating === "invalid")
       return c.json({ error: "invalid gating policy" }, 400);
+    const managerAddress = body.managerAddress?.trim();
+    if (managerAddress && !isBb1Address(managerAddress))
+      return c.json(
+        { error: "managerAddress must be a valid bb1 address" },
+        400,
+      );
     try {
       const vault = await engine.vaults.create(id, {
         name: body.name.trim(),
@@ -685,11 +1039,22 @@ export function buildApp(
         description: body.description?.trim(),
         dailyWithdrawLimit: body.dailyWithdrawLimit,
         gating,
+        managerAddress,
       });
       return c.json(vault, 201);
     } catch (e) {
       if (e instanceof CapabilityDeniedError)
         return c.json({ error: e.message }, 403);
+      // No manager configured (no connected wallet + no VELLUM_PRINCIPAL_ADDRESS)
+      // → a clean 400 with guidance, not an unhandled 500 (#75).
+      if (e instanceof Error && /no vault manager/.test(e.message))
+        return c.json(
+          {
+            error:
+              "Connect your wallet to set the vault manager (or configure VELLUM_PRINCIPAL_ADDRESS).",
+          },
+          400,
+        );
       throw e;
     }
   });
@@ -712,8 +1077,29 @@ export function buildApp(
     } catch (e) {
       if (e instanceof CapabilityDeniedError)
         return c.json({ error: e.message }, 403);
+      // Over the vault's cap / outside its window / missing sign-off / insufficient
+      // escrow → rejected pre-flight. Surface a clean 422, never a 500 (#85).
+      if (e instanceof TxRejectedError)
+        return c.json({ error: e.message }, 422);
       throw e;
     }
+  });
+
+  // Tx status (#81): poll a submitted tx toward its terminal state so the UI can
+  // show pending → confirmed/failed instead of an action that appears to hang.
+  // Persona-scoped — a tx id belonging to another persona 404s (no cross-
+  // compartment status leak).
+  app.get("/api/personas/:id/tx/:txId", (c) => {
+    const id = c.req.param("id");
+    const tx = engine.txManager.get(c.req.param("txId"));
+    if (!tx || tx.personaId !== id) return c.json({ error: "unknown tx" }, 404);
+    return c.json({
+      id: tx.id,
+      hash: tx.hash,
+      status: tx.status,
+      height: tx.height,
+      error: tx.error,
+    });
   });
 
   // Payment requests (0014) — the agent/user raises a one-time funding request;
@@ -732,11 +1118,16 @@ export function buildApp(
     const usd = Number(body.amountUsdc);
     if (!Number.isFinite(usd) || usd <= 0)
       return c.json({ error: "amountUsdc must be a number > 0" }, 400);
+    // Reject sub-micro amounts that round to 0 µUSDC — they'd mint a fundable
+    // link for a zero-amount transfer (mirrors the agent tool's microOrNull).
+    const micro = Math.round(usd * 1e6);
+    if (micro < 1)
+      return c.json({ error: "amountUsdc is too small (rounds to zero)" }, 400);
     const req = paymentRequests.create({
       personaId: id,
       toAddress: addr,
       denom: env.VELLUM_DENOM,
-      amount: String(Math.round(usd * 1e6)),
+      amount: String(micro),
       memo: body.memo?.trim() || `Fund ${id}`,
     });
     return c.json(req, 201);
@@ -821,6 +1212,82 @@ export function buildApp(
     return c.json({ ok: true });
   });
 
+  // Vault deposit requests (#62) — the "fund this vault" analog of payment
+  // requests. The agent/user raises a one-time deposit request for a specific
+  // vault; the funder opens the /deposit/:id link and signs `vaultDepositMsg` to
+  // fund the vault's escrow from their own Keplr wallet (the minted vault tokens
+  // go to the persona agent, who later withdraws within the vault's rules).
+  app.post("/api/personas/:id/deposit-requests", async (c) => {
+    const id = c.req.param("id");
+    if (!engine.store.getPersona(id))
+      return c.json({ error: "unknown persona" }, 404);
+    const agentAddress = engine.wallets.addressFor(id);
+    if (!agentAddress) return c.json({ error: "persona has no wallet" }, 400);
+    const body = (await c.req.json().catch(() => ({}))) as {
+      collectionId?: string;
+      amountUsdc?: number;
+      memo?: string;
+    };
+    const collectionId = body.collectionId?.trim();
+    if (!collectionId)
+      return c.json({ error: "collectionId is required" }, 400);
+    const vault = engine.vaults.getByCollection(collectionId);
+    // The vault must belong to this persona — a deposit request always targets
+    // one of the persona's own vaults.
+    if (!vault || vault.personaId !== id)
+      return c.json({ error: "unknown vault for this persona" }, 404);
+    const usd = Number(body.amountUsdc);
+    if (!Number.isFinite(usd) || usd <= 0)
+      return c.json({ error: "amountUsdc must be a number > 0" }, 400);
+    // Reject sub-micro amounts that round to 0 µUSDC (mirrors microOrNull) — a
+    // zero-amount deposit request would render a fundable link that builds a
+    // zero MsgTransferTokens.
+    const micro = Math.round(usd * 1e6);
+    if (micro < 1)
+      return c.json({ error: "amountUsdc is too small (rounds to zero)" }, 400);
+    const req = depositRequests.create({
+      personaId: id,
+      collectionId: vault.collectionId,
+      vaultSymbol: vault.symbol,
+      vaultName: vault.name,
+      backingAddress: vault.backingAddress,
+      agentAddress,
+      denom: env.VELLUM_DENOM,
+      amount: String(micro),
+      memo: body.memo?.trim() || `Fund ${vault.symbol} vault`,
+    });
+    return c.json(req, 201);
+  });
+
+  app.get("/api/personas/:id/deposit-requests", (c) => {
+    const id = c.req.param("id");
+    if (!engine.store.getPersona(id))
+      return c.json({ error: "unknown persona" }, 404);
+    return c.json({ requests: depositRequests.listForPersona(id) });
+  });
+
+  // Public — the deposit page fetches this without persona context.
+  app.get("/api/deposit-requests/:reqId", (c) => {
+    const r = depositRequests.get(c.req.param("reqId"));
+    if (!r) return c.json({ error: "unknown deposit request" }, 404);
+    const persona = engine.store.getPersona(r.personaId);
+    return c.json({
+      request: r,
+      personaName: persona?.soul.name ?? r.personaId,
+    });
+  });
+
+  // There is NO public confirm route: a deposit has nothing to verify on-chain
+  // (unlike a payment-request credit), so an unauthenticated delete would be pure
+  // griefing. The funder just signs `vaultDepositMsg`; the persona owner dismisses
+  // the request (authed) below once the vault shows funded. (#62)
+  app.delete("/api/deposit-requests/:reqId", (c) => {
+    const r = depositRequests.get(c.req.param("reqId"));
+    if (!r) return c.json({ error: "unknown deposit request" }, 404);
+    depositRequests.delete(r.id);
+    return c.json({ ok: true });
+  });
+
   app.get("/api/personas/:id/ledger", (c) => {
     const id = c.req.param("id");
     if (!engine.store.getPersona(id))
@@ -831,11 +1298,57 @@ export function buildApp(
     });
   });
 
+  // Chat sessions (#72): a persona can hold several named conversations, each
+  // with its own transcript. These surface engine.conversations; the store
+  // scopes every op by (id, personaId) so one persona's sessions can't be read
+  // or mutated under another (the memory wall).
+  app.get("/api/personas/:id/conversations", (c) => {
+    const id = c.req.param("id");
+    if (!engine.store.getPersona(id))
+      return c.json({ error: "unknown persona" }, 404);
+    return c.json({ conversations: engine.conversations.list(id) });
+  });
+
+  app.post("/api/personas/:id/conversations", async (c) => {
+    const id = c.req.param("id");
+    if (!engine.store.getPersona(id))
+      return c.json({ error: "unknown persona" }, 404);
+    const body = (await c.req.json().catch(() => ({}))) as { title?: unknown };
+    const title = typeof body.title === "string" ? body.title : undefined;
+    return c.json(engine.conversations.create(id, title), 201);
+  });
+
+  app.patch("/api/personas/:id/conversations/:cid", async (c) => {
+    const id = c.req.param("id");
+    const cid = c.req.param("cid");
+    const body = (await c.req.json().catch(() => ({}))) as { title?: unknown };
+    const title = typeof body.title === "string" ? body.title.trim() : "";
+    if (!title) return c.json({ error: "title is required" }, 400);
+    const updated = engine.conversations.rename(id, cid, title);
+    if (!updated) return c.json({ error: "unknown conversation" }, 404);
+    return c.json(updated);
+  });
+
+  app.delete("/api/personas/:id/conversations/:cid", (c) => {
+    const id = c.req.param("id");
+    const cid = c.req.param("cid");
+    if (!engine.conversations.remove(id, cid))
+      return c.json({ error: "unknown conversation" }, 404);
+    return c.json({ ok: true });
+  });
+
+  app.get("/api/personas/:id/conversations/:cid/messages", (c) => {
+    const id = c.req.param("id");
+    const cid = c.req.param("cid");
+    return c.json({ messages: engine.conversations.messages(id, cid) });
+  });
+
   app.post("/api/chat", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as {
       conversationId?: string;
       personaId?: string;
       message?: string;
+      humanAddress?: unknown;
     };
     const { conversationId, personaId, message } = body;
     if (!conversationId || !personaId || !message?.trim()) {
@@ -847,10 +1360,36 @@ export function buildApp(
     if (!engine.store.getPersona(personaId)) {
       return c.json({ error: `unknown persona: ${personaId}` }, 404);
     }
+    // The human's connected Keplr address (#73) — per-turn context only. Reject a
+    // malformed value (client bug) rather than silently dropping it; absent is
+    // fine (not connected).
+    const humanAddress =
+      typeof body.humanAddress === "string" ? body.humanAddress.trim() : "";
+    if (humanAddress && !isBb1Address(humanAddress))
+      return c.json({ error: "humanAddress must be a bb1 address" }, 400);
+    // Cross-persona guard (#72 wall): reject a conversation id that belongs to a
+    // DIFFERENT persona BEFORE doing work → 400. ensure() is idempotent, so this
+    // pre-check composes with chat()'s own persistence below. Transcript writes
+    // (user + agent turns) now live in chat() so EVERY surface persists the same
+    // way (#78) — the route no longer appends.
+    try {
+      engine.conversations.ensure(conversationId, personaId);
+    } catch {
+      return c.json(
+        { error: "conversation belongs to a different persona" },
+        400,
+      );
+    }
     // Shared chat flow (budget gate → routing → agent loop + vault tools →
-    // ledger + memory). Identical on web + Telegram.
+    // ledger + memory + transcript persistence). Identical on web + Telegram.
     const trace = tracer.trace("chat", { personaId, conversationId });
-    const r = await chat(engine, { conversationId, personaId, message, trace });
+    const r = await chat(engine, {
+      conversationId,
+      personaId,
+      message,
+      trace,
+      humanAddress: humanAddress || undefined,
+    });
     trace.end();
     void tracer.flush();
     return c.json({
@@ -874,13 +1413,29 @@ export function buildApp(
   app.get("/*", async (c) => {
     const rel =
       c.req.path === "/" ? "index.html" : c.req.path.replace(/^\/+/, "");
-    let file = Bun.file(DIST + rel);
-    if (!(await file.exists())) file = Bun.file(DIST + "index.html");
+    let file = Bun.file(distDir + rel);
+    const served = await file.exists();
+    if (!served) file = Bun.file(distDir + "index.html");
     if (!(await file.exists())) {
-      return c.text("build the SPA first: bun run build", 404);
+      // No build present — a clear error, also no-cache (it's the shell slot, and
+      // must not be cached past a build).
+      return c.text("build the SPA first: bun run build", 404, {
+        "cache-control": "no-cache",
+      });
     }
     const type = file.type || "application/octet-stream";
-    return new Response(file, { headers: { "content-type": type } });
+    // Vite's hashed assets are immutable (the hash changes when content does), so
+    // cache them hard. The HTML shell must always revalidate, or a browser keeps
+    // loading a stale bundle after a rebuild — which silently serves old UI/CSS.
+    const immutable = served && rel.startsWith("assets/");
+    return new Response(file, {
+      headers: {
+        "content-type": type,
+        "cache-control": immutable
+          ? "public, max-age=31536000, immutable"
+          : "no-cache",
+      },
+    });
   });
 
   return app;
@@ -912,6 +1467,6 @@ if (import.meta.main) {
     );
     process.exit(1);
   }
-  log.info(`Vellum web · http://${opts.hostname}:${opts.port}`);
+  log.info(`Bolt web · http://${opts.hostname}:${opts.port}`);
   Bun.serve(opts);
 }

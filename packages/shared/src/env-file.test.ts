@@ -1,0 +1,102 @@
+import { describe, expect, test } from "bun:test";
+import {
+  chmodSync,
+  mkdtempSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { upsertEnvFile, removeEnvKeys } from "./env-file.ts";
+
+function tmpEnv(initial?: string): string {
+  const dir = mkdtempSync(join(tmpdir(), "vellum-env-"));
+  const path = join(dir, ".env");
+  if (initial !== undefined) writeFileSync(path, initial);
+  return path;
+}
+
+describe("upsertEnvFile (#19)", () => {
+  test("creates the file when absent and quotes values with spaces", () => {
+    const path = tmpEnv();
+    const changed = upsertEnvFile(path, {
+      OPENROUTER_API_KEY: "sk-or-abc",
+      AGENT_SIGNER_MNEMONIC: "word one two three",
+    });
+    expect(changed.sort()).toEqual([
+      "AGENT_SIGNER_MNEMONIC",
+      "OPENROUTER_API_KEY",
+    ]);
+    const text = readFileSync(path, "utf8");
+    expect(text).toContain("OPENROUTER_API_KEY=sk-or-abc");
+    expect(text).toContain('AGENT_SIGNER_MNEMONIC="word one two three"');
+  });
+
+  test("rewrites an existing key in place and preserves comments + order", () => {
+    const path = tmpEnv("# secrets\nOPENROUTER_API_KEY=old\nWEB_PORT=8787\n");
+    upsertEnvFile(path, { OPENROUTER_API_KEY: "new" });
+    const lines = readFileSync(path, "utf8").trimEnd().split("\n");
+    expect(lines[0]).toBe("# secrets");
+    expect(lines[1]).toBe("OPENROUTER_API_KEY=new");
+    expect(lines[2]).toBe("WEB_PORT=8787");
+  });
+
+  test("appends new keys after existing content", () => {
+    const path = tmpEnv("WEB_PORT=8787\n");
+    upsertEnvFile(path, { VELLUM_API_TOKEN: "tok123" });
+    const text = readFileSync(path, "utf8");
+    expect(text).toContain("WEB_PORT=8787");
+    expect(text).toContain("VELLUM_API_TOKEN=tok123");
+  });
+
+  test("tightens an existing world-readable file to owner-only 0600 (!48 HIGH)", () => {
+    const path = tmpEnv("OPENROUTER_API_KEY=old\n");
+    chmodSync(path, 0o644); // pre-existing permissive file (editor / cp)
+    upsertEnvFile(path, { AGENT_SIGNER_MNEMONIC: "a b c" });
+    expect(statSync(path).mode & 0o777).toBe(0o600);
+  });
+
+  test("is idempotent — re-applying the same value leaves one line", () => {
+    const path = tmpEnv();
+    upsertEnvFile(path, { AGENT_SIGNER_MNEMONIC: "a b c" });
+    upsertEnvFile(path, { AGENT_SIGNER_MNEMONIC: "a b c" });
+    const occurrences = readFileSync(path, "utf8")
+      .split("\n")
+      .filter((l) => l.startsWith("AGENT_SIGNER_MNEMONIC=")).length;
+    expect(occurrences).toBe(1);
+  });
+});
+
+describe("removeEnvKeys (#96)", () => {
+  test("drops the named keys' lines and preserves the rest", () => {
+    const path = tmpEnv(
+      '# secrets\nOPENROUTER_API_KEY=sk\nAGENT_SIGNER_MNEMONIC="a b c"\nWEB_PORT=8787\n',
+    );
+    const removed = removeEnvKeys(path, ["AGENT_SIGNER_MNEMONIC"]);
+    expect(removed).toEqual(["AGENT_SIGNER_MNEMONIC"]);
+    const text = readFileSync(path, "utf8");
+    expect(text).not.toContain("AGENT_SIGNER_MNEMONIC");
+    expect(text).toContain("# secrets");
+    expect(text).toContain("OPENROUTER_API_KEY=sk");
+    expect(text).toContain("WEB_PORT=8787");
+  });
+
+  test("returns [] when none of the keys are present (file untouched)", () => {
+    const path = tmpEnv("WEB_PORT=8787\n");
+    expect(removeEnvKeys(path, ["AGENT_SIGNER_MNEMONIC"])).toEqual([]);
+    expect(readFileSync(path, "utf8")).toBe("WEB_PORT=8787\n");
+  });
+
+  test("returns [] when the file is absent", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vellum-env-"));
+    expect(removeEnvKeys(join(dir, "nope.env"), ["X"])).toEqual([]);
+  });
+
+  test("keeps the file owner-only after a rewrite (!48)", () => {
+    const path = tmpEnv("AGENT_SIGNER_MNEMONIC=a\nWEB_PORT=8787\n");
+    chmodSync(path, 0o644);
+    removeEnvKeys(path, ["AGENT_SIGNER_MNEMONIC"]);
+    expect(statSync(path).mode & 0o777).toBe(0o600);
+  });
+});

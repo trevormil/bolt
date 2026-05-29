@@ -1,14 +1,397 @@
 import { useEffect, useState } from "react";
-import { Badge, Button, Card, Input } from "@vellum/ui";
-import { api, type BudgetResponse, type Resolved, type Task } from "./api.ts";
+import { Badge, Button, Card, Icon, Input } from "@vellum/ui";
+import { api, type BudgetResponse, type Resolved } from "./api.ts";
 
 export function SettingsView({ personaId }: { personaId: string }) {
   return (
     <div className="h-full space-y-6 overflow-y-auto p-6">
+      <LlmKeySection />
+      <TelegramSection />
+      <PersonaInstructionsSection personaId={personaId} />
       <ModelSection personaId={personaId} />
       <BudgetSection personaId={personaId} />
-      <TasksSection personaId={personaId} />
+      <RecoverySection />
     </div>
+  );
+}
+
+// ── #87 PERSONA.md — the per-persona instructions doc appended to every request ─
+// A freeform markdown blob (like a CLAUDE.md) that's the primary customization
+// surface for a persona. Empty reverts to the built-in default behavior. Scoped
+// to the active persona (the memory wall keeps personas independent).
+function PersonaInstructionsSection({ personaId }: { personaId: string }) {
+  const [text, setText] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    setLoaded(false);
+    api
+      .listPersonas()
+      .then((ps) => {
+        if (!live) return;
+        setText(ps.find((p) => p.id === personaId)?.soul.instructions ?? "");
+        setLoaded(true);
+      })
+      .catch(() => live && setLoaded(true));
+    return () => {
+      live = false;
+    };
+  }, [personaId]);
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    setSaved(false);
+    try {
+      await api.updatePersonaInstructions(personaId, text);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="p-4">
+      <SectionHead
+        title="PERSONA.md"
+        hint={`Instructions for "${personaId}", appended to every request like a CLAUDE.md. Leave blank for the default.`}
+      />
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        disabled={!loaded}
+        rows={10}
+        placeholder={loaded ? "# Who you are\n…" : "loading…"}
+        className="mt-3 w-full resize-y rounded-lg border border-border bg-base px-3 py-2 font-mono text-xs leading-relaxed text-fg outline-none placeholder:text-soft focus:border-border-gold focus:ring-1 focus:ring-border-gold"
+      />
+      <div className="mt-3 flex items-center gap-2">
+        <Button
+          size="sm"
+          onClick={() => void save()}
+          disabled={busy || !loaded}
+        >
+          {busy ? "Saving…" : saved ? "Saved" : "Save"}
+        </Button>
+      </div>
+      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+    </Card>
+  );
+}
+
+// ── #60 OpenRouter key — set / change / reset (global, validated) ────────────
+// The key powers every persona's LLM. Required at onboarding; this lets the user
+// rotate it. The new key is health-checked server-side before it's persisted.
+function LlmKeySection() {
+  const [configured, setConfigured] = useState<boolean | null>(null);
+  const [key, setKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    api
+      .setupStatus()
+      .then((s) => live && setConfigured(s.hasLlmKey))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  async function save() {
+    if (!key.trim()) return;
+    setBusy(true);
+    setError(null);
+    setSaved(false);
+    try {
+      await api.setOpenRouterKey(key.trim());
+      setKey("");
+      setConfigured(true);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="p-4">
+      <SectionHead
+        title="OpenRouter API key"
+        hint="Powers every persona's LLM. Validated before it's saved; a new key replaces the old one."
+      />
+      <p className="mt-2 text-xs text-soft">
+        Status:{" "}
+        <span className={configured ? "text-accent" : "text-danger"}>
+          {configured == null
+            ? "…"
+            : configured
+              ? "configured"
+              : "not set — chat is disabled"}
+        </span>
+      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Input
+          type="password"
+          value={key}
+          onChange={(e) => setKey(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && key.trim() && void save()}
+          placeholder="sk-or-…"
+          className="min-w-[16rem] flex-1"
+        />
+        <Button
+          size="sm"
+          onClick={() => void save()}
+          disabled={busy || !key.trim()}
+        >
+          {busy
+            ? "Verifying…"
+            : saved
+              ? "Saved"
+              : configured
+                ? "Replace"
+                : "Save"}
+        </Button>
+      </div>
+      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+    </Card>
+  );
+}
+
+// ── #63 Telegram remote control — set / rotate / disable (validated via getMe) ─
+// Telegram is the agent's remote entrypoint (the bot polls OUT; nothing is
+// exposed on this machine). The token is health-checked via getMe before it's
+// saved, and the poller hot-attaches immediately (#74 — no daemon restart). This
+// is the post-onboarding home for enabling/rotating Telegram (onboarding only
+// offers it once).
+function TelegramSection() {
+  const [configured, setConfigured] = useState<boolean | null>(null);
+  const [token, setToken] = useState("");
+  const [busy, setBusy] = useState<"save" | "disable" | null>(null);
+  const [connected, setConnected] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    api
+      .setupStatus()
+      .then((s) => live && setConfigured(!!s.telegramConfigured))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  async function save() {
+    if (!token.trim()) return;
+    setBusy("save");
+    setError(null);
+    setConnected(null);
+    try {
+      const r = await api.setTelegramToken({ token: token.trim() });
+      setToken("");
+      setConfigured(true);
+      setConnected(r.username ? `@${r.username}` : "connected");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function disable() {
+    setBusy("disable");
+    setError(null);
+    setConnected(null);
+    try {
+      await api.setTelegramToken({ token: "" });
+      setConfigured(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <Card className="p-4">
+      <SectionHead
+        title="Telegram remote control"
+        hint="Control Bolt from anywhere — the bot polls out to Telegram, so nothing is exposed on this machine. The token is verified (getMe) before it's saved."
+      />
+      <p className="mt-2 text-xs text-soft">
+        Status:{" "}
+        <span className={configured ? "text-accent" : "text-muted"}>
+          {configured == null ? "…" : configured ? "connected" : "not set"}
+        </span>
+        {connected && (
+          <span className="text-accent"> · connected as {connected}</span>
+        )}
+      </p>
+      <ol className="mt-3 list-decimal space-y-1 pl-5 text-xs text-soft">
+        <li>
+          In Telegram, message <span className="text-fg">@BotFather</span> and
+          send <span className="font-mono text-fg">/newbot</span>.
+        </li>
+        <li>
+          Pick a name + a <span className="font-mono text-fg">…_bot</span>{" "}
+          username; copy the token it returns.
+        </li>
+        <li>
+          Paste it below, then message your bot{" "}
+          <span className="font-mono text-fg">/start</span> to claim ownership —
+          so a stranger can't drive your agent.
+        </li>
+      </ol>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Input
+          type="password"
+          value={token}
+          onChange={(e) => setToken(e.target.value)}
+          placeholder="bot token (123456:ABC-…)"
+          className="min-w-[16rem] flex-1"
+        />
+        <Button
+          size="sm"
+          onClick={() => void save()}
+          disabled={busy !== null || !token.trim()}
+        >
+          {busy === "save" ? "Verifying…" : configured ? "Replace" : "Connect"}
+        </Button>
+        {configured && (
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => void disable()}
+            disabled={busy !== null}
+          >
+            {busy === "disable" ? "…" : "Disable"}
+          </Button>
+        )}
+      </div>
+      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+      <p className="mt-3 text-xs leading-relaxed text-soft">
+        The{" "}
+        <span className="text-fg">bot token is the only thing you need</span> —
+        the chat id is optional (the first chat to message{" "}
+        <span className="font-mono text-fg">/start</span> claims ownership). The
+        bot connects the moment you save (no restart), and{" "}
+        <span className="font-mono text-fg">
+          /personas /switch /new /vaults /balance /ledger /spend /help
+        </span>{" "}
+        register straight into Telegram's command menu. It's a full remote
+        control — the same capability gates apply as in the app.
+      </p>
+    </Card>
+  );
+}
+
+// ── #57 wallet recovery — deliberate seed-phrase export ──────────────────────
+// The agent's master mnemonic is never shown at onboarding; this is the one place
+// the user can reveal it (blurred until clicked) to back it up. Fetched only on
+// demand from the loopback+authed GET /api/agent/mnemonic.
+function RecoverySection() {
+  const [phrase, setPhrase] = useState<string | null>(null);
+  const [revealed, setRevealed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function load() {
+    setBusy(true);
+    setError(null);
+    try {
+      const { mnemonic } = await api.agentMnemonic();
+      setPhrase(mnemonic);
+      setRevealed(false); // shown blurred first — a second click reveals
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function copy() {
+    if (!phrase) return;
+    navigator.clipboard?.writeText(phrase);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1200);
+  }
+
+  return (
+    <Card className="p-4">
+      <SectionHead
+        title="Wallet recovery"
+        hint="The agent's master seed phrase — every persona wallet derives from it. Back it up somewhere safe; anyone who has it controls the agent's funds."
+      />
+      {!phrase ? (
+        <div className="mt-3">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => void load()}
+            disabled={busy}
+          >
+            <Icon name="eye" size={14} /> {busy ? "…" : "Export seed phrase"}
+          </Button>
+          {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+        </div>
+      ) : (
+        <div className="mt-3 space-y-3">
+          <div className="relative">
+            <div
+              className={
+                "grid grid-cols-3 gap-1.5 rounded-lg border border-border-gold bg-accent-soft/20 p-3 font-mono text-xs transition " +
+                (revealed ? "" : "select-none blur-sm")
+              }
+            >
+              {phrase.split(/\s+/).map((w, i) => (
+                <div key={i} className="flex items-baseline gap-1.5">
+                  <span className="text-soft">{i + 1}</span>
+                  <span className="text-accent-strong">{w}</span>
+                </div>
+              ))}
+            </div>
+            {!revealed && (
+              <button
+                onClick={() => setRevealed(true)}
+                className="absolute inset-0 grid place-items-center text-sm font-medium text-fg"
+              >
+                <span className="rounded-md bg-surface px-3 py-1.5 shadow-glow">
+                  Click to reveal
+                </span>
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={copy} disabled={!revealed}>
+              <Icon name={copied ? "check" : "copy"} size={13} />{" "}
+              {copied ? "Copied" : "Copy"}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setPhrase(null);
+                setRevealed(false);
+              }}
+            >
+              Hide
+            </Button>
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -169,7 +552,7 @@ function LimitField({
       : 0;
   return (
     <label className="block">
-      <span className="mb-1 block text-xs uppercase tracking-wide text-soft">
+      <span className="mb-1 block font-mono text-[10px] uppercase tracking-[0.18em] text-soft">
         {label}
       </span>
       <Input
@@ -197,126 +580,10 @@ function LimitField({
   );
 }
 
-// ── #36 scheduled tasks + #24/T-13 armed toggle ──────────────────────────────
-function TasksSection({ personaId }: { personaId: string }) {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [prompt, setPrompt] = useState("");
-  const [everyMinutes, setEveryMinutes] = useState("60");
-  const [armed, setArmed] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function reload() {
-    setTasks(await api.tasks(personaId));
-  }
-  useEffect(() => {
-    let live = true;
-    api.tasks(personaId).then((t) => live && setTasks(t));
-    return () => {
-      live = false;
-    };
-  }, [personaId]);
-
-  async function create() {
-    if (!prompt.trim() || !(Number(everyMinutes) > 0)) return;
-    setError(null);
-    try {
-      await api.createTask(personaId, {
-        prompt: prompt.trim(),
-        everyMinutes: Number(everyMinutes),
-        armed,
-      });
-      setPrompt("");
-      setArmed(false);
-      await reload();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }
-
-  return (
-    <Card className="p-4">
-      <SectionHead
-        title="Scheduled tasks"
-        hint="Recurring prompts run on an interval. Read-only unless armed (can't move money)."
-      />
-      <div className="mt-3 space-y-2">
-        <Input
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          placeholder="e.g. Summarize my vault balances"
-        />
-        <div className="flex flex-wrap items-center gap-3">
-          <label className="flex items-center gap-2 text-sm text-muted">
-            every
-            <Input
-              type="number"
-              min="1"
-              value={everyMinutes}
-              onChange={(e) => setEveryMinutes(e.target.value)}
-              className="w-20"
-            />
-            min
-          </label>
-          <label className="flex items-center gap-2 text-sm text-muted">
-            <input
-              type="checkbox"
-              checked={armed}
-              onChange={(e) => setArmed(e.target.checked)}
-            />
-            armed (can move money)
-          </label>
-          <Button
-            size="sm"
-            onClick={() => void create()}
-            disabled={!prompt.trim()}
-          >
-            Add task
-          </Button>
-        </div>
-        {error && <p className="text-sm text-danger">{error}</p>}
-      </div>
-
-      <div className="mt-4 space-y-2">
-        {tasks.length === 0 ? (
-          <p className="text-sm text-soft">No scheduled tasks.</p>
-        ) : (
-          tasks.map((t) => (
-            <div
-              key={t.id}
-              className="flex items-center justify-between gap-3 rounded-md border border-border p-2"
-            >
-              <div className="min-w-0">
-                <div className="truncate text-sm">{t.prompt}</div>
-                <div className="text-xs text-soft">
-                  every {Math.round(t.intervalMs / 60000)}m
-                </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <Badge tone={t.armed ? "danger" : "default"}>
-                  {t.armed ? "armed" : "read-only"}
-                </Badge>
-                <button
-                  onClick={async () => {
-                    await api.cancelTask(personaId, t.id);
-                    await reload();
-                  }}
-                  className="text-xs text-soft hover:text-danger"
-                >
-                  cancel
-                </button>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-    </Card>
-  );
-}
-
 function SectionHead({ title, hint }: { title: string; hint: string }) {
   return (
     <div>
-      <h3 className="text-sm font-medium text-fg">{title}</h3>
+      <h3 className="font-serif text-base text-fg">{title}</h3>
       <p className="text-xs text-soft">{hint}</p>
     </div>
   );

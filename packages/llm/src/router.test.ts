@@ -4,7 +4,29 @@ import type { ChatMessage } from "./router.ts";
 // Ensure a key exists before @vellum/shared parses env, so the suite runs
 // offline (no real secret needed); fetch is stubbed below.
 process.env.OPENROUTER_API_KEY ||= "test-offline-key";
-const { complete, routeTier } = await import("./router.ts");
+const { complete, routeTier, verifyOpenRouterKey } = await import(
+  "./router.ts"
+);
+
+// `verifyOpenRouterKey` takes an injectable fetch, so no global stub needed.
+const fakeFetch = (ok: boolean, opts: { throws?: boolean } = {}) =>
+  (async () => {
+    if (opts.throws) throw new Error("network down");
+    return new Response(ok ? "{}" : "", { status: ok ? 200 : 401 });
+  }) as unknown as typeof fetch;
+
+describe("verifyOpenRouterKey (#60)", () => {
+  test("true on 200, false on 401 / empty / network error", async () => {
+    expect(await verifyOpenRouterKey("sk-or-good", fakeFetch(true))).toBe(true);
+    expect(await verifyOpenRouterKey("sk-or-bad", fakeFetch(false))).toBe(
+      false,
+    );
+    expect(await verifyOpenRouterKey("   ", fakeFetch(true))).toBe(false);
+    expect(
+      await verifyOpenRouterKey("sk-or-x", fakeFetch(true, { throws: true })),
+    ).toBe(false);
+  });
+});
 
 const msg = (content: string): ChatMessage => ({ role: "user", content });
 const realFetch = globalThis.fetch;

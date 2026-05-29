@@ -164,7 +164,15 @@ export class Orchestrator {
   async handle(
     conversationId: string,
     message: string,
-    opts: { tools?: ToolSpec[]; invoke?: ToolInvoker; trace?: TraceSpan } = {},
+    opts: {
+      tools?: ToolSpec[];
+      invoke?: ToolInvoker;
+      trace?: TraceSpan;
+      // The human's connected wallet address (#73), when Keplr is connected in
+      // the browser. Injected as per-turn context so the agent knows where "my
+      // wallet" is — never persisted, never crosses the persona memory wall.
+      humanAddress?: string;
+    } = {},
     depth = 1,
   ): Promise<HandleResult> {
     if (depth > this.maxDepth) {
@@ -192,6 +200,7 @@ export class Orchestrator {
       recalled,
       message,
       this.readMarkdown(dec.persona.id),
+      opts.humanAddress,
     );
     const { text, meters } = await this.runLoop({
       persona: dec.persona,
@@ -215,11 +224,21 @@ function buildContext(
   recalled: RetrievalHit[],
   message: string,
   personaMarkdown = "",
+  humanAddress?: string,
 ): ChatMessage[] {
-  // Compose order (#41): SOUL system prompt → always-on PERSONA.md (global then
-  // per-persona, user-authored steering) → the persona's own recalled memory.
+  // Compose order (#93): SOUL system prompt — which now carries the per-persona
+  // PERSONA.md (the DB `soul.instructions`, via renderSoul) — then the GLOBAL
+  // always-on PERSONA.md (cross-persona, `personaMarkdown`) → the connected human
+  // wallet (#73) → the persona's own recalled memory. One per-persona source: the
+  // file layer here is global-only, so nothing double-injects.
   let system = renderSoul(persona.soul);
   if (personaMarkdown) system += `\n\n${personaMarkdown}`;
+  // The human's connected wallet (#73) — per-turn only. Lets the agent resolve
+  // "my wallet" / address payment + deposit requests + name a vault manager
+  // without asking. A public address, so safe to surface; omitted when not
+  // connected so the model can't invent one.
+  if (humanAddress)
+    system += `\n\nThe human you are assisting has their wallet connected: ${humanAddress}. When they say "my wallet" or ask you to send funds to / request funds from / set a vault manager as themselves, use this address unless they give a different one.`;
   if (recalled.length) {
     // Memory flagged as carrying override-style instructions (#24 T-02) is
     // rendered as untrusted data with an explicit warning, so an ingested

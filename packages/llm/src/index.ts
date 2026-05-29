@@ -3,6 +3,8 @@ export {
   complete,
   completeWithTools,
   routeTier,
+  verifyOpenRouterKey,
+  LlmAuthError,
   type Tier,
   type Role,
   type ChatMessage,

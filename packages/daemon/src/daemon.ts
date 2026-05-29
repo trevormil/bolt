@@ -6,16 +6,16 @@ import {
 } from "@vellum/shared";
 import { createEngine, McpServers, GLOBAL } from "@vellum/engine";
 import { buildApp, webServeOptions, isLoopback } from "@vellum/web";
-import { attachTelegram } from "@vellum/telegram";
-import { CheckInScheduler, TaskScheduler } from "@vellum/scheduler";
+import { TelegramController } from "@vellum/telegram";
 
 const log = createLogger("daemon");
 
 /**
- * The unified local daemon (#31). One engine + one ~/.vellum DB hosting all
- * three long-running surfaces — the web/PWA server, the Telegram long-poller,
- * and the schedulers (#18 check-ins, #36 tasks) — in a single process so they
- * share state without coordinating over the DB from separate processes.
+ * The unified local daemon (#31). One engine + one ~/.vellum DB hosting the
+ * long-running surfaces — the web/PWA server and the Telegram long-poller — in a
+ * single process so they share state without coordinating over the DB from
+ * separate processes. (Recurring runs are scheduled via OS cron now — see
+ * docs/runbooks/schedule-with-cron.md.)
  *
  * Local-only: binds loopback by default; the only outbound call is OpenRouter.
  * Autostart is handled by the launchd/systemd units (service.ts + install
@@ -31,6 +31,12 @@ export async function startDaemon(): Promise<void> {
   await engine.txManager
     .reconcile()
     .catch((e) => log.warn(`reconcile failed: ${e}`));
+  // Keep draining PENDING txs while we run (#81): the initial out-of-band confirm
+  // gives up after ~20s, so a withdrawal that commits later would otherwise sit
+  // PENDING — and freeze the persona's next tx (the durable guard) — until the
+  // next restart. This sweep re-confirms stale-pending rows on a cadence so they
+  // settle on their own.
+  const stopAutoReconcile = engine.txManager.startAutoReconcile();
 
   // Web/PWA server. Fail closed: never bind beyond loopback without a token.
   if (!isLoopback(env.WEB_HOST) && !env.VELLUM_API_TOKEN) {
@@ -39,27 +45,23 @@ export async function startDaemon(): Promise<void> {
     );
     process.exit(1);
   }
-  const opts = webServeOptions(buildApp(engine));
+  // Telegram is the agent's proactive channel when configured. The controller
+  // owns the live poller so the web routes (/api/setup, Settings) can start or
+  // stop it without a daemon restart (#74) — handed to buildApp as the hot-
+  // attach hook below.
+  const telegram = new TelegramController(engine);
+  const opts = webServeOptions(
+    buildApp(engine, undefined, undefined, undefined, { telegram }),
+  );
   Bun.serve(opts);
   log.info(`web · http://${opts.hostname}:${opts.port}`);
 
-  // Schedulers (#18 check-ins, #36 tasks) ALWAYS run — keeping them alive is the
-  // daemon's whole point. When Telegram is configured, attachTelegram starts
-  // them wired to principal delivery; otherwise the daemon starts them here with
-  // a log-only delivery so scheduled tasks still execute + advance state (the
-  // web/PWA notification channel is future work).
+  // Recurring prompts are scheduled externally via OS cron
+  // (docs/runbooks/schedule-with-cron.md).
   if (env.TELEGRAM_BOT_TOKEN) {
-    attachTelegram(engine, env.TELEGRAM_BOT_TOKEN);
+    await telegram.attach(env.TELEGRAM_BOT_TOKEN);
   } else {
     log.info("telegram · no TELEGRAM_BOT_TOKEN (web-only daemon)");
-    const logDeliver = (personaId: string, message: string) =>
-      log.info(`proactive [${personaId}] ${message.slice(0, 80)}`);
-    new CheckInScheduler({
-      engine,
-      intervalMs: env.VELLUM_CHECKIN_INTERVAL_MS,
-      deliver: logDeliver,
-    }).start();
-    new TaskScheduler({ engine, deliver: logDeliver }).start();
   }
 
   // MCP servers (#46): warm the GLOBAL set once at startup so the connections
@@ -75,12 +77,12 @@ export async function startDaemon(): Promise<void> {
   // stops us. Best-effort + idempotent (closeAll clears its own state).
   for (const sig of ["SIGTERM", "SIGINT"] as const)
     process.once(sig, () => {
+      stopAutoReconcile();
       void engine.mcp.closeAll().finally(() => process.exit(0));
     });
 
   log.info(
-    "vellum daemon ready · scheduler + web" +
-      (env.TELEGRAM_BOT_TOKEN ? " + telegram" : ""),
+    "vellum daemon ready · web" + (env.TELEGRAM_BOT_TOKEN ? " + telegram" : ""),
   );
 }
 

@@ -8,7 +8,26 @@ export {
   type CreateVaultRequest,
   type VaultServiceDeps,
 } from "./vaults.ts";
-export { vaultTools } from "./agent-tools.ts";
+export {
+  vaultTools,
+  balanceTools,
+  spendTools,
+  requestTools,
+} from "./agent-tools.ts";
+// Re-export the spend input guards (#65) so surfaces (telegram) can pre-validate
+// without a direct @vellum/tx dep; TxManager.spend stays the final chokepoint.
+export {
+  isBb1Address,
+  isPositiveMicroAmount,
+  TxRejectedError,
+} from "@vellum/tx";
+export { PaymentRequests, type PaymentRequest } from "./payment-requests.ts";
+export { DepositRequests, type DepositRequest } from "./deposit-requests.ts";
+export {
+  Conversations,
+  type Conversation,
+  type ConversationMessage,
+} from "./conversations.ts";
 export { mcpTools } from "./mcp-tools.ts";
 export {
   McpServers,
@@ -29,13 +48,27 @@ export {
   type BudgetEvaluation,
 } from "./budget-setting.ts";
 export { filesystemTools, combineTools } from "./fs-tools.ts";
-export { scheduleTools } from "./schedule-tools.ts";
-export { TaskStore, type Task } from "./tasks.ts";
+export { execTools } from "./exec-tools.ts";
 export { chat, type ChatInput, type ChatResult } from "./chat.ts";
 export { llmBudget, type LlmBudget } from "./budgets.ts";
-// Re-export the persona card renderer (#25) so the CLI/wizard can show a
-// personality card at creation without a direct @vellum/persona dep.
-export { renderPersonaCard } from "@vellum/persona";
+export { voteTally, type VoteTally } from "./vote-tally.ts";
+// Re-export the unified-observability helpers (#95) so the web layer composes the
+// merged Activity feed without a direct @vellum/observability dep.
+export {
+  mergeObservability,
+  latencyByKind,
+  projectMonthlySpend,
+  type UnifiedRow,
+  type ObservabilitySource,
+} from "@vellum/observability";
+// Re-export the persona card renderer (#25) + the default PERSONA.md template
+// (#91) so the CLI/wizard can show a card + seed instructions without a direct
+// @vellum/persona dep.
+export {
+  renderPersonaCard,
+  DEFAULT_PERSONA_INSTRUCTIONS,
+  PERSONA_MD_WARN_CHARS,
+} from "@vellum/persona";
 // Re-export capability helpers so surfaces wire grants/approval without a direct
 // @vellum/capabilities dep (#37).
 export {

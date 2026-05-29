@@ -1,6 +1,9 @@
 // Public surface of @vellum/tx: chain-state reconciliation + tx lifecycle.
 export {
   TxManager,
+  TxRejectedError,
+  isBb1Address,
+  isPositiveMicroAmount,
   type PendingTx,
   type TxStatus,
   type TxKind,

@@ -8,6 +8,13 @@ import { TxManager, type TxChain } from "./index.ts";
 const DENOM = "ibc/TESTUSDC";
 const FUNDED: Coin[] = [{ denom: DENOM, amount: "10000000" }]; // 10 USDC
 
+// Valid bb1 recipients — the spend() chokepoint now structurally validates the
+// address (#65 review), so lifecycle tests use well-formed addresses.
+const DEST = "bb1" + "d".repeat(39);
+const TO1 = "bb1" + "a".repeat(39);
+const TO2 = "bb1" + "b".repeat(39);
+const TO3 = "bb1" + "c".repeat(39);
+
 function deferred<T>() {
   let resolve!: (v: T) => void;
   const promise = new Promise<T>((r) => (resolve = r));
@@ -55,7 +62,7 @@ describe("TxManager — reconciliation invariant", () => {
 
     const p = await tm.spend({
       personaId: "a",
-      to: "bb1dest",
+      to: DEST,
       amount: "1000000",
     });
     expect(p.status).toBe("pending");
@@ -80,7 +87,7 @@ describe("TxManager — reconciliation invariant", () => {
         signAndBroadcast: async () => (await gate.promise, "HASH-X"),
       }),
     );
-    const p = tm.spend({ personaId: "a", to: "to", amount: "1000000" }); // not awaited
+    const p = tm.spend({ personaId: "a", to: DEST, amount: "1000000" }); // not awaited
     // While the broadcast is in flight, the intent is ALREADY durable as
     // "submitting" with no hash — discoverable even if the process dies here.
     await waitFor(() => tm.pending("a").length === 1);
@@ -107,7 +114,7 @@ describe("TxManager — reconciliation invariant", () => {
     );
     const p = await tm.spend({
       personaId: "a",
-      to: "bb1dest",
+      to: DEST,
       amount: "1000000",
     });
     await waitFor(() => tm.get(p.id)!.status !== "pending");
@@ -130,7 +137,7 @@ describe("TxManager — reconciliation invariant", () => {
     );
     const p = await tm.spend({
       personaId: "a",
-      to: "bb1dest",
+      to: DEST,
       amount: "1000000",
     });
     // The timed-out confirm records an error but must NOT fail the row.
@@ -143,6 +150,59 @@ describe("TxManager — reconciliation invariant", () => {
     expect(await tm.reconcile()).toBe(1);
     expect(tm.get(p.id)!.status).toBe("confirmed");
     expect(tm.get(p.id)!.height).toBe(50);
+    expect(ledger.list({ personaId: "a" })).toHaveLength(1);
+    tm.close();
+  });
+
+  test("auto-reconcile re-drives a left-pending tx WITHOUT a restart (#81)", async () => {
+    // Before #81, a confirm that timed out sat PENDING until the next daemon
+    // restart's reconcile(). reconcileStale() is the in-process safety net.
+    let mode: "timeout" | "ok" = "timeout";
+    const tm = mgr(
+      baseChain({
+        confirmTx: async () => {
+          if (mode === "timeout")
+            throw new Error("tx HASH not committed within 20s");
+          return { height: 77, code: 0 };
+        },
+      }),
+    );
+    const p = await tm.spend({ personaId: "a", to: DEST, amount: "1000000" });
+    await waitFor(() => tm.get(p.id)!.error !== null);
+    expect(tm.get(p.id)!.status).toBe("pending");
+
+    // The commit lands after the initial window. staleMs=0 so the just-touched
+    // row is eligible; the sweep re-confirms it with no restart.
+    mode = "ok";
+    expect(await tm.reconcileStale(0)).toBe(1);
+    expect(tm.get(p.id)!.status).toBe("confirmed");
+    expect(tm.get(p.id)!.height).toBe(77);
+    expect(ledger.list({ personaId: "a" })).toHaveLength(1);
+    tm.close();
+  });
+
+  test("startAutoReconcile settles a stuck-pending tx on its interval (#81)", async () => {
+    let mode: "timeout" | "ok" = "timeout";
+    const tm = mgr(
+      baseChain({
+        confirmTx: async () => {
+          if (mode === "timeout")
+            throw new Error("tx HASH not committed within 20s");
+          return { height: 88, code: 0 };
+        },
+      }),
+    );
+    const p = await tm.spend({ personaId: "a", to: DEST, amount: "1000000" });
+    await waitFor(() => tm.get(p.id)!.error !== null);
+    expect(tm.get(p.id)!.status).toBe("pending");
+
+    // Fast tick + staleMs=0 so each sweep re-drives the pending row; once the
+    // chain confirms, the loop settles it and stop() halts the timer.
+    const stop = tm.startAutoReconcile(10, 0);
+    mode = "ok";
+    await waitFor(() => tm.get(p.id)!.status === "confirmed");
+    stop();
+    expect(tm.get(p.id)!.height).toBe(88);
     expect(ledger.list({ personaId: "a" })).toHaveLength(1);
     tm.close();
   });
@@ -163,7 +223,7 @@ describe("TxManager — reconciliation invariant", () => {
 
     const first = await tm.spend({
       personaId: "a",
-      to: "to1",
+      to: TO1,
       amount: "1000000",
     });
     await waitFor(() => tm.get(first.id)!.error !== null); // timed out → still pending
@@ -172,7 +232,7 @@ describe("TxManager — reconciliation invariant", () => {
 
     // Second spend must NOT broadcast while the first is pending.
     await expect(
-      tm.spend({ personaId: "a", to: "to2", amount: "1000000" }),
+      tm.spend({ personaId: "a", to: TO2, amount: "1000000" }),
     ).rejects.toThrow("pending tx");
     expect(broadcasts).toBe(1);
 
@@ -182,7 +242,7 @@ describe("TxManager — reconciliation invariant", () => {
     expect(tm.get(first.id)!.status).toBe("confirmed");
     const third = await tm.spend({
       personaId: "a",
-      to: "to3",
+      to: TO3,
       amount: "1000000",
     });
     expect(third.status).toBe("pending");
@@ -202,7 +262,7 @@ describe("TxManager — reconciliation invariant", () => {
       }),
     );
     await expect(
-      tm.spend({ personaId: "a", to: "bb1dest", amount: "1000000" }),
+      tm.spend({ personaId: "a", to: DEST, amount: "1000000" }),
     ).rejects.toThrow("insufficient");
     expect(broadcasts).toBe(0);
     expect(tm.pending()).toHaveLength(0);
@@ -218,7 +278,7 @@ describe("TxManager — reconciliation invariant", () => {
       }),
     );
     await expect(
-      tm.spend({ personaId: "a", to: "bb1dest", amount: "1000000" }),
+      tm.spend({ personaId: "a", to: DEST, amount: "1000000" }),
     ).rejects.toThrow("rejected");
     expect(tm.pending()).toHaveLength(0);
     tm.close();
@@ -238,10 +298,10 @@ describe("TxManager — reconciliation invariant", () => {
       }),
     );
 
-    await tm.spend({ personaId: "a", to: "to1", amount: "1000000" }); // lock held by its confirm
+    await tm.spend({ personaId: "a", to: TO1, amount: "1000000" }); // lock held by its confirm
     let secondDone = false;
     const p2 = tm
-      .spend({ personaId: "a", to: "to2", amount: "1000000" })
+      .spend({ personaId: "a", to: TO2, amount: "1000000" })
       .then((r) => {
         secondDone = true;
         return r;
@@ -249,11 +309,11 @@ describe("TxManager — reconciliation invariant", () => {
 
     await delay(60);
     expect(secondDone).toBe(false); // blocked on the mutex
-    expect(order).toEqual(["to1"]); // 2nd hasn't broadcast yet
+    expect(order).toEqual([TO1]); // 2nd hasn't broadcast yet
 
     gate.resolve(); // 1st confirms → releases the lock
     await p2;
-    expect(order).toEqual(["to1", "to2"]);
+    expect(order).toEqual([TO1, TO2]);
     tm.close();
   });
 
@@ -271,7 +331,7 @@ describe("TxManager — reconciliation invariant", () => {
       });
       const p = await tm1.spend({
         personaId: "a",
-        to: "bb1dest",
+        to: DEST,
         amount: "1000000",
       });
       expect(tm1.get(p.id)!.status).toBe("pending");
@@ -323,7 +383,7 @@ describe("TxManager — capability chokepoint (#37)", () => {
       },
     });
     await expect(
-      tm.spend({ personaId: "a", to: "bb1dest", amount: "1000000" }),
+      tm.spend({ personaId: "a", to: DEST, amount: "1000000" }),
     ).rejects.toThrow("denied");
     expect(broadcasts).toBe(0); // gate fired before any chain interaction
     tm.close();
@@ -350,7 +410,7 @@ describe("TxManager — capability chokepoint (#37)", () => {
         personaId: "a",
         kind: "spend",
         msgs: [{ typeUrl: "/cosmos.bank.v1beta1.MsgSend", value: {} }],
-        to: "bb1dest",
+        to: DEST,
         amount: "1000000",
       }),
     ).rejects.toThrow("denied");
@@ -394,11 +454,43 @@ describe("TxManager — capability chokepoint (#37)", () => {
     });
     const p = await tm.spend({
       personaId: "a",
-      to: "bb1dest",
+      to: DEST,
       amount: "1000000",
     });
     expect(authorized).toBe(true);
     expect(p.status).toBe("pending");
+    tm.close();
+  });
+});
+
+describe("TxManager.spend — structural input guards (#65)", () => {
+  test("rejects a malformed bb1 recipient before any broadcast", async () => {
+    let broadcasts = 0;
+    const tm = mgr(
+      baseChain({ signAndBroadcast: async () => (broadcasts++, "H") }),
+    );
+    for (const bad of ["bb1d", "0xdeadbeef", "cosmos1abc", ""]) {
+      await expect(
+        tm.spend({ personaId: "a", to: bad, amount: "1000000" }),
+      ).rejects.toThrow("invalid recipient");
+    }
+    expect(broadcasts).toBe(0);
+    expect(tm.pending()).toHaveLength(0);
+    tm.close();
+  });
+
+  test("rejects zero / negative / non-integer amounts before any broadcast", async () => {
+    let broadcasts = 0;
+    const tm = mgr(
+      baseChain({ signAndBroadcast: async () => (broadcasts++, "H") }),
+    );
+    for (const bad of ["0", "-1", "1.5", "abc", ""]) {
+      await expect(
+        tm.spend({ personaId: "a", to: DEST, amount: bad }),
+      ).rejects.toThrow("invalid amount");
+    }
+    expect(broadcasts).toBe(0);
+    expect(tm.pending()).toHaveLength(0);
     tm.close();
   });
 });

@@ -15,6 +15,10 @@ export const envSchema = z.object({
 
   AGENT_SIGNER_MNEMONIC: z.string().optional(),
   AGENT_SIGNER_PRIVKEY_HEX: z.string().optional(),
+  // Where the agent's master seed lives at rest (ADR-0007). `auto` = OS keychain
+  // on macOS, env-only elsewhere; `keychain` forces the keychain; `env` forces
+  // env-only (CI / tests / opt-out). env always wins as the fast path regardless.
+  VELLUM_SECRET_BACKEND: z.enum(["auto", "keychain", "env"]).default("auto"),
 
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   // Principal chat allowlist (#28). When set, ONLY this chat id may drive the
@@ -51,11 +55,30 @@ export const envSchema = z.object({
   // the CLI, daemon, and web share one filesystem source of truth regardless of
   // launch dir. Explicit override still honored.
   VELLUM_DB_PATH: z.string().default(dataPath("vellum.db")),
+
+  // The agent's working directory (#52) — the single root the YOLO filesystem +
+  // command-execution (`run_command`) tools operate in. Defaults to
+  // `<dataDir>/workspace` (see paths.ts workspaceDir); override to point the
+  // agent at a project checkout. fs + exec are scoped here and cannot escape it.
+  VELLUM_WORKSPACE: z.string().optional(),
+  // Per-command wall-clock timeout for `run_command` (ms). The process tree is
+  // killed on expiry so a runaway build can't hang the agent loop.
+  VELLUM_EXEC_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
+  // Cap on captured stdout/stderr per stream (chars) — a flood is truncated so
+  // it can't blow up the LLM context / cost.
+  VELLUM_EXEC_MAX_OUTPUT: z.coerce.number().int().positive().default(16_000),
+
   WEB_PORT: z.coerce.number().default(8787),
   WEB_HOST: z.string().default("127.0.0.1"),
   // Bearer token guarding state-changing API routes. Optional on loopback;
   // required to expose the API beyond localhost.
   VELLUM_API_TOKEN: z.string().optional(),
+
+  // Public base URL for the shareable links the agent mints (/pay, /deposit,
+  // /vote) via the request_* tools (#67). When set, those tools return absolute
+  // URLs; unset → a relative path (the daemon is loopback-only, so a bare path
+  // is honest for local use).
+  VELLUM_PUBLIC_URL: z.string().url().optional(),
 
   // Vellum is single-asset: the IBC USDC denom on the BitBadges devnet (6 dp,
   // displayed "USDC"). Balances, payment requests, and vaults use only this.
@@ -76,8 +99,6 @@ export const envSchema = z.object({
   // (OpenRouter-tracked via the ledger). This is a cost guardrail, NOT a limit on
   // the user's USDC — there is no free-form spending cap; USDC limits live in vaults.
   VELLUM_LLM_BUDGET_USD: z.coerce.number().default(1),
-  // Per-persona check-in cadence (0018). Default 6h; lower it for demos.
-  VELLUM_CHECKIN_INTERVAL_MS: z.coerce.number().default(6 * 60 * 60 * 1000),
 
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 });
@@ -98,3 +119,14 @@ function parseEnv(): Env {
 }
 
 export const env: Env = parseEnv();
+
+/**
+ * Mutate the live `env` singleton at runtime (#54 web onboarding). The web setup
+ * route writes secrets to .env (persisted for next boot) AND calls this so the
+ * ALREADY-RUNNING daemon adopts the new OpenRouter key / mnemonic without a
+ * restart — consumers read `env.*` at call time, so the mutation takes effect
+ * immediately. Loopback-gated at the route; never a public mutation surface.
+ */
+export function setRuntimeEnv(partial: Partial<Env>): void {
+  Object.assign(env, partial);
+}

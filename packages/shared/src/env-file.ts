@@ -1,0 +1,83 @@
+import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+
+// Minimal .env reader/writer (#19). Persists secrets (OpenRouter key, agent
+// mnemonic, optional API token) to the repo .env — the file Bun auto-loads at
+// startup — so a fresh process picks them up. Shared by the CLI install wizard
+// AND the web onboarding setup route (#54). Set/merge semantics only, not a full
+// dotenv parser.
+
+/** Does `value` need double-quoting to round-trip through Bun's .env loader? */
+function needsQuote(value: string): boolean {
+  return /[\s#"'=]/.test(value) || value === "";
+}
+
+function formatValue(value: string): string {
+  if (!needsQuote(value)) return value;
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+/**
+ * Merge `updates` into the .env file at `path`, preserving existing lines,
+ * comments, and order. An existing `KEY=…` line is rewritten in place; a new key
+ * is appended. The file is created if absent. Returns the keys that changed.
+ */
+export function upsertEnvFile(
+  path: string,
+  updates: Record<string, string>,
+): string[] {
+  const lines = existsSync(path) ? readFileSync(path, "utf8").split("\n") : [];
+  const remaining = new Map(Object.entries(updates));
+
+  const out = lines.map((line) => {
+    const m = /^(\s*)([A-Za-z_][A-Za-z0-9_]*)=/.exec(line);
+    if (!m) return line; // comment / blank / non-assignment — leave untouched
+    const key = m[2]!;
+    if (!remaining.has(key)) return line;
+    const value = remaining.get(key)!;
+    remaining.delete(key);
+    return `${key}=${formatValue(value)}`;
+  });
+
+  if (remaining.size) {
+    if (out.length && out[out.length - 1]!.trim() !== "") out.push("");
+    for (const [key, value] of remaining)
+      out.push(`${key}=${formatValue(value)}`);
+  }
+
+  let text = out.join("\n");
+  if (!text.endsWith("\n")) text += "\n";
+  writeFileSync(path, text, { mode: 0o600 });
+  // `mode` only applies on CREATE — an existing .env keeps its old (possibly
+  // group/world-readable) perms. Always tighten to owner-only; we just wrote
+  // secrets. (!48 HIGH.)
+  chmodSync(path, 0o600);
+  return Object.keys(updates);
+}
+
+/**
+ * Delete `keys` from the .env file at `path`, dropping their lines entirely
+ * (preserving everything else). Returns the keys that were actually present and
+ * removed. A no-op (and empty result) when the file is absent. Used by
+ * `vellum keys migrate` to scrub the master seed once it lives in the keychain.
+ */
+export function removeEnvKeys(path: string, keys: string[]): string[] {
+  if (!existsSync(path)) return [];
+  const drop = new Set(keys);
+  const removed: string[] = [];
+  const out = readFileSync(path, "utf8")
+    .split("\n")
+    .filter((line) => {
+      const m = /^(\s*)([A-Za-z_][A-Za-z0-9_]*)=/.exec(line);
+      if (m && drop.has(m[2]!)) {
+        removed.push(m[2]!);
+        return false;
+      }
+      return true;
+    });
+  if (!removed.length) return [];
+  let text = out.join("\n");
+  if (text && !text.endsWith("\n")) text += "\n";
+  writeFileSync(path, text, { mode: 0o600 });
+  chmodSync(path, 0o600);
+  return removed;
+}

@@ -11,6 +11,6 @@
     "@vellum/shared": "workspace:*",
     "grammy": "1.43.0",
     "@vellum/engine": "workspace:*",
-    "@vellum/scheduler": "workspace:*"
+    "@vellum/tx": "workspace:*"
   }
 }

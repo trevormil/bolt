@@ -6,10 +6,12 @@ import { useWallet } from "./wallet-context.tsx";
 
 type Signoff = Awaited<ReturnType<typeof api.vaultSignoff>>;
 
-// Public multisig sign-off page (#45 slice 3). A third-party signer opens the
-// vault's /vote/:collectionId link, connects their own Keplr wallet, and casts
-// a MsgCastVote toward the withdrawal proposal's quorum. Each cast is, in
-// essence, a signature; the agent's next withdrawal executes once quorum is met.
+// Public multisig sign-off page (#45 slice 3, model ADR-0005). A third-party
+// signer opens the vault's /vote/:collectionId link, connects their own Keplr
+// wallet, and casts a MsgCastVote toward the unlock quorum. Each cast is, in
+// essence, a signature; once quorum is met the vault UNLOCKS — the agent may
+// then withdraw from it freely (within its caps). It is a one-time authorization
+// to operate the vault, not approval of a specific withdrawal.
 export function VotePage({ collectionId }: { collectionId: string }) {
   const { wallet, available, connecting, connect } = useWallet();
   const [info, setInfo] = useState<Signoff | null>(null);
@@ -47,7 +49,11 @@ export function VotePage({ collectionId }: { collectionId: string }) {
             collectionId: info.collectionId,
             approvalId: info.approvalId,
             proposalId: info.proposalId,
-            yesWeight: myWeight,
+            // Full approve = 100% yes (#83 fix). yesWeight is a 0–100 PERCENT, not
+            // the signer's weight — the chain already scales by the configured
+            // signer weight. Passing myWeight (e.g. 1) registered a 1% near-NO
+            // vote that could never reach quorum.
+            yesWeight: 100,
           }),
         ],
         `vault ${info.symbol} withdrawal sign-off`,
@@ -63,11 +69,18 @@ export function VotePage({ collectionId }: { collectionId: string }) {
   return (
     <div className="grid h-full place-items-center bg-base p-4 text-fg font-sans">
       <Card className="w-[26rem] p-6">
-        <div className="flex items-center gap-2">
-          <span className="grid h-8 w-8 place-items-center rounded-md bg-accent text-accent-fg">
-            <Icon name="wallet" size={16} />
-          </span>
-          <span className="font-serif text-xl">Vault sign-off</span>
+        <div className="flex items-center gap-2.5">
+          <img
+            src="/logos/bolt.png"
+            alt="Bolt"
+            className="h-9 w-9 rounded-lg object-cover shadow-glow"
+          />
+          <div className="leading-tight">
+            <div className="font-serif text-xl">Vault sign-off</div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-soft">
+              Bolt · multisig
+            </div>
+          </div>
         </div>
 
         {loadErr ? (
@@ -81,21 +94,44 @@ export function VotePage({ collectionId }: { collectionId: string }) {
             </span>
             <p className="text-lg">Signed</p>
             <p className="mt-1 text-sm text-muted">
-              Your vote was cast for {info.symbol}. The withdrawal can execute
-              once {info.threshold} of {info.signers.length} signers approve.
+              Your vote was cast for {info.symbol}. Once {info.threshold} of{" "}
+              {info.signers.length} signers approve, the vault unlocks and the
+              agent can withdraw from it (within the vault's limits).
             </p>
           </div>
         ) : (
           <>
             <p className="mt-5 text-sm text-muted">
-              You're asked to approve a withdrawal from the{" "}
+              You're authorizing the agent to withdraw from the{" "}
               <span className="text-fg">{info.name}</span> vault ({info.symbol}
-              ). This authorizes the agent to withdraw within the vault's rules.
+              ). This is a <span className="text-fg">one-time unlock</span> —
+              once enough signers approve, the agent can withdraw from this
+              vault going forward, within its limits. It is not approval of a
+              single payment.
             </p>
             <div className="mt-3 text-xs text-soft">
               Requires {info.threshold} of {info.signers.length} signer
               approvals · collection {info.collectionId}
             </div>
+
+            {info.tally && (
+              <div className="mt-3 rounded-lg border border-border bg-base/40 p-3">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-soft">Signed so far</span>
+                  <span
+                    className={info.tally.quorumMet ? "text-accent" : "text-fg"}
+                  >
+                    {info.tally.signedCount} of {info.tally.totalSigners}
+                    {info.tally.quorumMet ? " · quorum met ✓" : " · pending"}
+                  </span>
+                </div>
+              </div>
+            )}
+            {info.tallyError && (
+              <div className="mt-2 text-[11px] text-soft">
+                Live sign-off count is unavailable right now.
+              </div>
+            )}
 
             {error && <p className="mt-4 text-sm text-danger">{error}</p>}
 
@@ -120,7 +156,7 @@ export function VotePage({ collectionId }: { collectionId: string }) {
                 </p>
               ) : (
                 <Button className="w-full" onClick={sign} disabled={signing}>
-                  {signing ? "Signing…" : "Approve withdrawal"}
+                  {signing ? "Signing…" : "Approve unlock"}
                 </Button>
               )}
             </div>

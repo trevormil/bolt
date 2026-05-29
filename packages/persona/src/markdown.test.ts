@@ -28,28 +28,24 @@ describe("readPersonaMarkdown (#41)", () => {
     expect(readPersonaMarkdown("atlas")).toBe("");
   });
 
-  test("reads the per-persona PERSONA.md", () => {
-    writePersonaMd("atlas", "Be terse.");
-    expect(readPersonaMarkdown("atlas")).toBe("Be terse.");
-  });
-
-  test("composes global then per-persona, in that order", () => {
+  test("reads the global PERSONA.md, applied to every persona", () => {
     writeFileSync(join(home, "PERSONA.md"), "House style: plain English.");
+    expect(readPersonaMarkdown("atlas")).toBe("House style: plain English.");
+    expect(readPersonaMarkdown("echo")).toBe("House style: plain English.");
+  });
+
+  test("does NOT read a per-persona file — that's the DB soul.instructions now (#93)", () => {
+    // The per-persona PERSONA.md file is no longer injected here; the single
+    // per-persona source is the DB instructions (rendered by renderSoul). With no
+    // global file, a per-persona file alone yields nothing.
     writePersonaMd("atlas", "Be terse.");
-    const md = readPersonaMarkdown("atlas");
-    expect(md).toBe("House style: plain English.\n\nBe terse.");
-    expect(md.indexOf("House style")).toBeLessThan(md.indexOf("Be terse"));
+    expect(readPersonaMarkdown("atlas")).toBe("");
   });
 
-  test("global-only applies to a persona with no own file", () => {
-    writeFileSync(join(home, "PERSONA.md"), "Global only.");
-    expect(readPersonaMarkdown("echo")).toBe("Global only.");
-  });
-
-  test("reads fresh each call (on-disk edits take effect)", () => {
-    writePersonaMd("atlas", "v1");
+  test("reads fresh each call (global on-disk edits take effect)", () => {
+    writeFileSync(join(home, "PERSONA.md"), "v1");
     expect(readPersonaMarkdown("atlas")).toBe("v1");
-    writePersonaMd("atlas", "v2");
+    writeFileSync(join(home, "PERSONA.md"), "v2");
     expect(readPersonaMarkdown("atlas")).toBe("v2");
   });
 });

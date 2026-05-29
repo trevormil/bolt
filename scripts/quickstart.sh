@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
-# Vellum quickstart (#19): zero → a running local agent in one command. Assumes
-# bun is present (https://bun.sh). Installs the workspace, then runs the
-# interactive setup wizard (LLM key, agent wallet, first persona, optional
-# background daemon). The wizard prints exactly how to start once it's done.
+# Bolt quickstart (#19/#54): zero → a running local agent in one command. Assumes
+# bun is present (https://bun.sh). Installs the workspace, builds the dashboard,
+# then starts the local server and opens the browser — the from-scratch setup
+# (LLM key, agent wallet, first persona) happens IN the web UI, on loopback.
 #
-# Nothing is hosted; only OpenRouter is ever contacted. macOS-only for the
-# background-daemon step (cross-platform autostart is a later extension).
+# Headless / no-browser environments: pass --cli to run the terminal wizard
+# instead (same outcome, no server/browser needed).
+#
+# Nothing is hosted; only OpenRouter is ever contacted. The browser auto-open
+# and background-daemon install are macOS-only (cross-platform is a later
+# extension); on other platforms the URL is printed to open manually.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -17,14 +21,35 @@ fi
 echo "→ installing workspace…"
 bun install
 
-# Build the web SPA up front so the daemon serves a real dashboard, not a blank
-# page. The daemon (and launchd unit the wizard can install) only SERVE the
-# prebuilt dist/ — they don't build it — so this must happen before the wizard's
-# optional daemon-install step starts a server.
+# Headless fallback: the interactive terminal wizard. Same .env + ~/.vellum +
+# first-persona outcome as the web flow, for environments with no browser.
+if [[ "${1:-}" == "--cli" ]]; then
+  exec bun packages/cli/src/cli.ts init
+fi
+
+# Build the SPA so the server serves a real dashboard (the web setup flow lives
+# in dist/), not a blank page. The server only SERVES dist/ — it doesn't build.
 echo "→ building dashboard…"
 bun run --filter @vellum/web build
 
-# The wizard writes secrets into ./.env (the file Bun auto-loads at startup),
-# creates ~/.vellum, and sets up the first persona. Run from the repo root so it
-# targets the right .env and shares the same data dir as the daemon + web.
-exec bun packages/cli/src/cli.ts init
+# Loopback URL the server binds (WEB_HOST/WEB_PORT default to 127.0.0.1:8787).
+HOST="${WEB_HOST:-127.0.0.1}"
+PORT="${WEB_PORT:-8787}"
+URL="http://${HOST}:${PORT}"
+
+echo "→ starting Bolt at ${URL}"
+echo "  first run? the browser will open the guided setup."
+echo "  stop with Ctrl-C. to run in the background later: bun run daemon:install"
+
+# Open the browser once the server answers (best-effort; macOS `open`). Backgrounded
+# so it races the server start — polls /api/health so it opens only when ready.
+( for _ in $(seq 1 40); do
+    if curl -fsS "${URL}/api/health" >/dev/null 2>&1; then
+      command -v open >/dev/null 2>&1 && open "${URL}" || echo "→ open ${URL} in your browser"
+      break
+    fi
+    sleep 0.25
+  done ) &
+
+# Foreground the server (run from repo root → shares .env + data dir with the CLI).
+exec bun packages/web/src/server.ts
