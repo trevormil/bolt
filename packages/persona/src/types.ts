@@ -5,6 +5,11 @@ export interface SoulIdentity {
   role: string; // one line: what this persona is for
   voice: string; // how it talks
   values?: string[]; // optional guiding principles
+  // PERSONA.md (#87): a freeform markdown instructions doc, appended verbatim to
+  // every request like a CLAUDE.md. When set it SUPERSEDES the structured
+  // role/voice/values above (those stay for legacy personas). The primary
+  // per-persona customization surface — edited in Settings + set on creation.
+  instructions?: string;
 }
 
 export interface Persona {

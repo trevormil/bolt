@@ -114,6 +114,23 @@ export class PersonaStore {
     return { id, name, soul, created };
   }
 
+  // Update a persona's PERSONA.md instructions (#87). Reads the stored soul JSON,
+  // sets `instructions`, writes it back. Returns the updated persona, or null if
+  // the persona doesn't exist. An empty string clears it (reverts to legacy soul
+  // rendering). Only the instructions field is touched — name/role/voice unchanged.
+  updateInstructions(id: string, instructions: string): Persona | null {
+    const persona = this.getPersona(id);
+    if (!persona) return null;
+    const soul: SoulIdentity = {
+      ...persona.soul,
+      instructions: instructions.trim() || undefined,
+    };
+    this.db
+      .query("UPDATE personas SET soul = ? WHERE id = ?")
+      .run(JSON.stringify(soul), id);
+    return { ...persona, soul };
+  }
+
   getPersona(id: string): Persona | null {
     const row = this.db
       .query("SELECT id, name, soul, created FROM personas WHERE id = ?")

@@ -6,14 +6,20 @@ import type { SoulIdentity } from "./types.ts";
  * the persona's own identity is ever rendered; no cross-persona data leaks in.
  */
 export function renderSoul(soul: SoulIdentity): string {
-  const lines = [
-    `You are ${soul.name}.`,
-    `Role: ${soul.role}`,
-    `Voice: ${soul.voice}`,
-  ];
-  if (soul.values?.length) {
-    lines.push(`Values: ${soul.values.join("; ")}`);
+  const lines = [`You are ${soul.name}.`];
+  // PERSONA.md mode (#87): when a freeform instructions doc is set, IT is the
+  // persona's customization (appended verbatim, like a CLAUDE.md) and supersedes
+  // the legacy structured role/voice/values. Otherwise render the structured
+  // fields as before so existing personas are unchanged.
+  if (soul.instructions?.trim()) {
+    lines.push("", soul.instructions.trim());
+  } else {
+    lines.push(`Role: ${soul.role}`, `Voice: ${soul.voice}`);
+    if (soul.values?.length) {
+      lines.push(`Values: ${soul.values.join("; ")}`);
+    }
   }
+  lines.push("");
   // Trust posture (#25): the proactivity rule every persona carries. "Quiet by
   // default, loud when it matters" — act within granted limits without
   // narrating, but always surface a plain receipt for anything that moves money
@@ -32,8 +38,15 @@ export function renderPersonaCard(
   soul: SoulIdentity,
   address?: string | null,
 ): string {
-  const rows = [`  Role:   ${soul.role}`, `  Voice:  ${soul.voice}`];
-  if (soul.values?.length) rows.push(`  Values: ${soul.values.join(", ")}`);
+  const rows: string[] = [];
+  if (soul.instructions?.trim()) {
+    rows.push(
+      `  Instructions: custom PERSONA.md (${soul.instructions.trim().length} chars)`,
+    );
+  } else {
+    rows.push(`  Role:   ${soul.role}`, `  Voice:  ${soul.voice}`);
+    if (soul.values?.length) rows.push(`  Values: ${soul.values.join(", ")}`);
+  }
   if (address) rows.push(`  Wallet: ${address}`);
   return [`✦ ${soul.name}`, ...rows].join("\n");
 }
