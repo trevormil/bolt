@@ -304,39 +304,120 @@ export function balanceTools(
         "Read this persona's own funds: free USDC in the wallet plus the USDC escrowed in each vault. Use before paying or withdrawing so you know what is available. Read-only.",
       parameters: { type: "object", properties: {} },
     },
+    {
+      name: "recent_activity",
+      description:
+        "Read this persona's recent activity from the ledger — what it has done and what it has spent (LLM cost), newest first, with tx hashes for on-chain actions. Use to answer 'what have I done/spent?' or to confirm a prior money action settled (a confirmed tx lands here). Read-only.",
+      parameters: {
+        type: "object",
+        properties: {
+          limit: {
+            type: "number",
+            description:
+              "How many recent entries to return (default 10, max 50).",
+          },
+        },
+      },
+    },
+    {
+      name: "vault_details",
+      description:
+        "Read one vault's current escrow balance and its withdrawal rule (amount cap + period, time window, multisig sign-off). Use before withdrawing or paying from a vault so you respect its limits. Read-only.",
+      parameters: {
+        type: "object",
+        properties: {
+          collectionId: {
+            type: "string",
+            description: "The vault's collectionId.",
+          },
+        },
+        required: ["collectionId"],
+      },
+    },
   ];
 
-  const invoke: ToolInvoker = async (name) => {
-    if (name !== "check_balance") return `unknown tool: ${name}`;
-    const coins = await engine.wallets.balanceFor(personaId);
-    const walletMicro =
-      coins.find((c) => c.denom === env.VELLUM_DENOM)?.amount ?? "0";
-    const vaults = engine.vaults.list(personaId);
-    const escrows = await Promise.all(
-      vaults.map(async (v) => ({
-        symbol: v.symbol,
-        collectionId: v.collectionId,
-        escrowedMicro: (await engine.vaults.escrow(personaId, v.collectionId))
-          .escrowedMicro,
-      })),
-    );
-    // tool_call telemetry (#42): record the read happened (metadata only).
+  const emitRead = (tool: string) =>
     engine.events.emit({
       personaId,
       kind: "tool_call",
-      summary: "balance:check_balance",
+      summary: `balance:${tool}`,
       ok: true,
-      meta: { tool: "check_balance", source: "balance" },
+      meta: { tool, source: "balance" },
     });
-    const vaultLines = escrows.length
-      ? escrows
-          .map(
-            (e) =>
-              `${e.symbol} (collection ${e.collectionId}): ${fmtUsdc(e.escrowedMicro)} USDC escrowed`,
-          )
-          .join("; ")
-      : "no vaults";
-    return `Wallet: ${fmtUsdc(walletMicro)} USDC free. Vaults: ${vaultLines}.`;
+
+  const invoke: ToolInvoker = async (name, args) => {
+    if (name === "check_balance") {
+      const coins = await engine.wallets.balanceFor(personaId);
+      const walletMicro =
+        coins.find((c) => c.denom === env.VELLUM_DENOM)?.amount ?? "0";
+      const vaults = engine.vaults.list(personaId);
+      const escrows = await Promise.all(
+        vaults.map(async (v) => ({
+          symbol: v.symbol,
+          collectionId: v.collectionId,
+          escrowedMicro: (await engine.vaults.escrow(personaId, v.collectionId))
+            .escrowedMicro,
+        })),
+      );
+      emitRead("check_balance");
+      const vaultLines = escrows.length
+        ? escrows
+            .map(
+              (e) =>
+                `${e.symbol} (collection ${e.collectionId}): ${fmtUsdc(e.escrowedMicro)} USDC escrowed`,
+            )
+            .join("; ")
+        : "no vaults";
+      return `Wallet: ${fmtUsdc(walletMicro)} USDC free. Vaults: ${vaultLines}.`;
+    }
+
+    if (name === "recent_activity") {
+      const limit = Math.min(
+        Math.max(Math.trunc(Number(args.limit) || 10), 1),
+        50,
+      );
+      const entries = engine.ledger.list({ personaId, limit });
+      emitRead("recent_activity");
+      if (!entries.length) return "No activity recorded yet.";
+      return entries
+        .map((e) => {
+          const cost = e.costUsd ? ` · $${e.costUsd.toFixed(4)}` : "";
+          const tx = e.txHash ? ` · tx ${e.txHash.slice(0, 10)}` : "";
+          return `${e.kind} · ${e.summary}${cost}${tx} [${e.authority}]`;
+        })
+        .join("\n");
+    }
+
+    if (name === "vault_details") {
+      const collectionId = String(args.collectionId ?? "");
+      const v = engine.vaults.get(personaId, collectionId);
+      if (!v) return `No vault ${collectionId} for this persona.`;
+      const escrowedMicro = (
+        await engine.vaults.escrow(personaId, collectionId)
+      ).escrowedMicro;
+      emitRead("vault_details");
+      const rules: string[] = [];
+      if (v.gating?.amount)
+        rules.push(
+          `at most ${v.gating.amount.limitUsd} USDC per ${v.gating.amount.period}`,
+        );
+      if (v.gating?.time?.unlockAt)
+        rules.push(
+          `unlocks ${new Date(v.gating.time.unlockAt).toISOString().slice(0, 10)}`,
+        );
+      if (v.gating?.time?.expiresAt)
+        rules.push(
+          `expires ${new Date(v.gating.time.expiresAt).toISOString().slice(0, 10)}`,
+        );
+      if (v.gating?.multisig)
+        rules.push(
+          `${v.gating.multisig.threshold}-of-${v.gating.multisig.signers.length} multisig sign-off`,
+        );
+      const rule = rules.length ? rules.join("; ") : "no withdrawal limits";
+      return `${v.symbol} (collection ${v.collectionId}): ${fmtUsdc(escrowedMicro)} USDC escrowed. Withdrawal rule: ${rule}.`;
+    }
+
+    return `unknown tool: ${name}`;
   };
 
   return { tools, invoke };

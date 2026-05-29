@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { generateWallet } from "@vellum/chain";
-import { createEngine, vaultTools, type Engine } from "./index.ts";
+import {
+  createEngine,
+  vaultTools,
+  balanceTools,
+  type Engine,
+} from "./index.ts";
 
 // A fake create-vault tx whose events parse to a VaultRef (mirrors server.test).
 const fakeCreateTxEvents = {
@@ -38,6 +43,7 @@ function eng(): Engine {
       createVault: async () => ({ txHash: "VAULTCREATE1" }),
       confirmTx: async () => ({ height: 9, code: 0 }),
       fetchTx: async () => fakeCreateTxEvents,
+      fetchTokenBalance: async () => "2000000", // 2 vUSDC escrowed (for reads)
     },
   });
 }
@@ -117,5 +123,57 @@ describe("vault tool_call telemetry (#42)", () => {
     expect(ev).toBeTruthy();
     expect(ev!.ok).toBe(false);
     expect(ev!.meta).toMatchObject({ source: "vault" });
+  });
+});
+
+describe("balance read/awareness tools (#88)", () => {
+  test("recent_activity reads the persona's ledger, newest-first", async () => {
+    const e = eng();
+    expect(await balanceTools(e, "p").invoke("recent_activity", {})).toContain(
+      "No activity",
+    );
+    e.ledger.recordAgentRun("p", "chat · hello world", [
+      {
+        model: "m",
+        tier: "cheap",
+        promptTokens: 1,
+        completionTokens: 1,
+        totalTokens: 2,
+        costUsd: 0.001,
+        ms: 1,
+      },
+    ]);
+    const out = await balanceTools(e, "p").invoke("recent_activity", {
+      limit: 5,
+    });
+    expect(out).toContain("hello world");
+  });
+
+  test("vault_details surfaces escrow + the withdrawal rule", async () => {
+    const e = eng();
+    await e.wallets.ensureWallet("p");
+    e.capabilities.grant({
+      personaId: "p",
+      capability: "vault.create",
+      scope: null,
+      mode: "allow",
+    });
+    await vaultTools(e, "p").invoke("create_vault", {
+      name: "Rent",
+      symbol: "vRENT",
+      withdrawLimit: 5,
+      withdrawPeriod: "daily",
+    });
+    const out = await balanceTools(e, "p").invoke("vault_details", {
+      collectionId: "777",
+    });
+    expect(out).toContain("vRENT");
+    expect(out).toContain("escrowed");
+    expect(out).toContain("5 USDC per daily");
+    expect(
+      await balanceTools(e, "p").invoke("vault_details", {
+        collectionId: "999",
+      }),
+    ).toContain("No vault");
   });
 });
