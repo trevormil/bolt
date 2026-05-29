@@ -199,6 +199,7 @@ export function Chat({ persona }: { persona: Persona }) {
           <button
             onClick={() => void newChat()}
             title="New chat"
+            aria-label="New chat"
             data-testid="new-chat"
             className="rounded-md p-1 text-soft transition-colors hover:bg-surface-3 hover:text-fg"
           >
@@ -256,6 +257,7 @@ export function Chat({ persona }: { persona: Persona }) {
                   <button
                     onClick={() => void removeChat(s.id)}
                     title="Delete chat"
+                    aria-label={`Delete chat: ${s.title}`}
                     className="hidden shrink-0 text-soft hover:text-danger group-hover:block"
                   >
                     <Icon name="trash" size={12} />
@@ -322,9 +324,14 @@ export function Chat({ persona }: { persona: Persona }) {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && send()}
             placeholder={`Message ${persona.name}…`}
+            aria-label={`Message ${persona.name}`}
             disabled={busy}
           />
-          <Button onClick={send} disabled={busy || !input.trim()}>
+          <Button
+            onClick={send}
+            disabled={busy || !input.trim()}
+            aria-label="Send message"
+          >
             <Icon name="send" size={16} />
           </Button>
         </div>

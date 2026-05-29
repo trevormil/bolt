@@ -28,6 +28,9 @@ export function buttonClasses(
     "inline-flex items-center justify-center gap-1.5 rounded-md font-medium",
     "transition-all duration-150 hover:-translate-y-px active:translate-y-0",
     "disabled:pointer-events-none disabled:opacity-50",
+    // Keyboard a11y (#92): a visible focus ring for keyboard users (focus-visible
+    // only, so it never shows on a mouse click). Propagates to every Button.
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-gold focus-visible:ring-offset-2 focus-visible:ring-offset-base",
     VARIANTS[variant],
     SIZES[size],
   );

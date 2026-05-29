@@ -16,3 +16,17 @@
 @import "./tokens.css";
 @import "./themes/dusk.css";
 @import "./themes/aurum.css";
+
+/* Accessibility (#92): honor a user's reduced-motion preference. The Aurum theme
+ * leans on gold/glow transitions + hover lifts + pulses; for users who ask for
+ * less motion (OS setting), collapse all animation/transition to near-instant. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
