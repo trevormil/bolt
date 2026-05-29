@@ -31,6 +31,29 @@ const balance = [{ denom: DENOM, amount: "5000000" }]; // $5 of mock USDC
 const REPLY =
   "Here is a **markdown** reply with a [link](https://example.com) and `inline code`.\n\n- bullet one\n- bullet two";
 
+// A fake create-vault tx whose events parse to a VaultRef (mirrors server.test),
+// so the Vaults UI can create a vault offline (collection 777 + deposit/withdraw
+// approvals) once a (mocked) Keplr wallet supplies the human manager address.
+const fakeCreateTxEvents = {
+  events: [
+    {
+      type: "message",
+      attributes: [
+        { key: "collectionId", value: "777" },
+        {
+          key: "msg",
+          value: JSON.stringify({
+            collectionApprovals: [
+              { approvalId: "vault-deposit", toListId: "!bb1backing" },
+              { approvalId: "vault-withdraw-x", toListId: "bb1backing" },
+            ],
+          }),
+        },
+      ],
+    },
+  ],
+};
+
 function makeEngine(): Engine {
   const engine = createEngine({
     dbPath: ":memory:",
@@ -61,6 +84,15 @@ function makeEngine(): Engine {
       amount: "10000000",
       denom: DENOM,
     }),
+    // Seam vault creation offline (mirrors server.test). The human manager comes
+    // from the connected (mocked) Keplr wallet; defaultManager is the fallback.
+    vault: {
+      defaultManager: "bb1human",
+      createVault: async () => ({ txHash: "VAULTCREATE1" }),
+      confirmTx: async () => ({ height: 9, code: 0 }),
+      fetchTx: async () => fakeCreateTxEvents,
+      fetchTokenBalance: async () => "2000000",
+    },
   });
   // Seed one persona so the app opens straight into a usable state.
   engine.store.createPersona("atlas", "Atlas", {
