@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Badge, Button, Card, Icon, Input } from "@vellum/ui";
 import { BrandLogo } from "./BrandLogo.tsx";
-import { api, type Vault, type DepositRequest } from "./api.ts";
+import { api, type Vault, type DepositRequest, type VoteTally } from "./api.ts";
 import {
   signAndBroadcast,
   vaultDepositMsg,
@@ -437,6 +437,8 @@ function VaultRow({
   const [memo, setMemo] = useState("");
   const [requests, setRequests] = useState<DepositRequest[]>([]);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  // Live multisig sign-off tally (#83) — only for multisig vaults.
+  const [tally, setTally] = useState<VoteTally | null>(null);
 
   // Escrow = the agent's holding of THIS vault's tokens (#45) — the correct
   // per-vault figure (all USDC vaults share one backing alias, so the agent's
@@ -461,6 +463,11 @@ function VaultRow({
   useEffect(() => {
     void reloadEscrow();
     void reloadRequests();
+    if (vault.gating?.multisig)
+      api
+        .vaultSignoff(vault.collectionId)
+        .then((s) => setTally(s.tally))
+        .catch(() => setTally(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [personaId, vault.collectionId]);
 
@@ -668,6 +675,9 @@ function VaultRow({
               <Badge tone="accent">
                 {vault.gating.multisig.threshold}-of-
                 {vault.gating.multisig.signers.length} multisig
+                {tally
+                  ? ` · ${tally.signedCount}/${tally.totalSigners} signed${tally.quorumMet ? " ✓" : ""}`
+                  : ""}
               </Badge>
             )}
             {!vault.gating?.amount &&

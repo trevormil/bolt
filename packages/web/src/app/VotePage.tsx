@@ -49,7 +49,11 @@ export function VotePage({ collectionId }: { collectionId: string }) {
             collectionId: info.collectionId,
             approvalId: info.approvalId,
             proposalId: info.proposalId,
-            yesWeight: myWeight,
+            // Full approve = 100% yes (#83 fix). yesWeight is a 0–100 PERCENT, not
+            // the signer's weight — the chain already scales by the configured
+            // signer weight. Passing myWeight (e.g. 1) registered a 1% near-NO
+            // vote that could never reach quorum.
+            yesWeight: 100,
           }),
         ],
         `vault ${info.symbol} withdrawal sign-off`,
@@ -109,6 +113,25 @@ export function VotePage({ collectionId }: { collectionId: string }) {
               Requires {info.threshold} of {info.signers.length} signer
               approvals · collection {info.collectionId}
             </div>
+
+            {info.tally && (
+              <div className="mt-3 rounded-lg border border-border bg-base/40 p-3">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-soft">Signed so far</span>
+                  <span
+                    className={info.tally.quorumMet ? "text-accent" : "text-fg"}
+                  >
+                    {info.tally.signedCount} of {info.tally.totalSigners}
+                    {info.tally.quorumMet ? " · quorum met ✓" : " · pending"}
+                  </span>
+                </div>
+              </div>
+            )}
+            {info.tallyError && (
+              <div className="mt-2 text-[11px] text-soft">
+                Live sign-off count is unavailable right now.
+              </div>
+            )}
 
             {error && <p className="mt-4 text-sm text-danger">{error}</p>}
 

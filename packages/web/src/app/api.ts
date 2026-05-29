@@ -78,6 +78,21 @@ async function json<T>(res: Response): Promise<T> {
   return body;
 }
 
+// Multisig vault sign-off progress (#83), mirrored from the server's voteTally.
+export interface VoteTally {
+  threshold: number;
+  totalWeight: number;
+  yesWeight: number;
+  signedCount: number;
+  totalSigners: number;
+  quorumMet: boolean;
+  signers: {
+    address: string;
+    weight: number;
+    vote: "yes" | "no" | "pending";
+  }[];
+}
+
 export const api = {
   // Auth (#27 boundary): authRequired=false on loopback dev (open). The session
   // cookie is httpOnly, so login/logout go through the server, not page JS.
@@ -300,6 +315,10 @@ export const api = {
         proposalId: string;
         threshold: number;
         signers: { address: string; weight?: number }[];
+        // Live on-chain sign-off progress (#83); null + tallyError when the chain
+        // read failed (distinct from a genuine zero).
+        tally: VoteTally | null;
+        tallyError: boolean;
       }>(r),
     ),
 

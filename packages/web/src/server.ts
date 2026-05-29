@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
-import { confirmTx, generateWallet } from "@vellum/chain";
+import { confirmTx, generateWallet, getVotes } from "@vellum/chain";
 import { verifyOpenRouterKey } from "@vellum/llm";
 import { tracer } from "@vellum/trace";
 import {
@@ -19,6 +19,7 @@ import {
   grantDefaultCapabilities,
   DEFAULT_PERSONA_INSTRUCTIONS,
   CapabilityDeniedError,
+  voteTally,
   llmBudget,
   evaluateBudget,
   BudgetLimits,
@@ -928,10 +929,26 @@ export function buildApp(
   // PUBLIC sign-off info for a multisig vault (#45 slice 3) — what the
   // third-party /vote page needs to build a MsgCastVote. No persona session;
   // collectionId + signers are on-chain/public. 404 unless the vault is multisig.
-  app.get("/api/vaults/:collectionId/signoff", (c) => {
+  app.get("/api/vaults/:collectionId/signoff", async (c) => {
     const v = engine.vaults.getByCollection(c.req.param("collectionId"));
     if (!v || !v.gating?.multisig)
       return c.json({ error: "no multisig vault for this id" }, 404);
+    // Live sign-off progress (#83): read the on-chain votes via the protobuf ABCI
+    // query (approverAddress="" = collection-level) and compute the tally. If the
+    // chain read fails, surface tallyError instead of a misleading "0 signed".
+    let tally: ReturnType<typeof voteTally> | null = null;
+    let tallyError = false;
+    try {
+      const votes = await getVotes({
+        collectionId: v.collectionId,
+        approvalId: v.withdrawApprovalId,
+        proposalId: VAULT_WITHDRAW_PROPOSAL_ID,
+      });
+      tally = voteTally(v.gating.multisig, votes);
+    } catch (e) {
+      tallyError = true;
+      log.warn(`signoff tally read failed for ${v.collectionId}: ${e}`);
+    }
     return c.json({
       collectionId: v.collectionId,
       name: v.name,
@@ -940,6 +957,8 @@ export function buildApp(
       proposalId: VAULT_WITHDRAW_PROPOSAL_ID,
       threshold: v.gating.multisig.threshold,
       signers: v.gating.multisig.signers,
+      tally, // null when unread
+      tallyError,
     });
   });
 
