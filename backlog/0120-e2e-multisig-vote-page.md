@@ -1,11 +1,12 @@
 ---
 id: 120
 title: "e2e: Multisig vote sign-off — /vote/:collectionId/:approvalId"
-status: open
+status: in-progress
 priority: high
 type: testing
 source: audit-2026-05-29
 created: 2026-05-29
+updated: 2026-05-29
 refs: ["0106-test-coverage-backfill.md", "0083-multisig-vote-progress-ux.md"]
 ---
 
