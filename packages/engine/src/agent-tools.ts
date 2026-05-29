@@ -101,12 +101,12 @@ export function vaultTools(
             type: "array",
             items: { type: "string" },
             description:
-              "Multi-sig: bb1 addresses that must sign off on each withdrawal. Requires threshold.",
+              "Multi-sig: bb1 addresses whose one-time approval UNLOCKS the vault for you. It's a one-time authorization to operate the vault (not per-withdrawal sign-off); once enough approve, you withdraw freely within the other limits. Requires threshold.",
           },
           threshold: {
             type: "number",
             description:
-              "How many of the signers must approve (the N in N-of-M). Requires signers.",
+              "How many of the signers must approve to unlock (the N in N-of-M). Requires signers.",
           },
           dailyWithdrawLimit: {
             type: "number",
