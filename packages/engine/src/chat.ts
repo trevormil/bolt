@@ -61,17 +61,22 @@ export async function chat(
     meta: { conversationId, chars: message.length },
   });
 
+  // Persist the turn to the shared session store (#78) so EVERY surface — web,
+  // Telegram, CLI — writes ONE source of truth: a Telegram conversation shows up
+  // in the web session rail, and a thread is resumable from either side. ensure()
+  // binds the id to this persona (throws on a cross-persona id — the memory wall);
+  // append() auto-titles the session from the first user message.
+  engine.conversations.ensure(conversationId, personaId);
+  engine.conversations.append(conversationId, "user", message);
+
   const budget = evaluateBudget(engine, personaId);
   if (!budget.ok && budget.breached) {
     const w = budget.windows[budget.breached]!;
     const which =
       budget.breached.charAt(0).toUpperCase() + budget.breached.slice(1);
-    return {
-      reply: `${which} LLM budget of $${w.capUsd.toFixed(2)} reached (spent $${w.spentUsd.toFixed(4)}). It resets on a rolling window.`,
-      costUsd: 0,
-      tokens: 0,
-      budgetExceeded: true,
-    };
+    const reply = `${which} LLM budget of $${w.capUsd.toFixed(2)} reached (spent $${w.spentUsd.toFixed(4)}). It resets on a rolling window.`;
+    engine.conversations.append(conversationId, "agent", reply);
+    return { reply, costUsd: 0, tokens: 0, budgetExceeded: true };
   }
 
   engine.orchestrator.resolve(conversationId, `/switch ${personaId}`);
@@ -149,5 +154,6 @@ export async function chat(
     meta: { conversationId, steps: res.meters.length, chars: res.reply.length },
   });
 
+  engine.conversations.append(conversationId, "agent", res.reply);
   return { reply: res.reply, costUsd, tokens, budgetExceeded: false };
 }

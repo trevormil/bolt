@@ -1270,8 +1270,11 @@ export function buildApp(
       typeof body.humanAddress === "string" ? body.humanAddress.trim() : "";
     if (humanAddress && !isBb1Address(humanAddress))
       return c.json({ error: "humanAddress must be a bb1 address" }, 400);
-    // Bind/record the session (#72). ensure() throws if this conversation id
-    // belongs to a DIFFERENT persona (the wall) → 400.
+    // Cross-persona guard (#72 wall): reject a conversation id that belongs to a
+    // DIFFERENT persona BEFORE doing work → 400. ensure() is idempotent, so this
+    // pre-check composes with chat()'s own persistence below. Transcript writes
+    // (user + agent turns) now live in chat() so EVERY surface persists the same
+    // way (#78) — the route no longer appends.
     try {
       engine.conversations.ensure(conversationId, personaId);
     } catch {
@@ -1280,9 +1283,8 @@ export function buildApp(
         400,
       );
     }
-    engine.conversations.append(conversationId, "user", message);
     // Shared chat flow (budget gate → routing → agent loop + vault tools →
-    // ledger + memory). Identical on web + Telegram.
+    // ledger + memory + transcript persistence). Identical on web + Telegram.
     const trace = tracer.trace("chat", { personaId, conversationId });
     const r = await chat(engine, {
       conversationId,
@@ -1291,7 +1293,6 @@ export function buildApp(
       trace,
       humanAddress: humanAddress || undefined,
     });
-    engine.conversations.append(conversationId, "agent", r.reply);
     trace.end();
     void tracer.flush();
     return c.json({

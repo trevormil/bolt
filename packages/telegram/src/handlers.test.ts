@@ -80,6 +80,22 @@ describe("telegram handlers (engine-wired)", () => {
     expect(replies[0]).not.toContain("· $");
   });
 
+  test("onText persists the turn to the shared conversation store (#78)", async () => {
+    const engine = engineWithFakes();
+    const { c } = ctx("hello from telegram", 1);
+    await onText(c, engine, new Sessions());
+    // The thread lands in engine.conversations under the resolved persona, so it
+    // shows up in the web session rail — one source of truth across surfaces.
+    const convs = engine.conversations.list("assistant");
+    expect(convs).toHaveLength(1);
+    expect(convs[0]!.id).toBe("tg:1:assistant");
+    expect(convs[0]!.source).toBe("telegram");
+    const msgs = engine.conversations.messages("assistant", convs[0]!.id);
+    expect(msgs.map((m) => m.role)).toEqual(["user", "agent"]);
+    expect(msgs[0]!.text).toBe("hello from telegram");
+    expect(msgs[1]!.text).toContain("Hi, I'm Bolt.");
+  });
+
   test("/start greets and ensures the default persona + wallet", async () => {
     const engine = engineWithFakes();
     const { c, replies } = ctx();
