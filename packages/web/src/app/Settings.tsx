@@ -177,7 +177,6 @@ function LlmKeySection() {
 function TelegramSection() {
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [token, setToken] = useState("");
-  const [chatId, setChatId] = useState("");
   const [busy, setBusy] = useState<"save" | "disable" | null>(null);
   const [connected, setConnected] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -199,12 +198,8 @@ function TelegramSection() {
     setError(null);
     setConnected(null);
     try {
-      const r = await api.setTelegramToken({
-        token: token.trim(),
-        ...(chatId.trim() ? { principalChatId: chatId.trim() } : {}),
-      });
+      const r = await api.setTelegramToken({ token: token.trim() });
       setToken("");
-      setChatId("");
       setConfigured(true);
       setConnected(r.username ? `@${r.username}` : "connected");
     } catch (e) {
@@ -254,8 +249,8 @@ function TelegramSection() {
         </li>
         <li>
           Paste it below, then message your bot{" "}
-          <span className="font-mono text-fg">/start</span> to claim ownership
-          (or set your chat id) — so a stranger can't drive your agent.
+          <span className="font-mono text-fg">/start</span> to claim ownership —
+          so a stranger can't drive your agent.
         </li>
       </ol>
       <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -265,12 +260,6 @@ function TelegramSection() {
           onChange={(e) => setToken(e.target.value)}
           placeholder="bot token (123456:ABC-…)"
           className="min-w-[16rem] flex-1"
-        />
-        <Input
-          value={chatId}
-          onChange={(e) => setChatId(e.target.value)}
-          placeholder="chat id (optional)"
-          className="w-36"
         />
         <Button
           size="sm"
