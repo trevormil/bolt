@@ -2,6 +2,7 @@
 id: 123
 title: "e2e: Settings WRITE flows — rotate key, set-Telegram, reveal-seed"
 status: in-progress
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/103"]
 priority: high
 type: testing
 source: audit-2026-05-29
