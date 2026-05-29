@@ -5,6 +5,9 @@ export interface Soul {
   role: string;
   voice: string;
   values?: string[];
+  // PERSONA.md (#87): freeform instructions appended to every request; supersedes
+  // role/voice when set.
+  instructions?: string;
 }
 export interface Persona {
   id: string;
@@ -166,12 +169,26 @@ export const api = {
       .then((r) => json<{ personas: Persona[] }>(r))
       .then((b) => b.personas),
 
-  createPersona: (input: { name: string; role?: string; voice?: string }) =>
+  createPersona: (input: {
+    name: string;
+    role?: string;
+    voice?: string;
+    // PERSONA.md (#87) — the freeform instructions doc for this persona.
+    instructions?: string;
+  }) =>
     fetch("/api/personas", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(input),
     }).then((r) => json<{ persona: Persona; address: string }>(r)),
+
+  // Update a persona's PERSONA.md instructions (#87). Empty string clears it.
+  updatePersonaInstructions: (id: string, instructions: string) =>
+    fetch(`/api/personas/${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ instructions }),
+    }).then((r) => json<{ persona: Persona }>(r)),
 
   wallet: (id: string) =>
     fetch(`/api/personas/${id}/wallet`).then((r) =>

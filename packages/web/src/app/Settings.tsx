@@ -7,10 +7,81 @@ export function SettingsView({ personaId }: { personaId: string }) {
     <div className="h-full space-y-6 overflow-y-auto p-6">
       <LlmKeySection />
       <TelegramSection />
+      <PersonaInstructionsSection personaId={personaId} />
       <ModelSection personaId={personaId} />
       <BudgetSection personaId={personaId} />
       <RecoverySection />
     </div>
+  );
+}
+
+// ── #87 PERSONA.md — the per-persona instructions doc appended to every request ─
+// A freeform markdown blob (like a CLAUDE.md) that's the primary customization
+// surface for a persona. Empty reverts to the built-in default behavior. Scoped
+// to the active persona (the memory wall keeps personas independent).
+function PersonaInstructionsSection({ personaId }: { personaId: string }) {
+  const [text, setText] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    setLoaded(false);
+    api
+      .listPersonas()
+      .then((ps) => {
+        if (!live) return;
+        setText(ps.find((p) => p.id === personaId)?.soul.instructions ?? "");
+        setLoaded(true);
+      })
+      .catch(() => live && setLoaded(true));
+    return () => {
+      live = false;
+    };
+  }, [personaId]);
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    setSaved(false);
+    try {
+      await api.updatePersonaInstructions(personaId, text);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="p-4">
+      <SectionHead
+        title="PERSONA.md"
+        hint={`Instructions for "${personaId}", appended to every request like a CLAUDE.md. Leave blank for the default.`}
+      />
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        disabled={!loaded}
+        rows={10}
+        placeholder={loaded ? "# Who you are\n…" : "loading…"}
+        className="mt-3 w-full resize-y rounded-lg border border-border bg-base px-3 py-2 font-mono text-xs leading-relaxed text-fg outline-none placeholder:text-soft focus:border-border-gold focus:ring-1 focus:ring-border-gold"
+      />
+      <div className="mt-3 flex items-center gap-2">
+        <Button
+          size="sm"
+          onClick={() => void save()}
+          disabled={busy || !loaded}
+        >
+          {busy ? "Saving…" : saved ? "Saved" : "Save"}
+        </Button>
+      </div>
+      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+    </Card>
   );
 }
 

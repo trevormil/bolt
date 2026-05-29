@@ -189,6 +189,44 @@ describe("web API", () => {
     expect((await post("/api/personas", { name: "Atlas" })).status).toBe(409);
   });
 
+  test("persona PERSONA.md instructions: set on create + edit via PATCH (#87)", async () => {
+    const created = await post("/api/personas", {
+      name: "Atlas",
+      instructions: "# Atlas\nReply only in haiku.",
+    });
+    expect(created.status).toBe(201);
+    expect(
+      (
+        (await created.json()) as {
+          persona: { soul: { instructions?: string } };
+        }
+      ).persona.soul.instructions,
+    ).toBe("# Atlas\nReply only in haiku.");
+
+    // PATCH updates the doc.
+    const patched = await app.request("/api/personas/atlas", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ instructions: "# Atlas\nBe terse." }),
+    });
+    expect(patched.status).toBe(200);
+    expect(
+      (
+        (await patched.json()) as {
+          persona: { soul: { instructions?: string } };
+        }
+      ).persona.soul.instructions,
+    ).toBe("# Atlas\nBe terse.");
+
+    // PATCH on an unknown persona → 404.
+    const missing = await app.request("/api/personas/ghost", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ instructions: "x" }),
+    });
+    expect(missing.status).toBe(404);
+  });
+
   test("list personas includes wallet address", async () => {
     await post("/api/personas", { name: "Atlas" });
     const body = (await (await app.request("/api/personas")).json()) as {

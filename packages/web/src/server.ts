@@ -660,10 +660,13 @@ export function buildApp(
       name?: string;
       role?: string;
       voice?: string;
+      instructions?: string;
       soul?: { name: string; role: string; voice: string; values?: string[] };
     };
     const name = (body.name ?? "").trim();
     if (!name) return c.json({ error: "name is required" }, 400);
+    const instructions =
+      typeof body.instructions === "string" ? body.instructions.trim() : "";
     // An explicit id must be slug-safe: routing encodes it into `/switch <id>`
     // (\S+) and it becomes a path param, so spaces/punctuation break chat.
     const explicit = body.id?.trim();
@@ -678,11 +681,27 @@ export function buildApp(
       name,
       role: body.role?.trim() || "personal assistant",
       voice: body.voice?.trim() || "friendly and concise",
+      // PERSONA.md (#87): when provided it supersedes role/voice at render time.
+      ...(instructions ? { instructions } : {}),
     };
     const persona = engine.store.createPersona(id, name, soul);
     const wallet = await engine.wallets.ensureWallet(id);
     grantDefaultCapabilities(engine.capabilities, id); // #37 baseline policy
     return c.json({ persona, address: wallet.address }, 201);
+  });
+
+  // Update a persona's PERSONA.md instructions (#87) — the freeform doc appended
+  // to every request. Empty string clears it (reverts to legacy role/voice).
+  app.patch("/api/personas/:id", async (c) => {
+    const id = c.req.param("id");
+    const body = (await c.req.json().catch(() => ({}))) as {
+      instructions?: unknown;
+    };
+    if (typeof body.instructions !== "string")
+      return c.json({ error: "instructions (string) is required" }, 400);
+    const persona = engine.store.updateInstructions(id, body.instructions);
+    if (!persona) return c.json({ error: "unknown persona" }, 404);
+    return c.json({ persona });
   });
 
   app.get("/api/personas/:id/wallet", async (c) => {
