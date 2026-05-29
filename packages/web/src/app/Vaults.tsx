@@ -518,7 +518,7 @@ function VaultRow({
         `manager ${kind} · vault ${vault.symbol}`,
       );
       setNote(
-        `Manager ${kind === "drain" ? "drained" : "revoked"} (${txHash.slice(0, 10)}…)`,
+        `${kind === "drain" ? "Withdrew all to you" : "Froze agent access"} (${txHash.slice(0, 10)}…)`,
       );
       void reloadEscrow();
     } catch (e) {
@@ -710,28 +710,36 @@ function VaultRow({
         />
       </div>
       {isManager && (
-        <div className="mt-2 flex items-center gap-2 border-t border-border pt-2">
-          <span className="text-[11px] uppercase tracking-wide text-soft">
-            Manager
-          </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => managerAction("drain")}
-            disabled={busy !== null || !escrowMicro || escrowMicro === "0"}
-            title="Burn the agent's vault tokens → release USDC to you (drain)"
-          >
-            {busy === "drain" ? "…" : "Drain"}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => managerAction("revoke")}
-            disabled={busy !== null || !escrowMicro || escrowMicro === "0"}
-            title="Forcefully claw back the agent's vault tokens to you"
-          >
-            {busy === "revoke" ? "…" : "Revoke agent tokens"}
-          </Button>
+        <div className="mt-2 border-t border-border pt-2">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] uppercase tracking-wide text-soft">
+              Manager
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => managerAction("drain")}
+              disabled={busy !== null || !escrowMicro || escrowMicro === "0"}
+              title="Burn the agent's vault tokens and return the escrowed USDC to your wallet."
+            >
+              {busy === "drain" ? "…" : "Withdraw all to me"}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => managerAction("revoke")}
+              disabled={busy !== null || !escrowMicro || escrowMicro === "0"}
+              title="Claw the agent's vault tokens back to you — it can no longer spend; the escrowed USDC stays under your control."
+            >
+              {busy === "revoke" ? "…" : "Freeze agent access"}
+            </Button>
+          </div>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-soft">
+            <span className="text-muted">Withdraw all</span> returns the
+            escrowed USDC to your wallet.{" "}
+            <span className="text-muted">Freeze</span> revokes the agent's
+            spending access but keeps the USDC escrowed under you.
+          </p>
         </div>
       )}
       {note && <div className="mt-2 text-xs text-muted">{note}</div>}
