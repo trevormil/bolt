@@ -80,14 +80,17 @@ describe("request_funds — mint a payment request + link (#67)", () => {
     expect(reqs[0]!.memo).toBe("rent");
   });
 
-  test("absolute link when VELLUM_PUBLIC_URL is set; relative path otherwise", async () => {
+  test("always an absolute link; VELLUM_PUBLIC_URL overrides the local origin (#84)", async () => {
     const e = eng();
     await provision(e);
 
-    const rel = await requestTools(e, "p").invoke("request_funds", {
+    // No public URL set → still an absolute link to the local daemon origin, never
+    // a bare /path (so it's clickable in chat / tappable in Telegram).
+    const local = await requestTools(e, "p").invoke("request_funds", {
       amountUsdc: 1,
     });
-    expect(rel).toContain(" /pay/"); // bare path fallback
+    expect(local).toMatch(/https?:\/\/[^\s]+\/pay\//);
+    expect(local).not.toContain(" /pay/");
 
     env.VELLUM_PUBLIC_URL = "https://bolt.example.com";
     const abs = await requestTools(e, "p").invoke("request_funds", {

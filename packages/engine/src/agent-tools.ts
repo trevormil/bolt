@@ -407,12 +407,15 @@ export function spendTools(
   return { tools, invoke };
 }
 
-// Build a shareable link from a path. Absolute when VELLUM_PUBLIC_URL is set,
-// otherwise the bare path — the daemon is loopback-only, so a path is honest for
-// local use (the operator shares the public URL out of band when there is one).
+// Build a shareable link from a path — ALWAYS absolute (#84) so the agent posts a
+// full https URL the user can click/tap, never a bare /path. VELLUM_PUBLIC_URL wins
+// when set (the real public origin); otherwise fall back to the local daemon origin
+// so links still work for a loopback-only install.
 function linkFor(path: string): string {
-  const base = env.VELLUM_PUBLIC_URL;
-  return base ? `${base.replace(/\/$/, "")}${path}` : path;
+  const base = (
+    env.VELLUM_PUBLIC_URL ?? `http://${env.WEB_HOST}:${env.WEB_PORT}`
+  ).replace(/\/$/, "");
+  return `${base}${path}`;
 }
 
 // Request tools (#67): the agent raises a fundable/signable link and hands it
