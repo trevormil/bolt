@@ -17,9 +17,11 @@ export interface VaultGating {
   // end (invalid after). Either/both optional → one transferTimes range on the
   // withdrawal approval.
   time?: { unlockAt?: number; expiresAt?: number };
-  // Multi-sig (#45 slice 3) via BitBadges votingChallenges: a withdrawal needs
-  // N-of-M signer yes-weight (quorumThreshold) before it executes; each signer's
-  // MsgCastVote IS a signature. resetAfterExecution → fresh quorum per withdrawal.
+  // Multi-sig (#45 slice 3, model ADR-0005) via BitBadges votingChallenges: a
+  // ONE-TIME UNLOCK. N-of-M signer yes-weight (quorumThreshold) authorizes the
+  // AGENT to operate this vault; each signer's MsgCastVote IS a signature. Once
+  // quorum is met it does NOT reset — the agent then withdraws freely (within any
+  // amount/time caps). It authorizes the operator, not a specific transfer.
   multisig?: {
     signers: { address: string; weight?: number }[];
     threshold: number; // total yes-weight required (the N in N-of-M)
@@ -27,8 +29,8 @@ export interface VaultGating {
   };
 }
 
-// Deterministic proposal id for a vault's reusable withdrawal vote (one
-// challenge, re-tallied each withdrawal via resetAfterExecution).
+// Deterministic proposal id for a vault's withdrawal-unlock vote (one challenge
+// per vault; once quorum is reached it stays satisfied — see ADR-0005).
 export const VAULT_WITHDRAW_PROPOSAL_ID = "vault-withdraw-vote";
 
 const PERIOD_MS: Record<GatingPeriod, number> = {
@@ -107,9 +109,12 @@ export function applyGating(
     ];
   }
   if (gating.multisig) {
-    // The withdrawal carries a voting challenge: it executes only once signers
-    // cast >= quorumThreshold of yes-weight. resetAfterExecution re-arms the
-    // tally so each withdrawal needs fresh sign-off.
+    // Multi-sig is a ONE-TIME UNLOCK (ADR-0005), not per-transaction consent:
+    // the withdrawal approval carries a voting challenge that, once >= quorum of
+    // yes-weight is cast, stays satisfied. resetAfterExecution is FALSE so the
+    // tally never re-arms — signers vote once to authorize the agent to operate
+    // this vault, after which it withdraws freely within any amount/time caps.
+    // The human manager's revoke/drain (slice 4) is the ongoing kill-switch.
     criteria.votingChallenges = [
       {
         proposalId: VAULT_WITHDRAW_PROPOSAL_ID,
@@ -120,7 +125,7 @@ export function applyGating(
         })),
         uri: "",
         customData: "",
-        resetAfterExecution: true,
+        resetAfterExecution: false,
         delayAfterQuorum: String(gating.multisig.challengeDelayMs ?? 0),
       },
     ];

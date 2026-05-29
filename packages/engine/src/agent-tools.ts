@@ -216,8 +216,8 @@ export function vaultTools(
           ? args.signers.map((s) => String(s).trim()).filter(Boolean)
           : [];
         if (signers.length) {
-          if (!signers.every((s) => s.startsWith("bb1")))
-            return "Every multi-sig signer must be a bb1 address.";
+          if (!signers.every((s) => isBb1Address(s)))
+            return "Every multi-sig signer must be a valid bb1 address.";
           const threshold = Number(args.threshold);
           if (
             !Number.isInteger(threshold) ||

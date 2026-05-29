@@ -33,6 +33,12 @@ const fakeCreateTxEvents = {
   ],
 };
 
+// Structurally-valid bb1 signer addresses — create_vault now does a full bb1
+// check on multisig signers (#62 review), so fixtures must be well-formed.
+const SA = `bb1${"a".repeat(39)}`;
+const SB = `bb1${"b".repeat(39)}`;
+const SC = `bb1${"c".repeat(39)}`;
+
 let mnemonic: string;
 beforeEach(async () => {
   mnemonic = (await generateWallet()).mnemonic;
@@ -110,16 +116,12 @@ describe("create_vault — full gating criteria (#66)", () => {
     const out = await vaultTools(e, "p").invoke("create_vault", {
       name: "Treasury",
       symbol: "vTRE",
-      signers: ["bb1signerA0000", "bb1signerB0000", "bb1signerC0000"],
+      signers: [SA, SB, SC],
       threshold: 2,
     });
     expect(out).toMatch(/2-of-3 sign-off/);
     expect(e.vaults.list("p")[0]!.gating!.multisig).toEqual({
-      signers: [
-        { address: "bb1signerA0000" },
-        { address: "bb1signerB0000" },
-        { address: "bb1signerC0000" },
-      ],
+      signers: [{ address: SA }, { address: SB }, { address: SC }],
       threshold: 2,
     });
   });
@@ -147,16 +149,18 @@ describe("create_vault — full gating criteria (#66)", () => {
       ],
       [{ name: "x", symbol: "vX", withdrawLimit: 0 }, /positive number/],
       [
+        // a structurally-valid signer + a bb1-PREFIXED but too-short one → the
+        // full bb1 check rejects it (the #62 medium finding).
         {
           name: "x",
           symbol: "vX",
-          signers: ["bb1ok", "0xnope"],
+          signers: [SA, "bb1tooshort"],
           threshold: 1,
         },
         /bb1 address/,
       ],
       [
-        { name: "x", symbol: "vX", signers: ["bb1a", "bb1b"], threshold: 3 },
+        { name: "x", symbol: "vX", signers: [SA, SB], threshold: 3 },
         /between 1 and 2/,
       ],
       [{ name: "x", symbol: "vX", threshold: 2 }, /Provide signer addresses/],

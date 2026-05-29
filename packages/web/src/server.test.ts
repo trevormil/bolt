@@ -544,6 +544,9 @@ describe("approved-models allowlist (#43 review fix)", () => {
 
 describe("vault gating parse (#45 slice 2)", () => {
   test("accepts valid amount + time, rejects bad shapes", () => {
+    // Structurally-valid bb1 signers — parseGating now does the full bb1 check.
+    const VS1 = `bb1${"a".repeat(39)}`;
+    const VS2 = `bb1${"b".repeat(39)}`;
     expect(parseGating(undefined)).toBeUndefined();
     expect(parseGating({})).toBeUndefined();
     expect(parseGating({ amount: { limitUsd: 25, period: "weekly" } })).toEqual(
@@ -559,11 +562,11 @@ describe("vault gating parse (#45 slice 2)", () => {
     // multisig (#45 slice 3)
     expect(
       parseGating({
-        multisig: { signers: [{ address: "bb1a" }], threshold: 1 },
+        multisig: { signers: [{ address: VS1 }], threshold: 1 },
       }),
     ).toEqual({
       multisig: {
-        signers: [{ address: "bb1a", weight: undefined }],
+        signers: [{ address: VS1, weight: undefined }],
         threshold: 1,
       },
     });
@@ -573,7 +576,7 @@ describe("vault gating parse (#45 slice 2)", () => {
     expect(
       parseGating({
         multisig: {
-          signers: [{ address: "bb1a" }, { address: "bb1b" }],
+          signers: [{ address: VS1 }, { address: VS2 }],
           threshold: 3, // > total weight (2) → unreachable quorum (!44)
         },
       }),
@@ -583,6 +586,11 @@ describe("vault gating parse (#45 slice 2)", () => {
         multisig: { signers: [{ address: "0xbad" }], threshold: 1 },
       }),
     ).toBe("invalid"); // non-bb1 signer
+    expect(
+      parseGating({
+        multisig: { signers: [{ address: "bb1tooshort" }], threshold: 1 },
+      }),
+    ).toBe("invalid"); // bb1-prefixed but structurally invalid (#62 review)
     // invalid: bad period, non-positive limit, negative unlock
     expect(parseGating({ amount: { limitUsd: 5, period: "yearly" } })).toBe(
       "invalid",

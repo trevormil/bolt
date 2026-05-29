@@ -191,7 +191,7 @@ describe("multisig gating via votingChallenges (#45 slice 3)", () => {
     });
     const vc = findWithdraw(msg).approvalCriteria.votingChallenges[0];
     expect(vc.quorumThreshold).toBe("2");
-    expect(vc.resetAfterExecution).toBe(true);
+    expect(vc.resetAfterExecution).toBe(false); // one-time unlock, never re-arms (ADR-0005)
     expect(vc.delayAfterQuorum).toBe("3600000");
     expect(vc.voters).toEqual([
       { address: "bb1signerA", weight: "1" },

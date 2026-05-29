@@ -156,7 +156,7 @@ export function parseGating(raw: unknown): VaultGating | undefined | "invalid" {
     const signers: { address: string; weight?: number }[] = [];
     for (const s of ms.signers) {
       const so = s as { address?: unknown; weight?: unknown };
-      if (typeof so.address !== "string" || !so.address.startsWith("bb1"))
+      if (typeof so.address !== "string" || !isBb1Address(so.address))
         return "invalid";
       if (
         so.weight != null &&
