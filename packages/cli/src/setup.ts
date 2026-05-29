@@ -3,7 +3,12 @@ import {
   grantDefaultCapabilities,
   renderPersonaCard,
 } from "@vellum/engine";
-import { ensureDataDir, dataDir, upsertEnvFile } from "@vellum/shared";
+import {
+  ensureDataDir,
+  dataDir,
+  upsertEnvFile,
+  verifyTelegramToken,
+} from "@vellum/shared";
 import { slug } from "./commands.ts";
 
 // The answers the install wizard (#19) collects, and the pure setup it performs.
@@ -41,6 +46,13 @@ export interface SetupResult {
 export interface SetupDeps {
   envPath: string; // where to persist secrets (the repo .env Bun auto-loads)
   createEngine?: typeof defaultCreateEngine; // injectable for tests
+  // Telegram bot-token health-check (#74 review). Mirrors the web setup route:
+  // validate via getMe before persisting so a mistyped token isn't written +
+  // reported "enabled" only to silently fail at the next daemon boot. Injectable
+  // so tests run offline.
+  verifyTelegram?: (
+    token: string,
+  ) => Promise<{ ok: boolean; username?: string }>;
 }
 
 /**
@@ -60,9 +72,19 @@ export async function runSetup(
   };
   if (answers.openRouterKey) updates.OPENROUTER_API_KEY = answers.openRouterKey;
   if (answers.apiToken) updates.VELLUM_API_TOKEN = answers.apiToken;
-  // Telegram is OPTIONAL (#49) — only persisted when a token was provided.
-  if (answers.telegramBotToken?.trim())
-    updates.TELEGRAM_BOT_TOKEN = answers.telegramBotToken.trim();
+  // Telegram is OPTIONAL (#49) — only persisted when a token was provided, and
+  // only after a getMe health-check (#74 review): persisting an unvalidated
+  // token would report "enabled" but fail to attach at the next boot.
+  if (answers.telegramBotToken?.trim()) {
+    const token = answers.telegramBotToken.trim();
+    const verify = deps.verifyTelegram ?? verifyTelegramToken;
+    const tg = await verify(token);
+    if (!tg.ok)
+      throw new Error(
+        "that Telegram bot token didn't validate — create one with @BotFather and retry",
+      );
+    updates.TELEGRAM_BOT_TOKEN = token;
+  }
   if (answers.telegramPrincipalChatId?.trim()) {
     // Validate before writing .env (mirrors the web setup route): a non-integer
     // chat id is coerced to NaN by the env schema and would block the next boot.

@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { generateWallet } from "@vellum/chain";
 import { verifyOpenRouterKey } from "@vellum/llm";
-import { env, workspaceDir } from "@vellum/shared";
+import { env, workspaceDir, verifyTelegramToken } from "@vellum/shared";
 import { runSetup } from "./setup.ts";
 import {
   banner,
@@ -139,17 +139,31 @@ export async function initWizard(
   if (
     yesno("Control Bolt from Telegram? " + dim("(get a token from @BotFather)"))
   ) {
-    telegramBotToken = ask("bot token: ") || undefined;
-    if (telegramBotToken) {
+    // Validate the token via getMe before accepting it (#74 review) — loop like
+    // the OpenRouter key prompt so a mistyped token isn't saved + falsely
+    // reported "enabled" only to fail at the next daemon boot. Blank = skip.
+    for (;;) {
+      const entered = ask("bot token " + dim("[blank to skip]") + ": ");
+      if (!entered) {
+        console.log(`   ${dim("skipped — no token entered.")}`);
+        break;
+      }
+      const tg = await verifyTelegramToken(entered);
+      if (!tg.ok) {
+        console.log(
+          `   ${warn} that token didn't validate — check it with @BotFather and retry.`,
+        );
+        continue;
+      }
+      telegramBotToken = entered;
       const cid = ask(
         "your Telegram chat id " + dim("[blank = first chat claims it]") + ": ",
       );
       telegramPrincipalChatId = cid || undefined;
       console.log(
-        `   ${check} Telegram enabled ${dim("(starts with the daemon).")}`,
+        `   ${check} Telegram enabled as @${tg.username ?? "?"} ${dim("(starts with the daemon).")}`,
       );
-    } else {
-      console.log(`   ${dim("skipped — no token entered.")}`);
+      break;
     }
   }
 

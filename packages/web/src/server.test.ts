@@ -1660,15 +1660,41 @@ describe("telegram settings route — set / rotate / clear (#63)", () => {
     rmSync(envFilePath, { force: true });
   });
 
-  test("empty token → clears telegram (configured:false) + detaches the poller", async () => {
+  test("empty token → clears telegram (configured:false) + detaches the poller + clears principal id", async () => {
     const { app, envFilePath, applied, tgCalls } = tgApp();
+    // Seed a stale principal id so we can prove disable wipes it (!67 review).
+    writeFileSync(envFilePath, "TELEGRAM_PRINCIPAL_CHAT_ID=999\n");
     const res = await postTg(app, { token: "" });
     expect(res.status).toBe(200);
     expect((await res.json()) as Record<string, unknown>).toMatchObject({
       configured: false,
     });
     expect(applied).toHaveLength(1); // applyRuntime called to clear
+    // The stale principal id is cleared in both runtime + the env file, so the
+    // next bot isn't pinned to a dead chat.
+    expect("TELEGRAM_PRINCIPAL_CHAT_ID" in applied[0]!).toBe(true);
+    expect(applied[0]!.TELEGRAM_PRINCIPAL_CHAT_ID).toBeUndefined();
+    expect(readFileSync(envFilePath, "utf8")).not.toContain(
+      "TELEGRAM_PRINCIPAL_CHAT_ID=999",
+    );
     expect(tgCalls).toEqual(["detach"]); // #74: poller stopped live
+    rmSync(envFilePath, { force: true });
+  });
+
+  test("reconnect with a blank chat id clears any prior principal id (!67 review)", async () => {
+    const { app, envFilePath, applied } = tgApp();
+    // A previous run pinned a principal chat id; now we rotate to a new bot and
+    // intentionally leave the chat id blank → TOFU should re-claim, so the old
+    // id must not survive.
+    writeFileSync(envFilePath, "TELEGRAM_PRINCIPAL_CHAT_ID=999\n");
+    const res = await postTg(app, { token: "456:DEF" });
+    expect(res.status).toBe(200);
+    expect(applied[0]?.TELEGRAM_BOT_TOKEN).toBe("456:DEF");
+    expect("TELEGRAM_PRINCIPAL_CHAT_ID" in applied[0]!).toBe(true);
+    expect(applied[0]!.TELEGRAM_PRINCIPAL_CHAT_ID).toBeUndefined();
+    expect(readFileSync(envFilePath, "utf8")).not.toContain(
+      "TELEGRAM_PRINCIPAL_CHAT_ID=999",
+    );
     rmSync(envFilePath, { force: true });
   });
 

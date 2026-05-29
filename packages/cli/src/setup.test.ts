@@ -97,7 +97,11 @@ describe("runSetup (#19 install wizard core)", () => {
         telegramBotToken: "123456:ABC-token",
         telegramPrincipalChatId: "42",
       },
-      { envPath: withTg, createEngine: make },
+      {
+        envPath: withTg,
+        createEngine: make,
+        verifyTelegram: async () => ({ ok: true, username: "test_bot" }),
+      },
     );
     const env1 = readFileSync(withTg, "utf8");
     expect(env1).toContain("TELEGRAM_BOT_TOKEN=123456:ABC-token");
@@ -125,11 +129,39 @@ describe("runSetup (#19 install wizard core)", () => {
           telegramBotToken: "123456:ABC-token",
           telegramPrincipalChatId: "not-a-number",
         },
-        { envPath, createEngine: make },
+        {
+          envPath,
+          createEngine: make,
+          verifyTelegram: async () => ({ ok: true }),
+        },
       ),
     ).rejects.toThrow(/integer/);
     // The throw happens before upsertEnvFile, so the .env is never written —
     // a typo can't become a boot blocker.
+    expect(() => readFileSync(envPath, "utf8")).toThrow();
+  });
+
+  test("rejects an unvalidated Telegram bot token — nothing written (#74 review)", async () => {
+    const { mnemonic } = await generateWallet();
+    const make = (opts: Parameters<typeof createEngine>[0]) =>
+      createEngine({ ...opts, dbPath: ":memory:", embedder: null });
+    const envPath = join(mkdtempSync(join(tmpdir(), "vellum-setup-")), ".env");
+    await expect(
+      runSetup(
+        {
+          mnemonic,
+          personaName: "Solo",
+          telegramBotToken: "bad-token",
+        },
+        {
+          envPath,
+          createEngine: make,
+          verifyTelegram: async () => ({ ok: false }),
+        },
+      ),
+    ).rejects.toThrow(/didn't validate/);
+    // getMe runs before upsertEnvFile, so a mistyped token is never persisted +
+    // never falsely reported "enabled".
     expect(() => readFileSync(envPath, "utf8")).toThrow();
   });
 });

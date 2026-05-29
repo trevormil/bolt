@@ -580,9 +580,17 @@ export function buildApp(
       return c.json({ error: "Telegram chat id must be an integer" }, 400);
 
     if (!token) {
-      // Empty token → disable Telegram (clear the env var) and stop the poller.
-      upsertEnvFile(setupEnvFilePath, { TELEGRAM_BOT_TOKEN: "" });
-      applyRuntimeEnv({ TELEGRAM_BOT_TOKEN: undefined });
+      // Empty token → disable Telegram + stop the poller. Clear the principal
+      // chat id too (!67 review): a stale id left behind would re-pin the NEXT
+      // bot to the old chat instead of letting TOFU /start re-claim ownership.
+      upsertEnvFile(setupEnvFilePath, {
+        TELEGRAM_BOT_TOKEN: "",
+        TELEGRAM_PRINCIPAL_CHAT_ID: "",
+      });
+      applyRuntimeEnv({
+        TELEGRAM_BOT_TOKEN: undefined,
+        TELEGRAM_PRINCIPAL_CHAT_ID: undefined,
+      });
       await setup.telegram
         ?.detach()
         .catch((e) => log.warn(`telegram detach failed: ${e}`));
@@ -604,6 +612,12 @@ export function buildApp(
     if (chat) {
       updates.TELEGRAM_PRINCIPAL_CHAT_ID = chat;
       runtime.TELEGRAM_PRINCIPAL_CHAT_ID = Number(chat);
+    } else {
+      // No chat id given → drop any previous principal so the new bot isn't
+      // pinned to a stale chat (!67 review). Blank = first /start claims it
+      // (TOFU), matching what the UI promises.
+      updates.TELEGRAM_PRINCIPAL_CHAT_ID = "";
+      runtime.TELEGRAM_PRINCIPAL_CHAT_ID = undefined;
     }
     upsertEnvFile(setupEnvFilePath, updates);
     applyRuntimeEnv(runtime);
