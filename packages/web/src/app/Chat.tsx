@@ -199,6 +199,7 @@ export function Chat({ persona }: { persona: Persona }) {
           <button
             onClick={() => void newChat()}
             title="New chat"
+            data-testid="new-chat"
             className="rounded-md p-1 text-soft transition-colors hover:bg-surface-3 hover:text-fg"
           >
             <Icon name="plus" size={14} />

@@ -8,7 +8,7 @@ test.describe("chat", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("heading", { name: "Atlas" })).toBeVisible();
-    await page.getByTitle("New chat").click();
+    await page.getByTestId("new-chat").click();
   });
 
   test("renders a markdown reply (links parsed, not raw)", async ({ page }) => {

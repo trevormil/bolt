@@ -14,7 +14,7 @@ test.describe("chat sessions", () => {
     const input = page.getByPlaceholder("Message Atlas…");
 
     // New session → first message auto-titles it in the rail.
-    await page.getByTitle("New chat").click();
+    await page.getByTestId("new-chat").click();
     await input.fill("Plan my taxes e2e");
     await input.press("Enter");
     await expect(log.getByRole("link", { name: "link" }).first()).toBeVisible();
@@ -23,7 +23,7 @@ test.describe("chat sessions", () => {
     ).toBeVisible();
 
     // A second session starts empty (its own thread).
-    await page.getByTitle("New chat").click();
+    await page.getByTestId("new-chat").click();
     await expect(
       log.getByText(
         "Talk to Atlas. It reasons only over its own walled memory.",
