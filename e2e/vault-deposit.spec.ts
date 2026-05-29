@@ -30,14 +30,11 @@ test.describe("vault deposit (in-app)", () => {
     // Wait for the new vault row to appear in the list.
     await expect(page.getByText("vDEPO")).toBeVisible();
 
-    // The per-vault detail row has its own amount input (placeholder "USDC")
-    // and a "Fund" button.
-    const amountInput = page
-      .locator(":has-text('vDEPO')")
-      .getByPlaceholder("USDC", { exact: true })
-      .first();
-    await amountInput.fill("2");
-    await page.getByRole("button", { name: "Fund", exact: true }).click();
+    // Scope to the row by testid — earlier specs in the suite may leave other
+    // vaults visible, so the Fund button selector needs to be row-local.
+    const vaultRow = page.getByTestId("vault-row-vDEPO");
+    await vaultRow.getByPlaceholder("USDC", { exact: true }).fill("2");
+    await vaultRow.getByRole("button", { name: "Fund", exact: true }).click();
 
     // signAndBroadcast → LCD stub returns txhash "E2EHUMANTX"; the row's note
     // slices to "E2EHUMANT…" (10-char prefix + ellipsis).
