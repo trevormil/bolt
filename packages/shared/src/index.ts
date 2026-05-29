@@ -9,8 +9,18 @@ export {
   ensureWorkspaceDir,
   migrateLegacyDb,
 } from "./paths.ts";
-export { upsertEnvFile } from "./env-file.ts";
+export { upsertEnvFile, removeEnvKeys } from "./env-file.ts";
 export { verifyTelegramToken } from "./telegram-verify.ts";
+export {
+  getAgentMnemonic,
+  setAgentMnemonic,
+  clearAgentMnemonic,
+  agentMnemonicSource,
+  defaultBackend,
+  keychainBackend,
+  SECRET_ACCOUNT,
+  type SecretBackend,
+} from "./secrets.ts";
 
 // Running this package directly (bun run --filter) just validates the env.
 if (import.meta.main) {

@@ -9,6 +9,10 @@
 process.env.OPENROUTER_API_KEY ??= "test-offline-key";
 process.env.AGENT_SIGNER_MNEMONIC ??=
   "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+// Force the env-only secret backend (ADR-0007) so the unit suite NEVER shells out
+// to the real macOS keychain — resolution depends only on the env above (or a
+// fake backend a test injects), keeping it hermetic + deterministic.
+process.env.VELLUM_SECRET_BACKEND ??= "env";
 // Default DBs to in-memory in tests so a default VELLUM_DB_PATH (now ~/.vellum,
 // #39) never touches the real filesystem. Tests that need a file pass an explicit
 // path; most inject ":memory:" directly.

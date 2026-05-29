@@ -53,3 +53,31 @@ export function upsertEnvFile(
   chmodSync(path, 0o600);
   return Object.keys(updates);
 }
+
+/**
+ * Delete `keys` from the .env file at `path`, dropping their lines entirely
+ * (preserving everything else). Returns the keys that were actually present and
+ * removed. A no-op (and empty result) when the file is absent. Used by
+ * `vellum keys migrate` to scrub the master seed once it lives in the keychain.
+ */
+export function removeEnvKeys(path: string, keys: string[]): string[] {
+  if (!existsSync(path)) return [];
+  const drop = new Set(keys);
+  const removed: string[] = [];
+  const out = readFileSync(path, "utf8")
+    .split("\n")
+    .filter((line) => {
+      const m = /^(\s*)([A-Za-z_][A-Za-z0-9_]*)=/.exec(line);
+      if (m && drop.has(m[2]!)) {
+        removed.push(m[2]!);
+        return false;
+      }
+      return true;
+    });
+  if (!removed.length) return [];
+  let text = out.join("\n");
+  if (text && !text.endsWith("\n")) text += "\n";
+  writeFileSync(path, text, { mode: 0o600 });
+  chmodSync(path, 0o600);
+  return removed;
+}

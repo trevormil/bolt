@@ -15,6 +15,10 @@ export const envSchema = z.object({
 
   AGENT_SIGNER_MNEMONIC: z.string().optional(),
   AGENT_SIGNER_PRIVKEY_HEX: z.string().optional(),
+  // Where the agent's master seed lives at rest (ADR-0007). `auto` = OS keychain
+  // on macOS, env-only elsewhere; `keychain` forces the keychain; `env` forces
+  // env-only (CI / tests / opt-out). env always wins as the fast path regardless.
+  VELLUM_SECRET_BACKEND: z.enum(["auto", "keychain", "env"]).default("auto"),
 
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   // Principal chat allowlist (#28). When set, ONLY this chat id may drive the

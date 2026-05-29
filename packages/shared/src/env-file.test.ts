@@ -8,7 +8,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { upsertEnvFile } from "./env-file.ts";
+import { upsertEnvFile, removeEnvKeys } from "./env-file.ts";
 
 function tmpEnv(initial?: string): string {
   const dir = mkdtempSync(join(tmpdir(), "vellum-env-"));
@@ -65,5 +65,38 @@ describe("upsertEnvFile (#19)", () => {
       .split("\n")
       .filter((l) => l.startsWith("AGENT_SIGNER_MNEMONIC=")).length;
     expect(occurrences).toBe(1);
+  });
+});
+
+describe("removeEnvKeys (#96)", () => {
+  test("drops the named keys' lines and preserves the rest", () => {
+    const path = tmpEnv(
+      '# secrets\nOPENROUTER_API_KEY=sk\nAGENT_SIGNER_MNEMONIC="a b c"\nWEB_PORT=8787\n',
+    );
+    const removed = removeEnvKeys(path, ["AGENT_SIGNER_MNEMONIC"]);
+    expect(removed).toEqual(["AGENT_SIGNER_MNEMONIC"]);
+    const text = readFileSync(path, "utf8");
+    expect(text).not.toContain("AGENT_SIGNER_MNEMONIC");
+    expect(text).toContain("# secrets");
+    expect(text).toContain("OPENROUTER_API_KEY=sk");
+    expect(text).toContain("WEB_PORT=8787");
+  });
+
+  test("returns [] when none of the keys are present (file untouched)", () => {
+    const path = tmpEnv("WEB_PORT=8787\n");
+    expect(removeEnvKeys(path, ["AGENT_SIGNER_MNEMONIC"])).toEqual([]);
+    expect(readFileSync(path, "utf8")).toBe("WEB_PORT=8787\n");
+  });
+
+  test("returns [] when the file is absent", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vellum-env-"));
+    expect(removeEnvKeys(join(dir, "nope.env"), ["X"])).toEqual([]);
+  });
+
+  test("keeps the file owner-only after a rewrite (!48)", () => {
+    const path = tmpEnv("AGENT_SIGNER_MNEMONIC=a\nWEB_PORT=8787\n");
+    chmodSync(path, 0o644);
+    removeEnvKeys(path, ["AGENT_SIGNER_MNEMONIC"]);
+    expect(statSync(path).mode & 0o777).toBe(0o600);
   });
 });
