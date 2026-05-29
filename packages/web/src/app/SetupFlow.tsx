@@ -17,7 +17,6 @@ export function SetupFlow({ onDone }: { onDone: (personaId: string) => void }) {
   // Optional Telegram remote control (#49) — collapsed by default, skippable.
   const [showTelegram, setShowTelegram] = useState(false);
   const [telegramBotToken, setTelegramToken] = useState("");
-  const [telegramChatId, setTelegramChatId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,15 +28,9 @@ export function SetupFlow({ onDone }: { onDone: (personaId: string) => void }) {
       const tgToken = telegramBotToken.trim();
       await api.setup({
         openRouterKey: openRouterKey.trim(),
-        // Only send Telegram fields when a token was actually entered (optional).
-        ...(tgToken
-          ? {
-              telegramBotToken: tgToken,
-              ...(telegramChatId.trim()
-                ? { telegramPrincipalChatId: telegramChatId.trim() }
-                : {}),
-            }
-          : {}),
+        // Only send the token when entered (optional). No chat-id field (#80):
+        // the first /start claims ownership (TOFU) — env-only override remains.
+        ...(tgToken ? { telegramBotToken: tgToken } : {}),
       });
       setStep("persona");
     } catch (e) {
@@ -155,11 +148,6 @@ export function SetupFlow({ onDone }: { onDone: (personaId: string) => void }) {
                     value={telegramBotToken}
                     onChange={(e) => setTelegramToken(e.target.value)}
                     placeholder="bot token (123456:ABC…)"
-                  />
-                  <Input
-                    value={telegramChatId}
-                    onChange={(e) => setTelegramChatId(e.target.value)}
-                    placeholder="your chat id (optional — else first chat claims it)"
                   />
                   <p className="text-[11px] leading-relaxed text-soft">
                     The bot token is all you need — it connects instantly and{" "}

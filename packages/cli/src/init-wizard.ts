@@ -135,7 +135,6 @@ export async function initWizard(
     ),
   );
   let telegramBotToken: string | undefined;
-  let telegramPrincipalChatId: string | undefined;
   if (
     yesno("Control Bolt from Telegram? " + dim("(get a token from @BotFather)"))
   ) {
@@ -171,21 +170,16 @@ export async function initWizard(
         continue;
       }
       telegramBotToken = entered;
-      // Ownership: pin the principal up front, or let the first /start claim it.
-      // Either way a stranger who finds the bot can't drive your agent (#28).
-      const cid = ask(
-        "your Telegram chat id " + dim("[blank = first chat claims it]") + ": ",
-      );
-      telegramPrincipalChatId = cid || undefined;
+      // Ownership is claimed by the first /start (TOFU, #28) — no chat-id prompt
+      // (#80). A stranger who finds the bot still can't drive your agent. Pinning a
+      // principal up front stays available via TELEGRAM_PRINCIPAL_CHAT_ID in .env.
       console.log(
         `   ${check} Telegram enabled as @${tg.username ?? "?"} ${dim("(starts with the daemon).")}`,
       );
       console.log(
         "   " +
           dim(
-            cid
-              ? `Only chat ${cid} can drive the bot.`
-              : "Message the bot /start to claim ownership — so only you can drive it.",
+            "Message the bot /start to claim ownership — so only you can drive it.",
           ),
       );
       console.log(
@@ -219,7 +213,6 @@ export async function initWizard(
       personaName,
       apiToken,
       telegramBotToken,
-      telegramPrincipalChatId,
     },
     { envPath },
   );
