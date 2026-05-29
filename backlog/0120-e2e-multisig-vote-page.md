@@ -2,6 +2,7 @@
 id: 120
 title: "e2e: Multisig vote sign-off — /vote/:collectionId/:approvalId"
 status: in-progress
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/99"]
 priority: high
 type: testing
 source: audit-2026-05-29
