@@ -22,6 +22,10 @@ export interface Conversation {
   title: string;
   created: number;
   updated: number;
+  // Where the thread originated (#78). Derived from the id convention: Telegram
+  // threads use a `tg:<chatId>:<persona>` id, everything else is the web/CLI app.
+  // Lets the UI label a Telegram-originated conversation in the session rail.
+  source: "web" | "telegram";
 }
 export interface ConversationMessage {
   id: number;
@@ -53,6 +57,7 @@ const toConv = (r: ConvRow): Conversation => ({
   title: r.title,
   created: r.created,
   updated: r.updated,
+  source: r.id.startsWith("tg:") ? "telegram" : "web",
 });
 const toMsg = (r: MsgRow): ConversationMessage => ({
   id: r.id,

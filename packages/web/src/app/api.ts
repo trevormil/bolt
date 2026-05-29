@@ -44,6 +44,8 @@ export interface Conversation {
   title: string;
   created: number;
   updated: number;
+  // Origin surface (#78): "telegram" threads sync in from the bot; "web" is the app.
+  source: "web" | "telegram";
 }
 export interface ConversationMessage {
   id: number;

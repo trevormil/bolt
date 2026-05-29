@@ -241,9 +241,16 @@ export function Chat({ persona }: { persona: Persona }) {
                       setEditingId(s.id);
                       setDraftTitle(s.title);
                     }}
-                    title={`${s.title} — double-click to rename`}
+                    title={`${s.title} — double-click to rename${
+                      s.source === "telegram" ? " · started on Telegram" : ""
+                    }`}
                     className="min-w-0 flex-1 truncate text-left"
                   >
+                    {s.source === "telegram" && (
+                      <span className="mr-1 rounded bg-accent-soft/40 px-1 font-mono text-[9px] uppercase tracking-wide text-accent">
+                        TG
+                      </span>
+                    )}
                     {s.title}
                   </button>
                   <button

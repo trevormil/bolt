@@ -72,6 +72,16 @@ describe("Conversations store (#72 chat sessions)", () => {
     expect(() => c.ensure("web:fixed", "bob")).toThrow(/another persona/);
   });
 
+  test("source is derived from the id convention (#78)", () => {
+    const c = make();
+    expect(c.create("alice").source).toBe("web");
+    // A Telegram thread uses a tg:<chatId>:<persona> id → labeled "telegram".
+    expect(c.ensure("tg:42:alice", "alice").source).toBe("telegram");
+    expect(c.list("alice").find((x) => x.id === "tg:42:alice")!.source).toBe(
+      "telegram",
+    );
+  });
+
   test("remove deletes the session and its transcript", () => {
     const c = make();
     const conv = c.create("alice");
