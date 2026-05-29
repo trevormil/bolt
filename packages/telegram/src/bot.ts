@@ -20,6 +20,26 @@ const who = (ctx: { from?: { username?: string; id?: number } }) =>
   ctx.from?.username ?? String(ctx.from?.id ?? "?");
 
 /**
+ * The bot's command surface, in one place (#74). Registered with Telegram via
+ * setMyCommands on attach so the commands appear in the client's "/" menu —
+ * OpenClaw-style discoverability. This list is the single source of truth for
+ * BOTH the grammy command routes registered below and the menu, so they can't
+ * drift. Descriptions ≤ ~50 chars (Telegram's limit) and parenthetical-arg-free
+ * since the menu shows them inline.
+ */
+export const BOT_COMMANDS: { command: string; description: string }[] = [
+  { command: "start", description: "Connect & claim this bot as owner" },
+  { command: "help", description: "What Bolt can do here" },
+  { command: "personas", description: "List your personas" },
+  { command: "switch", description: "Switch active persona (name)" },
+  { command: "new", description: "Start a fresh conversation" },
+  { command: "balance", description: "Wallet balance" },
+  { command: "ledger", description: "Recent transactions" },
+  { command: "vaults", description: "List vaults" },
+  { command: "spend", description: "Send USDC — amount address" },
+];
+
+/**
  * Build the grammY bot wired to the engine — Telegram as a real remote-control
  * surface (the reframed thesis: the bot polls OUT, so "from anywhere" needs no
  * daemon exposure). Text routes through the shared chat flow (persona + memory +

@@ -162,11 +162,13 @@ export function SetupFlow({ onDone }: { onDone: (personaId: string) => void }) {
                     placeholder="your chat id (optional — else first chat claims it)"
                   />
                   <p className="text-[11px] leading-relaxed text-soft">
-                    Once connected you can message the bot or use{" "}
+                    The bot token is all you need — it connects instantly and{" "}
                     <span className="font-mono">
-                      /personas /switch /vaults /balance /ledger /spend /help
+                      /personas /switch /new /vaults /balance /ledger /spend
+                      /help
                     </span>{" "}
-                    — a full remote control, same capability gates as the app.
+                    appear in Telegram's command menu. A full remote control,
+                    same capability gates as the app.
                   </p>
                 </div>
               )}

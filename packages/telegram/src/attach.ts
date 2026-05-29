@@ -1,7 +1,7 @@
 import { env, createLogger } from "@vellum/shared";
 import type { Engine } from "@vellum/engine";
 import { Bot } from "grammy";
-import { buildBot } from "./bot.ts";
+import { buildBot, BOT_COMMANDS } from "./bot.ts";
 import { Recipients } from "./recipients.ts";
 import { Sessions } from "./sessions.ts";
 
@@ -43,6 +43,15 @@ export function attachTelegram(engine: Engine, token: string): Bot {
   // wiring) isn't built yet, so there is intentionally no approver injected. All
   // money paths today are gated default-allow/deny via grants (#37); wiring a
   // half-built approve prompt would fake a confirmation flow that nothing emits.
+
+  // Register the command menu so the surface is discoverable in the Telegram
+  // client (#74). Independent of the long-poller — it's a plain Bot API call —
+  // so fire it alongside start; a failure is non-fatal (the commands still work
+  // by typing them, they just won't autocomplete).
+  void bot.api.setMyCommands(BOT_COMMANDS).then(
+    () => log.info(`registered ${BOT_COMMANDS.length} commands in the menu`),
+    (e) => log.warn(`setMyCommands failed: ${e}`),
+  );
 
   log.info("starting bot (long polling)…");
   void bot.start({

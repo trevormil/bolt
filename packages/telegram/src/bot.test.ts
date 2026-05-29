@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createEngine } from "@vellum/engine";
 import type { TxChain } from "@vellum/tx";
 import { env } from "@vellum/shared";
-import { buildBot } from "./bot.ts";
+import { buildBot, BOT_COMMANDS } from "./bot.ts";
 
 const TEST_MNEMONIC =
   "test test test test test test test test test test test junk";
@@ -188,5 +188,38 @@ describe("command surface is wired into the bot (#49)", () => {
         .list({ personaId: "atlas" })
         .some((e) => e.kind === "spend"),
     ).toBe(false);
+  });
+});
+
+// The setMyCommands menu (#74) is registered from BOT_COMMANDS. If a command is
+// added to the bot but not here (or vice-versa) the menu silently drifts from
+// the real surface — guard the data + Telegram's own validity rules.
+describe("command menu data (#74)", () => {
+  test("covers every command the bot registers", () => {
+    const names = BOT_COMMANDS.map((c) => c.command);
+    // Mirror of the bot.command(...) registrations in buildBot.
+    for (const c of [
+      "start",
+      "help",
+      "personas",
+      "switch",
+      "new",
+      "balance",
+      "ledger",
+      "vaults",
+      "spend",
+    ])
+      expect(names).toContain(c);
+    expect(new Set(names).size).toBe(names.length); // no dupes
+  });
+
+  test("each entry satisfies Telegram's setMyCommands constraints", () => {
+    for (const { command, description } of BOT_COMMANDS) {
+      // Telegram: command is 1-32 chars of lowercase letters/digits/underscore.
+      expect(command).toMatch(/^[a-z0-9_]{1,32}$/);
+      // description is 1-256 chars; we keep them short for the inline menu.
+      expect(description.length).toBeGreaterThanOrEqual(1);
+      expect(description.length).toBeLessThanOrEqual(256);
+    }
   });
 });

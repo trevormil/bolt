@@ -1609,6 +1609,16 @@ describe("telegram settings route — set / rotate / clear (#63)", () => {
       `vellum-tg-${Math.random().toString(36).slice(2)}.env`,
     );
     const applied: Partial<typeof env>[] = [];
+    // Hot-attach spy (#74): record the poller lifecycle the route drives.
+    const tgCalls: string[] = [];
+    const telegram = {
+      attach: async (token: string) => {
+        tgCalls.push(`attach:${token}`);
+      },
+      detach: async () => {
+        tgCalls.push("detach");
+      },
+    };
     const app = buildApp(
       makeEngine(),
       new PaymentRequests(":memory:"),
@@ -1619,9 +1629,10 @@ describe("telegram settings route — set / rotate / clear (#63)", () => {
         applyRuntime: (p) => applied.push(p),
         verifyKey: async () => true,
         verifyTelegram,
+        telegram,
       },
     );
-    return { app, envFilePath, applied };
+    return { app, envFilePath, applied, tgCalls };
   }
   const postTg = (app: ReturnType<typeof buildApp>, body: unknown) =>
     app.request("/api/settings/telegram", {
@@ -1630,8 +1641,8 @@ describe("telegram settings route — set / rotate / clear (#63)", () => {
       body: JSON.stringify(body),
     });
 
-  test("valid token → 200 + @username, persisted + adopted", async () => {
-    const { app, envFilePath, applied } = tgApp();
+  test("valid token → 200 + @username, persisted + adopted + hot-attached", async () => {
+    const { app, envFilePath, applied, tgCalls } = tgApp();
     const res = await postTg(app, { token: "123:ABC", principalChatId: "42" });
     expect(res.status).toBe(200);
     expect((await res.json()) as Record<string, unknown>).toMatchObject({
@@ -1644,25 +1655,29 @@ describe("telegram settings route — set / rotate / clear (#63)", () => {
     expect(readFileSync(envFilePath, "utf8")).toContain(
       "TELEGRAM_BOT_TOKEN=123:ABC",
     );
+    // #74: the poller is hot-attached live with the new token (no restart).
+    expect(tgCalls).toEqual(["attach:123:ABC"]);
     rmSync(envFilePath, { force: true });
   });
 
-  test("empty token → clears telegram (configured:false)", async () => {
-    const { app, envFilePath, applied } = tgApp();
+  test("empty token → clears telegram (configured:false) + detaches the poller", async () => {
+    const { app, envFilePath, applied, tgCalls } = tgApp();
     const res = await postTg(app, { token: "" });
     expect(res.status).toBe(200);
     expect((await res.json()) as Record<string, unknown>).toMatchObject({
       configured: false,
     });
     expect(applied).toHaveLength(1); // applyRuntime called to clear
+    expect(tgCalls).toEqual(["detach"]); // #74: poller stopped live
     rmSync(envFilePath, { force: true });
   });
 
-  test("invalid token (getMe fails) → 400, nothing persisted", async () => {
-    const { app, applied } = tgApp(async () => ({ ok: false }));
+  test("invalid token (getMe fails) → 400, nothing persisted, not attached", async () => {
+    const { app, applied, tgCalls } = tgApp(async () => ({ ok: false }));
     const res = await postTg(app, { token: "bad" });
     expect(res.status).toBe(400);
     expect(applied).toHaveLength(0);
+    expect(tgCalls).toHaveLength(0); // #74: a bad token never attaches a poller
   });
 
   test("non-integer chat id → 400, nothing persisted", async () => {

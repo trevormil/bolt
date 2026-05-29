@@ -8,7 +8,12 @@ import { createEngine } from "@vellum/engine";
 import { attachTelegram } from "./attach.ts";
 
 export { attachTelegram } from "./attach.ts";
-export { buildBot, type BotOptions } from "./bot.ts";
+export { buildBot, type BotOptions, BOT_COMMANDS } from "./bot.ts";
+export {
+  TelegramController,
+  type StoppableBot,
+  type AttachFn,
+} from "./controller.ts";
 export { Recipients } from "./recipients.ts";
 export { Sessions } from "./sessions.ts";
 

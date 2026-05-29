@@ -271,6 +271,14 @@ export function buildApp(
     verifyTelegram?: (
       token: string,
     ) => Promise<{ ok: boolean; username?: string }>;
+    // Hot-attach hook (#74): the daemon hands its TelegramController so a token
+    // set via /api/setup or Settings connects the poller live — no restart. Web
+    // stays decoupled from the telegram package via this duck-typed interface;
+    // absent in tests/CLI that don't run a poller.
+    telegram?: {
+      attach(token: string): Promise<void>;
+      detach(): Promise<void>;
+    };
   } = {},
 ) {
   const app = new Hono();
@@ -511,8 +519,17 @@ export function buildApp(
     applyRuntimeEnv(runtime); // live daemon adopts it now (no restart)
     engine.wallets.setMnemonic(mnemonic);
 
+    // Hot-attach the long-poller so the bot connects immediately (#74) — no
+    // daemon restart. Best-effort: the token already getMe-validated above, so
+    // a failure here is a poller hiccup, not a bad credential; persistence holds
+    // so the next boot still picks it up.
+    if (tgToken)
+      await setup.telegram
+        ?.attach(tgToken)
+        .catch((e) => log.warn(`telegram hot-attach failed: ${e}`));
+
     log.info(
-      `web setup complete · wallet + LLM key configured${tgToken ? ` + telegram @${tgUsername ?? "?"} (starts on next daemon restart)` : ""}`,
+      `web setup complete · wallet + LLM key configured${tgToken ? ` + telegram @${tgUsername ?? "?"} (connected)` : ""}`,
     );
     return c.json({
       ok: true,
@@ -545,8 +562,8 @@ export function buildApp(
   // Set / rotate / clear the Telegram bot token after onboarding (#63). Same
   // loopback-only boundary as the OpenRouter key route; the token is health-
   // checked via getMe before it's persisted + adopted. An empty token clears
-  // Telegram. Takes effect on the next daemon start (attachTelegram reads env
-  // at boot — it isn't hot-attached here, same as /api/setup).
+  // Telegram. Hot-attaches the poller so the change takes effect immediately
+  // (#74) — set connects the bot, clear stops it, no daemon restart.
   app.post("/api/settings/telegram", async (c) => {
     if (!isLoopback(auth.host ?? "127.0.0.1"))
       return c.json({ error: "telegram changes are loopback-only" }, 403);
@@ -563,9 +580,12 @@ export function buildApp(
       return c.json({ error: "Telegram chat id must be an integer" }, 400);
 
     if (!token) {
-      // Empty token → disable Telegram (clear the env var).
+      // Empty token → disable Telegram (clear the env var) and stop the poller.
       upsertEnvFile(setupEnvFilePath, { TELEGRAM_BOT_TOKEN: "" });
       applyRuntimeEnv({ TELEGRAM_BOT_TOKEN: undefined });
+      await setup.telegram
+        ?.detach()
+        .catch((e) => log.warn(`telegram detach failed: ${e}`));
       log.info("telegram disabled · settings");
       return c.json({ ok: true, configured: false });
     }
@@ -587,6 +607,10 @@ export function buildApp(
     }
     upsertEnvFile(setupEnvFilePath, updates);
     applyRuntimeEnv(runtime);
+    // Hot-attach so the bot reconnects with the new token immediately (#74).
+    await setup.telegram
+      ?.attach(token)
+      .catch((e) => log.warn(`telegram hot-attach failed: ${e}`));
     log.info(`telegram token updated · settings · @${tg.username ?? "?"}`);
     return c.json({ ok: true, configured: true, username: tg.username });
   });

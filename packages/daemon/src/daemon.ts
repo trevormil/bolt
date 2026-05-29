@@ -6,7 +6,7 @@ import {
 } from "@vellum/shared";
 import { createEngine, McpServers, GLOBAL } from "@vellum/engine";
 import { buildApp, webServeOptions, isLoopback } from "@vellum/web";
-import { attachTelegram } from "@vellum/telegram";
+import { TelegramController } from "@vellum/telegram";
 
 const log = createLogger("daemon");
 
@@ -39,15 +39,21 @@ export async function startDaemon(): Promise<void> {
     );
     process.exit(1);
   }
-  const opts = webServeOptions(buildApp(engine));
+  // Telegram is the agent's proactive channel when configured. The controller
+  // owns the live poller so the web routes (/api/setup, Settings) can start or
+  // stop it without a daemon restart (#74) — handed to buildApp as the hot-
+  // attach hook below.
+  const telegram = new TelegramController(engine);
+  const opts = webServeOptions(
+    buildApp(engine, undefined, undefined, undefined, { telegram }),
+  );
   Bun.serve(opts);
   log.info(`web · http://${opts.hostname}:${opts.port}`);
 
-  // Telegram is the agent's proactive channel when configured; otherwise the
-  // daemon serves the web/PWA surface only. Recurring prompts are scheduled
-  // externally via OS cron (docs/runbooks/schedule-with-cron.md).
+  // Recurring prompts are scheduled externally via OS cron
+  // (docs/runbooks/schedule-with-cron.md).
   if (env.TELEGRAM_BOT_TOKEN) {
-    attachTelegram(engine, env.TELEGRAM_BOT_TOKEN);
+    await telegram.attach(env.TELEGRAM_BOT_TOKEN);
   } else {
     log.info("telegram · no TELEGRAM_BOT_TOKEN (web-only daemon)");
   }

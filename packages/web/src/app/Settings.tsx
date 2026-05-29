@@ -100,8 +100,9 @@ function LlmKeySection() {
 // ── #63 Telegram remote control — set / rotate / disable (validated via getMe) ─
 // Telegram is the agent's remote entrypoint (the bot polls OUT; nothing is
 // exposed on this machine). The token is health-checked via getMe before it's
-// saved, and takes effect on the next daemon restart. This is the post-onboarding
-// home for enabling/rotating Telegram (onboarding only offers it once).
+// saved, and the poller hot-attaches immediately (#74 — no daemon restart). This
+// is the post-onboarding home for enabling/rotating Telegram (onboarding only
+// offers it once).
 function TelegramSection() {
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [token, setToken] = useState("");
@@ -220,13 +221,16 @@ function TelegramSection() {
       </div>
       {error && <p className="mt-2 text-sm text-danger">{error}</p>}
       <p className="mt-3 text-xs leading-relaxed text-soft">
-        Once connected (takes effect on the next daemon restart) you can message
-        the bot directly, or use{" "}
+        The{" "}
+        <span className="text-fg">bot token is the only thing you need</span> —
+        the chat id is optional (the first chat to message{" "}
+        <span className="font-mono text-fg">/start</span> claims ownership). The
+        bot connects the moment you save (no restart), and{" "}
         <span className="font-mono text-fg">
-          /personas /switch /vaults /balance /ledger /spend /help
-        </span>
-        . It's a full remote control — the same capability gates apply as in the
-        app.
+          /personas /switch /new /vaults /balance /ledger /spend /help
+        </span>{" "}
+        register straight into Telegram's command menu. It's a full remote
+        control — the same capability gates apply as in the app.
       </p>
     </Card>
   );
