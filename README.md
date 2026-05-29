@@ -1,108 +1,73 @@
-# vellum-project
+# Bolt
 
-> A personal assistant built from scratch to rival **OpenClaw** — the Vellum
-> hiring-partner project. The product name is a placeholder (`vellum-project`)
-> pending a branding decision.
+A payment-first personal AI agent. Local-first. Compartmentalized by persona. Money is a first-class primitive — every agent wallet has hard caps, every spend goes through a single capability chokepoint, every action lands in an on-chain proof-of-action ledger.
 
-**Status:** early / pre-architecture. Competitive research is in progress under
-[`research/`](./research/). No product or architecture decisions have been made
-yet.
+> Built from scratch to rival OpenClaw — the Vellum hiring-partner brief. **TypeScript / Bun monorepo, no fork.** What's interesting under the hood: a `TxManager.spend` chokepoint that gates every outgoing tx; multisig-gated vaults that compile to on-chain BitBadges approvals; per-persona memory walls enforced in SQL; an OS-keychain-backed signer (ADR-0007); an eval suite that runs in CI.
+
+[Install in <1 min](#install) · [Architecture](./ARCHITECTURE.md) · [ADRs](./docs/decisions/) · [Demo](./docs/demo.md) · [Audit](./backlog/0099-tx-state-machine-hardening.md)
 
 ---
 
-## Quickstart
+## What it does
 
-Zero to a running agent in one command (assumes [bun](https://bun.sh)):
+- **Talk to it.** Telegram or a local web app. One agent, three surfaces (CLI / Web / TG), all driving one engine.
+- **It moves money.** Send USDC, request payments, create vaults with cap/period or M-of-N multisig gates. The agent does the BitBadges machinery; you approve via a plain-English Keplr page.
+- **Walls between personas.** Each persona has its own wallet, memory, budget, and capability grants. Zero cross-leakage — BM25 + dense recall both filter by `persona_id` in SQL; tests prove the wall holds.
+- **Every action is legible.** The Activity feed merges operational events with proof-of-action settlement; budget burn-down is one chart.
+
+## What's interesting under the hood
+
+- **One capability chokepoint for every spend.** `TxManager.spend` is the only path to chain for value transfers. The gating compiler ([ADR-0003](./docs/decisions/0003-vault-gating-revamp.md)) maps a UI policy (cap/period, time window, M-of-N multisig) into a BitBadges `votingChallenge` + `perInitiatedByAddressApprovalAmount`.
+- **Vaults are real on-chain collections.** Each vault is a 1:1 USDC-backed BitBadges collection. Multisig sign-off is a **one-time unlock**, not per-transaction consent ([ADR-0005](./docs/decisions/0005-multisig-unlock-model.md)). Vote tallies read directly from chain ABCI via a self-contained protobuf codec (fuzz-tested, 500 cases round-trip).
+- **The seed never sits on disk.** macOS Keychain via the `security` CLI; env-first resolver keeps CI green; `vellum keys migrate` walks an existing `.env` seed into the keychain ([ADR-0007](./docs/decisions/0007-agent-key-storage.md)).
+- **Eval suite gates CI.** Security battery (seed-exfil refusal, prompt-injection resistance, cross-persona isolation), multisig vault create, budget-bounded turns. Deterministic oracles primary; LLM-judge fallback for open-ended refusals.
+- **502 unit + 7 Playwright e2e + manual evals — all green.** Plus a property/fuzz layer on the money-safety primitives (`isPositiveMicroAmount` vs a BigInt-canonical oracle, ~2,000 inputs).
+
+## Install
+
+Sub-minute install per the PRD. Requires [`bun`](https://bun.sh):
 
 ```bash
-bun run setup   # installs, seeds .env from the example, builds + serves the web app
+bun run setup
 ```
 
-Then open the printed URL. Add your `OPENROUTER_API_KEY` (and, for the Telegram
-surface, `TELEGRAM_BOT_TOKEN` + `AGENT_SIGNER_MNEMONIC`) to `.env` to enable the
-LLM, chain, and bot. To run the Telegram bot: `bun run --filter @vellum/telegram dev`.
+The wizard:
+1. Sets up `~/.vellum/` (the local data home).
+2. Asks for your OpenRouter API key + (optional) Telegram bot token.
+3. Generates an agent wallet → stores the seed in the OS keychain (not `.env`).
+4. Creates your first persona.
+5. Starts the daemon at `http://127.0.0.1:8787`.
+
+Then chat with it in the web app, the terminal (`vellum`), or your Telegram bot.
+
+[Full install runbook](./docs/runbooks/install-from-scratch.md) · [MCP servers](./docs/runbooks/mcp-connect.md) · [Telegram setup](./docs/runbooks/telegram-setup.md) · [Key rotation](./docs/runbooks/rotate-agent-mnemonic.md)
+
+## Layout
+
+| Path | What |
+|------|------|
+| [`ARCHITECTURE.md`](./ARCHITECTURE.md) | E2E system design — orchestrator, surfaces, payment layer, trust posture |
+| [`docs/decisions/`](./docs/decisions/) | 7 ADRs — the load-bearing decisions |
+| [`docs/runbooks/`](./docs/runbooks/) | Install, MCP, Telegram, key rotation, Meridian devnet |
+| [`docs/demo.md`](./docs/demo.md) | E2E live demo against the Meridian devnet |
+| [`backlog/`](./backlog/) | 115 tickets (92 closed, 18 open audit items, 5 iceboxed) |
+| [`packages/`](./packages/) | 22 workspace packages — engine, web, telegram, cli, daemon + 17 libs |
+| [`research/`](./research/) | The competitive scan + chosen differentiators |
+| [`scripts/demo.ts`](./scripts/demo.ts) | Live devnet demo (real engine + chain, no mocks) |
+
+## Stack
+
+TypeScript on **Bun** · React + Tailwind (Vite, code-split PWA) · **Hono** server + SQLite (WAL) · **BitBadges** L1 (Cosmos SDK) · **OpenRouter** (LLM routing, per-persona model override) · **Playwright** e2e · **zod** validation · **Langfuse** observability (optional) · prettier + tsc strict mode
+
+CI: format + typecheck + 502 unit tests + 7 Playwright e2e specs blocking on every push. Manual `evals` stage (real-LLM, budget-gated).
+
+## Submission notes (for the reviewer)
+
+- **Built from scratch.** No fork of OpenClaw or any other assistant. The competitive scan is in [`research/`](./research/).
+- **Where to start reading:** [ARCHITECTURE.md §1–2](./ARCHITECTURE.md) for the thesis, then [ADR-0003](./docs/decisions/0003-vault-gating-revamp.md) (vault gating) and [ADR-0007](./docs/decisions/0007-agent-key-storage.md) (key storage) for the depth.
+- **Engineering judgment:** the [post-merge audit](./backlog/0099-tx-state-machine-hardening.md) — 5 parallel review agents found 107 issues; synthesized into 18 prioritized tickets (3 critical, 6 high, 5 medium, 4 low). Critical issues are real but not in the demo path; the tickets capture exactly what we know.
+- **Live demo:** [`docs/demo.md`](./docs/demo.md) — the recurring-payment-with-vault scenario, 5–7 minutes, real chain.
 
 ---
 
-## Project Spec
-
-> Source: Vellum PRD — _"OpenClaw Competitor"_. Tier: Silver. Version 1.
-> Category: AI-solution. Last updated 2026-02-16. Technical contact: **David
-> Vargas Fuertes**. Reproduced verbatim below.
-
-We believe personal assistants are the future of software and will eat up every
-category. But we also imagine a competitive ecosystem of hundreds of personal
-assistant providers. Build one from scratch to rival OpenClaw, highlighting any
-improvements, tradeoffs, and overall differences with the framework's design.
-
-### Problem & Context
-
-**Business Context**
-
-We are building the first Personal Assistant Species that will rival OpenClaw,
-and want as many people with the agency and vision to build the best one as
-possible.
-
-**Impact Metrics**
-
-Cost reduction, onboarding, extensibility, task fulfillment accuracy, great
-vibes.
-
-### Requirements & Success Criteria
-
-**Functional Requirements**
-
-- Easy for us to set up
-- Easy for us to interact with it
-- Easy for us to connect at least one application to it
-
-**Performance Benchmarks**
-
-- Installation in under a minute
-
-**Code Quality Expectations**
-
-None — use the models.
-
-**Time Constraints**
-
-2–3 days.
-
-**Technical Contact**
-
-David Vargas Fuertes.
-
-### Technology
-
-- **Required Languages:** TypeScript preferred, but can choose any.
-- **AI / ML Frameworks:** The LLM providers.
-- **Dev Tools:** Up to you.
-- **Cloud Platforms:** Up to you.
-- **Other Requirements:** No other specific requirements.
-
-### Off-Limits Tech
-
-Do **NOT** just fork our assistant or OpenClaw. Build your assistant from
-scratch.
-
-### Submission & AI Policy
-
-- **AI Usage Documentation:** Optional.
-- **Required Deliverables:** Source Code · Technical Documentation · Demo Video ·
-  Deployment Guide · AI Usage Log.
-- **Attachments:** None.
-- **Links:** None.
-
----
-
-## Repository layout
-
-| Path | Purpose |
-|------|---------|
-| [`ARCHITECTURE.md`](./ARCHITECTURE.md) | **The E2E system design** — surfaces, orchestrator + personas, BitBadges payment/vault layer, trust ledger, lifecycle, stack, scope. |
-| [`research/`](./research/) | Competitive + landscape research, chosen differentiators, and the BitBadges integration. Start at `research/PRIMER.md`. |
-| [`backlog/`](./backlog/) | In-repo tickets (markdown), the work tracker — via the `/ticket` skill. |
-| [`docs/runbooks/`](./docs/runbooks/) | Ops runbooks (e.g. the Meridian devnet chain). |
-| [`CLAUDE.md`](./CLAUDE.md) | How we work here + key context for agents. |
-
-_(More to come as the project takes shape — still pre-build / planning.)_
+Built by Trevor Miller for the Vellum hiring-partner brief.

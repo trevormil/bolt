@@ -1,16 +1,24 @@
 # ARCHITECTURE
 
-**Status:** design (pre-build) · **Date:** 2026-05-26 · Supersedes scattered
-direction notes in [`research/`](./research/) as the single E2E reference.
+**Status:** shipped · **Updated:** 2026-05-29 (post-merge audit pass) · Supersedes
+scattered direction notes in [`research/`](./research/) as the single E2E reference.
 
-A payment-first, compartmentalized, trust-first personal assistant — **BitBadges-
-native**, messaged via **Telegram**, managed via a **companion web app**.
+**Bolt** is a payment-first, compartmentalized, trust-first personal assistant —
+**BitBadges-native**, messaged via **Telegram**, managed via a **companion web app**.
+
+> What's shipped today: 22 workspace packages (engine + web + telegram + cli +
+> daemon + 17 libs), 502 unit tests + 7 Playwright e2e + a real-LLM eval gate,
+> all green in CI. The runtime, payment layer, vault gating compiler, multisig
+> sign-off model, OS-keychain signer, unified observability feed, and end-to-end
+> Keplr-signed flows are live. The 18 open backlog tickets
+> ([#0099](./backlog/0099-tx-state-machine-hardening.md)–[#0116](./backlog/0116-engine-surface-polish.md))
+> are the post-merge audit's prioritized follow-ups, not gaps in the thesis.
 
 ---
 
 ## 1. Thesis & principles
 
-- **Local-first** — Vellum runs entirely on the user's machine (the OpenClaw
+- **Local-first** — Bolt runs entirely on the user's machine (the OpenClaw
   model): local DBs, local filesystem, local daemon. **Nothing
   is hosted.** The only remote dependency is **OpenRouter** (LLM). See
   [ADR-0002](./docs/decisions/0002-local-first-terminal-native.md).
@@ -253,7 +261,7 @@ endpoint → Cosmos signing path. No IBC/Skip → no swaps/bridging (deferred).
 
 ---
 
-## 8. Tech stack (proposed)
+## 8. Tech stack
 
 - **Runtime:** `bun` + TypeScript, monorepo. Ships as a **local install** — no
   hosting; a **local background daemon** (Telegram + web) registered

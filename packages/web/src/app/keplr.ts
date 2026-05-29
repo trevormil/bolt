@@ -54,7 +54,7 @@ function chainInfo(cfg: ChainConfig) {
       bech32PrefixConsAddr: "bbvalcons",
       bech32PrefixConsPub: "bbvalconspub",
     },
-    // USDC is the asset Vellum uses; ubadge is the (zero-priced, devnet) fee/stake
+    // USDC is the asset Bolt uses; ubadge is the (zero-priced, devnet) fee/stake
     // currency Keplr requires to be declared.
     currencies: [
       { coinDenom: "USDC", coinMinimalDenom: cfg.denom, coinDecimals: 6 },

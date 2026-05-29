@@ -21,7 +21,7 @@ const fmtUsdc = (base: string) =>
 // Shows the persona's bb1 wallet + live USDC balance, with a devnet faucet tap,
 // inbound funding (Fund / Request), and outbound Send (#65 — the persona spends
 // its OWN funds via the gated /spend route, mirroring the agent's send_usdc tool
-// and Telegram /spend). Vellum is single-asset (USDC).
+// and Telegram /spend). Bolt is single-asset (USDC).
 export function WalletPanel({ personaId }: { personaId: string }) {
   const [address, setAddress] = useState("");
   const [usdc, setUsdc] = useState("0");
