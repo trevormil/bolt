@@ -125,7 +125,7 @@ function LlmKeySection() {
   }
 
   return (
-    <Card className="p-4">
+    <Card data-testid="settings-llm-key" className="p-4">
       <SectionHead
         title="OpenRouter API key"
         hint="Powers every persona's LLM. Validated before it's saved; a new key replaces the old one."
@@ -224,7 +224,7 @@ function TelegramSection() {
   }
 
   return (
-    <Card className="p-4">
+    <Card data-testid="settings-telegram" className="p-4">
       <SectionHead
         title="Telegram remote control"
         hint="Control Bolt from anywhere — the bot polls out to Telegram, so nothing is exposed on this machine. The token is verified (getMe) before it's saved."
@@ -329,7 +329,7 @@ function RecoverySection() {
   }
 
   return (
-    <Card className="p-4">
+    <Card data-testid="settings-recovery" className="p-4">
       <SectionHead
         title="Wallet recovery"
         hint="The agent's master seed phrase — every persona wallet derives from it. Back it up somewhere safe; anyone who has it controls the agent's funds."

@@ -1,11 +1,12 @@
 ---
 id: 123
 title: "e2e: Settings WRITE flows — rotate key, set-Telegram, reveal-seed"
-status: open
+status: in-progress
 priority: high
 type: testing
 source: audit-2026-05-29
 created: 2026-05-29
+updated: 2026-05-29
 refs: ["0106-test-coverage-backfill.md", "0096-agent-key-at-rest-keychain.md"]
 ---
 
