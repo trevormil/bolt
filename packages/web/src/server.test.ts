@@ -1197,6 +1197,14 @@ describe("first-run web setup (/api/setup)", () => {
     // Injected OpenRouter health-check (#60) — defaults to "valid" so the happy
     // path needs no network; override with `async () => false` to test rejection.
     verifyKey: (key: string) => Promise<boolean> = async () => true,
+    // Injected Telegram getMe health-check (#63) — defaults to "valid"; override
+    // to test a bad-token rejection.
+    verifyTelegram: (
+      token: string,
+    ) => Promise<{ ok: boolean; username?: string }> = async () => ({
+      ok: true,
+      username: "test_bot",
+    }),
   ) {
     const envFilePath = join(
       tmpdir(),
@@ -1212,6 +1220,7 @@ describe("first-run web setup (/api/setup)", () => {
         envFilePath,
         applyRuntime: (p) => applied.push(p),
         verifyKey,
+        verifyTelegram,
       },
     );
     return { app, envFilePath, applied };
@@ -1330,6 +1339,37 @@ describe("first-run web setup (/api/setup)", () => {
       "TELEGRAM_BOT_TOKEN",
     );
     rmSync(envFilePath, { force: true });
+  });
+
+  test("setup returns the bot @username on a getMe-valid token (#63)", async () => {
+    env.AGENT_SIGNER_MNEMONIC = undefined;
+    const { app, envFilePath } = setupApp();
+    const res = await postSetup(app, {
+      openRouterKey: "sk-or-test",
+      telegramBotToken: "123456:ABC",
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()) as Record<string, unknown>).toMatchObject({
+      telegramEnabled: true,
+      telegramUsername: "test_bot",
+    });
+    rmSync(envFilePath, { force: true });
+  });
+
+  test("setup rejects an invalid Telegram bot token with no side effects (#63)", async () => {
+    env.AGENT_SIGNER_MNEMONIC = undefined;
+    const { app, envFilePath, applied } = setupApp(
+      { host: "127.0.0.1" },
+      async () => true,
+      async () => ({ ok: false }), // getMe rejects the token
+    );
+    const res = await postSetup(app, {
+      openRouterKey: "sk-or-test",
+      telegramBotToken: "bad-token",
+    });
+    expect(res.status).toBe(400);
+    expect(applied).toHaveLength(0); // no wallet generated, nothing persisted
+    expect(() => readFileSync(envFilePath, "utf8")).toThrow();
   });
 
   test("ignores any mnemonic in the body — wallets are always generated (#59)", async () => {
@@ -1494,6 +1534,109 @@ describe("change OpenRouter key (/api/settings/openrouter-key, #60)", () => {
         authorization: "Bearer secret",
       },
     );
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("telegram settings route — set / rotate / clear (#63)", () => {
+  function tgApp(
+    verifyTelegram: (
+      token: string,
+    ) => Promise<{ ok: boolean; username?: string }> = async () => ({
+      ok: true,
+      username: "test_bot",
+    }),
+  ) {
+    const envFilePath = join(
+      tmpdir(),
+      `vellum-tg-${Math.random().toString(36).slice(2)}.env`,
+    );
+    const applied: Partial<typeof env>[] = [];
+    const app = buildApp(
+      makeEngine(),
+      new PaymentRequests(":memory:"),
+      new DepositRequests(":memory:"),
+      { host: "127.0.0.1" },
+      {
+        envFilePath,
+        applyRuntime: (p) => applied.push(p),
+        verifyKey: async () => true,
+        verifyTelegram,
+      },
+    );
+    return { app, envFilePath, applied };
+  }
+  const postTg = (app: ReturnType<typeof buildApp>, body: unknown) =>
+    app.request("/api/settings/telegram", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  test("valid token → 200 + @username, persisted + adopted", async () => {
+    const { app, envFilePath, applied } = tgApp();
+    const res = await postTg(app, { token: "123:ABC", principalChatId: "42" });
+    expect(res.status).toBe(200);
+    expect((await res.json()) as Record<string, unknown>).toMatchObject({
+      ok: true,
+      configured: true,
+      username: "test_bot",
+    });
+    expect(applied[0]?.TELEGRAM_BOT_TOKEN).toBe("123:ABC");
+    expect(applied[0]?.TELEGRAM_PRINCIPAL_CHAT_ID).toBe(42);
+    expect(readFileSync(envFilePath, "utf8")).toContain(
+      "TELEGRAM_BOT_TOKEN=123:ABC",
+    );
+    rmSync(envFilePath, { force: true });
+  });
+
+  test("empty token → clears telegram (configured:false)", async () => {
+    const { app, envFilePath, applied } = tgApp();
+    const res = await postTg(app, { token: "" });
+    expect(res.status).toBe(200);
+    expect((await res.json()) as Record<string, unknown>).toMatchObject({
+      configured: false,
+    });
+    expect(applied).toHaveLength(1); // applyRuntime called to clear
+    rmSync(envFilePath, { force: true });
+  });
+
+  test("invalid token (getMe fails) → 400, nothing persisted", async () => {
+    const { app, applied } = tgApp(async () => ({ ok: false }));
+    const res = await postTg(app, { token: "bad" });
+    expect(res.status).toBe(400);
+    expect(applied).toHaveLength(0);
+  });
+
+  test("non-integer chat id → 400, nothing persisted", async () => {
+    const { app, applied } = tgApp();
+    const res = await postTg(app, { token: "123:ABC", principalChatId: "abc" });
+    expect(res.status).toBe(400);
+    expect(applied).toHaveLength(0);
+  });
+
+  test("loopback-only: rejected when the daemon is bound beyond loopback", async () => {
+    const envFilePath = join(tmpdir(), `vellum-tg-exposed.env`);
+    const app = buildApp(
+      makeEngine(),
+      new PaymentRequests(":memory:"),
+      new DepositRequests(":memory:"),
+      { token: "secret", host: "0.0.0.0" },
+      {
+        envFilePath,
+        applyRuntime: () => {},
+        verifyKey: async () => true,
+        verifyTelegram: async () => ({ ok: true }),
+      },
+    );
+    const res = await app.request("/api/settings/telegram", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer secret",
+      },
+      body: JSON.stringify({ token: "123:ABC" }),
+    });
     expect(res.status).toBe(403);
   });
 });

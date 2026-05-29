@@ -108,7 +108,13 @@ export const api = {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(input),
-    }).then((r) => json<{ ok: boolean; telegramEnabled?: boolean }>(r)),
+    }).then((r) =>
+      json<{
+        ok: boolean;
+        telegramEnabled?: boolean;
+        telegramUsername?: string;
+      }>(r),
+    ),
 
   // Set / change / reset the OpenRouter key after onboarding (#60). Validated
   // server-side before it's persisted.
@@ -118,6 +124,18 @@ export const api = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ key }),
     }).then((r) => json<{ ok: boolean }>(r)),
+
+  // Set / rotate / clear the Telegram bot token after onboarding (#63).
+  // getMe-validated server-side; empty token clears it. Returns the bot @username
+  // on success so the UI can confirm the connection.
+  setTelegramToken: (input: { token: string; principalChatId?: string }) =>
+    fetch("/api/settings/telegram", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    }).then((r) =>
+      json<{ ok: boolean; configured: boolean; username?: string }>(r),
+    ),
 
   // Reveal the agent's master mnemonic for backup (#57). Loopback + authed; the
   // one place the phrase travels to the browser, fetched only on a deliberate
@@ -426,6 +444,7 @@ export interface SetupStatus {
   hasWallet: boolean;
   personaCount: number;
   daemonExposed: boolean;
+  telegramConfigured?: boolean;
 }
 
 export interface EscrowInfo {

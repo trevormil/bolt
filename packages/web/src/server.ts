@@ -11,6 +11,7 @@ import {
   upsertEnvFile,
   ensureDataDir,
   migrateLegacyDb,
+  verifyTelegramToken,
 } from "@vellum/shared";
 import {
   createEngine,
@@ -266,6 +267,10 @@ export function buildApp(
     distDir?: string;
     // OpenRouter key health-check (#60), injectable so tests run offline.
     verifyKey?: (key: string) => Promise<boolean>;
+    // Telegram bot-token health-check (#63, getMe) — injectable for offline tests.
+    verifyTelegram?: (
+      token: string,
+    ) => Promise<{ ok: boolean; username?: string }>;
   } = {},
 ) {
   const app = new Hono();
@@ -273,6 +278,7 @@ export function buildApp(
   const applyRuntimeEnv = setup.applyRuntime ?? setRuntimeEnv;
   const distDir = setup.distDir ?? DIST;
   const verifyKey = setup.verifyKey ?? verifyOpenRouterKey;
+  const verifyTelegram = setup.verifyTelegram ?? verifyTelegramToken;
 
   // Security headers (#24 / T-11). Defense-in-depth even though the app binds
   // loopback by default: a malicious local page must not be able to frame the
@@ -396,6 +402,7 @@ export function buildApp(
       hasWallet: !!env.AGENT_SIGNER_MNEMONIC,
       personaCount: engine.store.listPersonas().length,
       daemonExposed: !isLoopback(env.WEB_HOST),
+      telegramConfigured: !!env.TELEGRAM_BOT_TOKEN,
     }),
   );
 
@@ -475,8 +482,23 @@ export function buildApp(
     // entrypoint (the bot polls OUT, so no daemon exposure is needed). Persisted
     // + adopted into runtime env; the long-poller is attached on the next daemon
     // start (attachTelegram reads env at boot — it isn't hot-attached here). The
-    // chat id was already validated as an integer above, before any persistence.
+    // chat id was already validated as an integer above, before any persistence;
+    // the token is getMe-validated below (#63) before anything is persisted.
+    let tgUsername: string | undefined;
     if (tgToken) {
+      // Health-check the token via getMe (#63) before persisting — a bad token
+      // would otherwise fail silently at the next daemon boot. Nothing is
+      // persisted yet (the wallet is in-memory), so a 400 here leaves no state.
+      const tg = await verifyTelegram(tgToken);
+      if (!tg.ok)
+        return c.json(
+          {
+            error:
+              "that Telegram bot token didn't validate — create one with @BotFather and retry",
+          },
+          400,
+        );
+      tgUsername = tg.username;
       updates.TELEGRAM_BOT_TOKEN = tgToken;
       runtime.TELEGRAM_BOT_TOKEN = tgToken;
       if (tgChat) {
@@ -490,9 +512,13 @@ export function buildApp(
     engine.wallets.setMnemonic(mnemonic);
 
     log.info(
-      `web setup complete · wallet + LLM key configured${tgToken ? " + telegram (starts on next daemon restart)" : ""}`,
+      `web setup complete · wallet + LLM key configured${tgToken ? ` + telegram @${tgUsername ?? "?"} (starts on next daemon restart)` : ""}`,
     );
-    return c.json({ ok: true, telegramEnabled: !!tgToken });
+    return c.json({
+      ok: true,
+      telegramEnabled: !!tgToken,
+      telegramUsername: tgUsername,
+    });
   });
 
   // Set / change / reset the OpenRouter key after onboarding (#60). Same trust
@@ -514,6 +540,55 @@ export function buildApp(
     applyRuntimeEnv({ OPENROUTER_API_KEY: key });
     log.info("openrouter key updated · settings");
     return c.json({ ok: true });
+  });
+
+  // Set / rotate / clear the Telegram bot token after onboarding (#63). Same
+  // loopback-only boundary as the OpenRouter key route; the token is health-
+  // checked via getMe before it's persisted + adopted. An empty token clears
+  // Telegram. Takes effect on the next daemon start (attachTelegram reads env
+  // at boot — it isn't hot-attached here, same as /api/setup).
+  app.post("/api/settings/telegram", async (c) => {
+    if (!isLoopback(auth.host ?? "127.0.0.1"))
+      return c.json({ error: "telegram changes are loopback-only" }, 403);
+    const body = (await c.req.json().catch(() => ({}))) as {
+      token?: unknown;
+      principalChatId?: unknown;
+    };
+    const token = typeof body.token === "string" ? body.token.trim() : "";
+    const chat =
+      typeof body.principalChatId === "string"
+        ? body.principalChatId.trim()
+        : "";
+    if (chat && !/^-?[0-9]+$/.test(chat))
+      return c.json({ error: "Telegram chat id must be an integer" }, 400);
+
+    if (!token) {
+      // Empty token → disable Telegram (clear the env var).
+      upsertEnvFile(setupEnvFilePath, { TELEGRAM_BOT_TOKEN: "" });
+      applyRuntimeEnv({ TELEGRAM_BOT_TOKEN: undefined });
+      log.info("telegram disabled · settings");
+      return c.json({ ok: true, configured: false });
+    }
+
+    const tg = await verifyTelegram(token);
+    if (!tg.ok)
+      return c.json(
+        {
+          error:
+            "that Telegram bot token didn't validate — create one with @BotFather and retry",
+        },
+        400,
+      );
+    const updates: Record<string, string> = { TELEGRAM_BOT_TOKEN: token };
+    const runtime: Partial<typeof env> = { TELEGRAM_BOT_TOKEN: token };
+    if (chat) {
+      updates.TELEGRAM_PRINCIPAL_CHAT_ID = chat;
+      runtime.TELEGRAM_PRINCIPAL_CHAT_ID = Number(chat);
+    }
+    upsertEnvFile(setupEnvFilePath, updates);
+    applyRuntimeEnv(runtime);
+    log.info(`telegram token updated · settings · @${tg.username ?? "?"}`);
+    return c.json({ ok: true, configured: true, username: tg.username });
   });
 
   // Reveal the agent's master mnemonic for backup/recovery (#57). The onboarding

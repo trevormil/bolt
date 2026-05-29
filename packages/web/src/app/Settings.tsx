@@ -6,6 +6,7 @@ export function SettingsView({ personaId }: { personaId: string }) {
   return (
     <div className="h-full space-y-6 overflow-y-auto p-6">
       <LlmKeySection />
+      <TelegramSection />
       <ModelSection personaId={personaId} />
       <BudgetSection personaId={personaId} />
       <RecoverySection />
@@ -92,6 +93,141 @@ function LlmKeySection() {
         </Button>
       </div>
       {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+    </Card>
+  );
+}
+
+// ── #63 Telegram remote control — set / rotate / disable (validated via getMe) ─
+// Telegram is the agent's remote entrypoint (the bot polls OUT; nothing is
+// exposed on this machine). The token is health-checked via getMe before it's
+// saved, and takes effect on the next daemon restart. This is the post-onboarding
+// home for enabling/rotating Telegram (onboarding only offers it once).
+function TelegramSection() {
+  const [configured, setConfigured] = useState<boolean | null>(null);
+  const [token, setToken] = useState("");
+  const [chatId, setChatId] = useState("");
+  const [busy, setBusy] = useState<"save" | "disable" | null>(null);
+  const [connected, setConnected] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    api
+      .setupStatus()
+      .then((s) => live && setConfigured(!!s.telegramConfigured))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  async function save() {
+    if (!token.trim()) return;
+    setBusy("save");
+    setError(null);
+    setConnected(null);
+    try {
+      const r = await api.setTelegramToken({
+        token: token.trim(),
+        ...(chatId.trim() ? { principalChatId: chatId.trim() } : {}),
+      });
+      setToken("");
+      setChatId("");
+      setConfigured(true);
+      setConnected(r.username ? `@${r.username}` : "connected");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function disable() {
+    setBusy("disable");
+    setError(null);
+    setConnected(null);
+    try {
+      await api.setTelegramToken({ token: "" });
+      setConfigured(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <Card className="p-4">
+      <SectionHead
+        title="Telegram remote control"
+        hint="Control Bolt from anywhere — the bot polls out to Telegram, so nothing is exposed on this machine. The token is verified (getMe) before it's saved."
+      />
+      <p className="mt-2 text-xs text-soft">
+        Status:{" "}
+        <span className={configured ? "text-accent" : "text-muted"}>
+          {configured == null ? "…" : configured ? "connected" : "not set"}
+        </span>
+        {connected && (
+          <span className="text-accent"> · connected as {connected}</span>
+        )}
+      </p>
+      <ol className="mt-3 list-decimal space-y-1 pl-5 text-xs text-soft">
+        <li>
+          In Telegram, message <span className="text-fg">@BotFather</span> and
+          send <span className="font-mono text-fg">/newbot</span>.
+        </li>
+        <li>
+          Pick a name + a <span className="font-mono text-fg">…_bot</span>{" "}
+          username; copy the token it returns.
+        </li>
+        <li>
+          Paste it below, then message your bot{" "}
+          <span className="font-mono text-fg">/start</span> to claim ownership
+          (or set your chat id) — so a stranger can't drive your agent.
+        </li>
+      </ol>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Input
+          type="password"
+          value={token}
+          onChange={(e) => setToken(e.target.value)}
+          placeholder="bot token (123456:ABC-…)"
+          className="min-w-[16rem] flex-1"
+        />
+        <Input
+          value={chatId}
+          onChange={(e) => setChatId(e.target.value)}
+          placeholder="chat id (optional)"
+          className="w-36"
+        />
+        <Button
+          size="sm"
+          onClick={() => void save()}
+          disabled={busy !== null || !token.trim()}
+        >
+          {busy === "save" ? "Verifying…" : configured ? "Replace" : "Connect"}
+        </Button>
+        {configured && (
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => void disable()}
+            disabled={busy !== null}
+          >
+            {busy === "disable" ? "…" : "Disable"}
+          </Button>
+        )}
+      </div>
+      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+      <p className="mt-3 text-xs leading-relaxed text-soft">
+        Once connected (takes effect on the next daemon restart) you can message
+        the bot directly, or use{" "}
+        <span className="font-mono text-fg">
+          /personas /switch /vaults /balance /ledger /spend /help
+        </span>
+        . It's a full remote control — the same capability gates apply as in the
+        app.
+      </p>
     </Card>
   );
 }

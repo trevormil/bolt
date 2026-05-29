@@ -117,10 +117,26 @@ export function SetupFlow({ onDone }: { onDone: (personaId: string) => void }) {
                   </div>
                   <p className="text-xs leading-relaxed text-muted">
                     Reach the agent from anywhere — the bot polls out to
-                    Telegram, so nothing is exposed on this machine. Get a token
-                    from <strong className="text-fg">@BotFather</strong>. Leave
-                    blank to skip. Takes effect when the daemon next starts.
+                    Telegram, so nothing is exposed on this machine. Optional;
+                    leave blank to skip (you can enable it later in Settings).
                   </p>
+                  <ol className="list-decimal space-y-1 pl-5 text-xs text-soft">
+                    <li>
+                      In Telegram, message{" "}
+                      <strong className="text-fg">@BotFather</strong> and send{" "}
+                      <span className="font-mono text-fg">/newbot</span>.
+                    </li>
+                    <li>
+                      Pick a name + a{" "}
+                      <span className="font-mono text-fg">…_bot</span> username;
+                      copy the token it returns.
+                    </li>
+                    <li>
+                      Paste it below (we verify it). Then message your bot{" "}
+                      <span className="font-mono text-fg">/start</span> to claim
+                      ownership — so a stranger can't drive your agent.
+                    </li>
+                  </ol>
                   <Input
                     value={telegramBotToken}
                     onChange={(e) => setTelegramToken(e.target.value)}
@@ -131,6 +147,13 @@ export function SetupFlow({ onDone }: { onDone: (personaId: string) => void }) {
                     onChange={(e) => setTelegramChatId(e.target.value)}
                     placeholder="your chat id (optional — else first chat claims it)"
                   />
+                  <p className="text-[11px] leading-relaxed text-soft">
+                    Once connected you can message the bot or use{" "}
+                    <span className="font-mono">
+                      /personas /switch /vaults /balance /ledger /spend /help
+                    </span>{" "}
+                    — a full remote control, same capability gates as the app.
+                  </p>
                 </div>
               )}
             </div>
