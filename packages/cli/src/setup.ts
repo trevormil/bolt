@@ -2,6 +2,7 @@ import {
   createEngine as defaultCreateEngine,
   grantDefaultCapabilities,
   renderPersonaCard,
+  DEFAULT_PERSONA_INSTRUCTIONS,
 } from "@vellum/engine";
 import {
   ensureDataDir,
@@ -105,8 +106,9 @@ export async function runSetup(
   if (!engine.store.getPersona(id))
     engine.store.createPersona(id, answers.personaName, {
       name: answers.personaName,
-      role: "personal assistant",
-      voice: "friendly and concise",
+      role: "",
+      voice: "",
+      instructions: DEFAULT_PERSONA_INSTRUCTIONS,
     });
   const w = await engine.wallets.ensureWallet(id);
   grantDefaultCapabilities(engine.capabilities, id); // #37 baseline policy

@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { createLogger } from "@vellum/shared";
 import { scanForInjection } from "./injection.ts";
+import { PERSONA_MD_WARN_CHARS } from "./soul.ts";
 import type {
   Embedder,
   MemoryRecord,
@@ -121,9 +122,16 @@ export class PersonaStore {
   updateInstructions(id: string, instructions: string): Persona | null {
     const persona = this.getPersona(id);
     if (!persona) return null;
+    const trimmed = instructions.trim();
+    // The PERSONA.md rides every request, so warn when it's large (#93) — it
+    // inflates token cost on every turn.
+    if (trimmed.length > PERSONA_MD_WARN_CHARS)
+      log.warn(
+        `persona ${id} PERSONA.md is large (${trimmed.length} chars) — it's appended to every request`,
+      );
     const soul: SoulIdentity = {
       ...persona.soul,
-      instructions: instructions.trim() || undefined,
+      instructions: trimmed || undefined,
     };
     this.db
       .query("UPDATE personas SET soul = ? WHERE id = ?")

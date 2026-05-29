@@ -1,5 +1,20 @@
 import type { SoulIdentity } from "./types.ts";
 
+// The starter PERSONA.md every new persona gets when the user doesn't supply one
+// (#91 — go all-in on PERSONA.md). A sensible, editable default so every persona
+// has an instructions doc rather than falling back to the legacy role/voice.
+export const DEFAULT_PERSONA_INSTRUCTIONS = `# Who you are
+A warm, concise personal assistant.
+
+## How to act
+- Keep replies short and plain-English.
+- Be quiet by default; surface a clear receipt for anything that moves money.
+- Always confirm before spending or moving funds.`;
+
+// Soft size ceiling for an always-on PERSONA.md (#93): it rides EVERY request, so
+// a very large doc inflates token cost on every turn. Past this, callers warn.
+export const PERSONA_MD_WARN_CHARS = 8_000;
+
 /**
  * Render a persona's SOUL into a system-prompt preamble. Deterministic — the
  * orchestrator (0007) prepends this so the persona reasons in-character. Only

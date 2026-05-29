@@ -189,6 +189,16 @@ describe("web API", () => {
     expect((await post("/api/personas", { name: "Atlas" })).status).toBe(409);
   });
 
+  test("a persona created with no instructions gets the default PERSONA.md (#91)", async () => {
+    const res = await post("/api/personas", { name: "Atlas" });
+    const soul = (
+      (await res.json()) as { persona: { soul: { instructions?: string } } }
+    ).persona.soul;
+    // Go all-in on PERSONA.md: blank → a real default doc, not a role/voice fallback.
+    expect(soul.instructions).toBeTruthy();
+    expect(soul.instructions).toContain("How to act");
+  });
+
   test("persona PERSONA.md instructions: set on create + edit via PATCH (#87)", async () => {
     const created = await post("/api/personas", {
       name: "Atlas",

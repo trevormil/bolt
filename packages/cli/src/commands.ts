@@ -2,6 +2,7 @@ import {
   chat,
   grantDefaultCapabilities,
   renderPersonaCard,
+  DEFAULT_PERSONA_INSTRUCTIONS,
   Model,
   APPROVED_MODELS,
   isApprovedModel,
@@ -74,8 +75,9 @@ export async function runCommand(
       if (engine.store.getPersona(id)) throw new Error(`persona exists: ${id}`);
       engine.store.createPersona(id, name, {
         name,
-        role: "personal assistant",
-        voice: "friendly and concise",
+        role: "",
+        voice: "",
+        instructions: DEFAULT_PERSONA_INSTRUCTIONS,
       });
       const w = await engine.wallets.ensureWallet(id);
       grantDefaultCapabilities(engine.capabilities, id); // #37 baseline policy

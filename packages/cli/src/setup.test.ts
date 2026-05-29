@@ -52,8 +52,13 @@ describe("runSetup (#19 install wizard core)", () => {
     ]);
 
     // The persona + wallet are persisted in the engine.
-    expect(captured!.store.getPersona("pat-assistant")).toBeTruthy();
+    const persona = captured!.store.getPersona("pat-assistant");
+    expect(persona).toBeTruthy();
     expect(captured!.wallets.addressFor("pat-assistant")).toBe(res.address);
+    // Go all-in on PERSONA.md (#91): the CLI seeds the default instructions doc,
+    // not legacy role/voice.
+    expect(persona!.soul.instructions).toBeTruthy();
+    expect(persona!.soul.role).toBe("");
 
     // Secrets landed in .env (mnemonic quoted because it has spaces).
     const env = readFileSync(envPath, "utf8");

@@ -51,9 +51,14 @@ export { filesystemTools, combineTools } from "./fs-tools.ts";
 export { execTools } from "./exec-tools.ts";
 export { chat, type ChatInput, type ChatResult } from "./chat.ts";
 export { llmBudget, type LlmBudget } from "./budgets.ts";
-// Re-export the persona card renderer (#25) so the CLI/wizard can show a
-// personality card at creation without a direct @vellum/persona dep.
-export { renderPersonaCard } from "@vellum/persona";
+// Re-export the persona card renderer (#25) + the default PERSONA.md template
+// (#91) so the CLI/wizard can show a card + seed instructions without a direct
+// @vellum/persona dep.
+export {
+  renderPersonaCard,
+  DEFAULT_PERSONA_INSTRUCTIONS,
+  PERSONA_MD_WARN_CHARS,
+} from "@vellum/persona";
 // Re-export capability helpers so surfaces wire grants/approval without a direct
 // @vellum/capabilities dep (#37).
 export {

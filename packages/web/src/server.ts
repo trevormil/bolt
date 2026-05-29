@@ -17,6 +17,7 @@ import {
   createEngine,
   chat,
   grantDefaultCapabilities,
+  DEFAULT_PERSONA_INSTRUCTIONS,
   CapabilityDeniedError,
   llmBudget,
   evaluateBudget,
@@ -677,12 +678,15 @@ export function buildApp(
     if (engine.store.getPersona(id)) {
       return c.json({ error: `persona already exists: ${id}` }, 409);
     }
+    // Go all-in on PERSONA.md (#91): every new persona gets an instructions doc —
+    // the supplied one, or the default template when blank — instead of falling
+    // back to role/voice. Legacy role/voice are accepted (back-compat) but
+    // superseded by instructions at render time (renderSoul).
     const soul = body.soul ?? {
       name,
-      role: body.role?.trim() || "personal assistant",
-      voice: body.voice?.trim() || "friendly and concise",
-      // PERSONA.md (#87): when provided it supersedes role/voice at render time.
-      ...(instructions ? { instructions } : {}),
+      role: body.role?.trim() || "",
+      voice: body.voice?.trim() || "",
+      instructions: instructions || DEFAULT_PERSONA_INSTRUCTIONS,
     };
     const persona = engine.store.createPersona(id, name, soul);
     const wallet = await engine.wallets.ensureWallet(id);

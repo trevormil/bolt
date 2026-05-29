@@ -226,9 +226,11 @@ function buildContext(
   personaMarkdown = "",
   humanAddress?: string,
 ): ChatMessage[] {
-  // Compose order (#41): SOUL system prompt → always-on PERSONA.md (global then
-  // per-persona, user-authored steering) → the connected human wallet (#73) →
-  // the persona's own recalled memory.
+  // Compose order (#93): SOUL system prompt — which now carries the per-persona
+  // PERSONA.md (the DB `soul.instructions`, via renderSoul) — then the GLOBAL
+  // always-on PERSONA.md (cross-persona, `personaMarkdown`) → the connected human
+  // wallet (#73) → the persona's own recalled memory. One per-persona source: the
+  // file layer here is global-only, so nothing double-injects.
   let system = renderSoul(persona.soul);
   if (personaMarkdown) system += `\n\n${personaMarkdown}`;
   // The human's connected wallet (#73) — per-turn only. Lets the agent resolve

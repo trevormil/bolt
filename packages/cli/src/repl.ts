@@ -1,5 +1,10 @@
 import { createInterface } from "node:readline";
-import { chat, grantDefaultCapabilities, type Engine } from "@vellum/engine";
+import {
+  chat,
+  grantDefaultCapabilities,
+  DEFAULT_PERSONA_INSTRUCTIONS,
+  type Engine,
+} from "@vellum/engine";
 
 // Interactive terminal chat (#34) — the OpenClaw-style REPL. Each line is a turn
 // against the held persona, run through the shared engine (so memory, tools,
@@ -16,8 +21,9 @@ export async function repl(
   if (!initial) {
     engine.store.createPersona("assistant", "Bolt", {
       name: "Bolt",
-      role: "payment-first personal agent",
-      voice: "warm, concise, plain-English",
+      role: "",
+      voice: "",
+      instructions: DEFAULT_PERSONA_INSTRUCTIONS,
     });
     await engine.wallets.ensureWallet("assistant");
     grantDefaultCapabilities(engine.capabilities, "assistant");
@@ -70,8 +76,9 @@ export async function repl(
         else {
           engine.store.createPersona(id, name, {
             name,
-            role: "personal assistant",
-            voice: "friendly and concise",
+            role: "",
+            voice: "",
+            instructions: DEFAULT_PERSONA_INSTRUCTIONS,
           });
           await engine.wallets.ensureWallet(id);
           grantDefaultCapabilities(engine.capabilities, id);
