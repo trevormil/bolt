@@ -276,6 +276,63 @@ describe("web API", () => {
     expect(escrow.escrowedMicro).toBe("3000000"); // fake fetchTokenBalance → 3 vUSDC
   });
 
+  test("vault create uses the supplied managerAddress (the connected wallet) (#75)", async () => {
+    await post("/api/personas", { name: "Atlas" });
+    const manager = "bb1" + "m".repeat(39);
+    const res = await post("/api/personas/atlas/vaults", {
+      name: "Rent",
+      symbol: "vRENT",
+      managerAddress: manager,
+    });
+    expect(res.status).toBe(201);
+    expect((await res.json()) as { managerAddress: string }).toMatchObject({
+      managerAddress: manager,
+    });
+  });
+
+  test("vault create with no manager configured → clean 400, not a 500 (#75)", async () => {
+    // No connected wallet (no managerAddress) AND no VELLUM_PRINCIPAL_ADDRESS
+    // default → the engine throws; the route must surface a 400, not an
+    // unhandled 500.
+    const noMgr = buildApp(
+      makeEngine({
+        vault: {
+          defaultManager: undefined,
+          createVault: async () => ({ txHash: "VAULTCREATE1" }),
+          confirmTx: async () => ({ height: 9, code: 0 }),
+          fetchTx: async () => fakeCreateTxEvents,
+          fetchTokenBalance: async () => "0",
+        },
+      }),
+      new PaymentRequests(":memory:"),
+      new DepositRequests(":memory:"),
+    );
+    await noMgr.request("/api/personas", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Atlas" }),
+    });
+    const res = await noMgr.request("/api/personas/atlas/vaults", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Rent", symbol: "vRENT" }),
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()) as { error: string }).toMatchObject({
+      error: expect.stringContaining("manager"),
+    });
+  });
+
+  test("vault create rejects a malformed managerAddress (#75)", async () => {
+    await post("/api/personas", { name: "Atlas" });
+    const res = await post("/api/personas/atlas/vaults", {
+      name: "Rent",
+      symbol: "vRENT",
+      managerAddress: "bb1short",
+    });
+    expect(res.status).toBe(400);
+  });
+
   test("budget route reports the LLM-spend cap (no free-form cap)", async () => {
     await post("/api/personas", { name: "Atlas" });
     const b = (await (

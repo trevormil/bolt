@@ -253,6 +253,8 @@ export const api = {
       symbol: string;
       dailyWithdrawLimit?: number;
       gating?: VaultGating;
+      // The human manager (#75) — the connected Keplr address.
+      managerAddress?: string;
     },
   ) =>
     fetch(`/api/personas/${id}/vaults`, {

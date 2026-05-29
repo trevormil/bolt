@@ -885,6 +885,9 @@ export function buildApp(
       description?: string;
       dailyWithdrawLimit?: number;
       gating?: VaultGating;
+      // The human manager (#75) — the connected Keplr address from the UI. Falls
+      // back to VELLUM_PRINCIPAL_ADDRESS server-side when omitted.
+      managerAddress?: string;
     };
     if (!body.name?.trim() || !body.symbol?.trim()) {
       return c.json({ error: "name and symbol are required" }, 400);
@@ -892,6 +895,12 @@ export function buildApp(
     const gating = parseGating(body.gating);
     if (gating === "invalid")
       return c.json({ error: "invalid gating policy" }, 400);
+    const managerAddress = body.managerAddress?.trim();
+    if (managerAddress && !isBb1Address(managerAddress))
+      return c.json(
+        { error: "managerAddress must be a valid bb1 address" },
+        400,
+      );
     try {
       const vault = await engine.vaults.create(id, {
         name: body.name.trim(),
@@ -899,11 +908,22 @@ export function buildApp(
         description: body.description?.trim(),
         dailyWithdrawLimit: body.dailyWithdrawLimit,
         gating,
+        managerAddress,
       });
       return c.json(vault, 201);
     } catch (e) {
       if (e instanceof CapabilityDeniedError)
         return c.json({ error: e.message }, 403);
+      // No manager configured (no connected wallet + no VELLUM_PRINCIPAL_ADDRESS)
+      // → a clean 400 with guidance, not an unhandled 500 (#75).
+      if (e instanceof Error && /no vault manager/.test(e.message))
+        return c.json(
+          {
+            error:
+              "Connect your wallet to set the vault manager (or configure VELLUM_PRINCIPAL_ADDRESS).",
+          },
+          400,
+        );
       throw e;
     }
   });

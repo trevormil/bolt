@@ -13,6 +13,9 @@ import { useWallet } from "./wallet-context.tsx";
 // Per-persona vaults: 1:1 USDC-backed, siloed for a purpose. The agent creates +
 // withdraws within rules; the human is the manager + funds escrow.
 export function VaultsView({ personaId }: { personaId: string }) {
+  // The connected Keplr wallet becomes the vault's manager (#75) — the human
+  // controls it; the agent (creator) has zero manager capability.
+  const { wallet } = useWallet();
   const [vaults, setVaults] = useState<Vault[]>([]);
   // The persona agent's own wallet address — the recipient of deposited vault
   // tokens (#45 / !37): the agent must hold them to withdraw within rules.
@@ -89,6 +92,14 @@ export function VaultsView({ personaId }: { personaId: string }) {
 
   async function create() {
     if (!name.trim() || !symbol.trim() || formError) return;
+    // The vault needs a human manager — the connected Keplr address (#75).
+    // Without it the create would 400; guide the user to connect first.
+    if (!wallet) {
+      setError(
+        "Connect your Keplr wallet first — it becomes the vault's manager.",
+      );
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -114,6 +125,7 @@ export function VaultsView({ personaId }: { personaId: string }) {
         name: name.trim(),
         symbol: symbol.trim(),
         gating: Object.keys(gating).length ? gating : undefined,
+        managerAddress: wallet.address,
       });
       setName("");
       setSymbol("");
