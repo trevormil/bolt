@@ -18,6 +18,7 @@ default:
     # the usual locations and fail loudly if it's still missing.
     - export PATH="$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
     - bun --version
+    - rm -rf node_modules packages/*/node_modules
     - bun install --frozen-lockfile
 
 quality:

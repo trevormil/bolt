@@ -14,7 +14,7 @@
     "daemon:uninstall": "bash scripts/install-daemon.sh uninstall",
     "demo": "bun scripts/demo.ts",
     "dev": "bun run --filter '@vellum/*' dev",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "bunx tsc --noEmit",
     "test:e2e": "playwright test",
     "test:e2e:install": "playwright install chromium",
     "format": "prettier --write .",
