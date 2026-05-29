@@ -2,6 +2,7 @@
 id: 121
 title: "e2e: Payment request — /pay/:id public fund page"
 status: in-progress
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/100"]
 priority: high
 type: testing
 source: audit-2026-05-29
