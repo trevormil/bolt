@@ -71,6 +71,17 @@ function deriveTitle(text: string): string {
 
 export class Conversations {
   private db: Database;
+  // Strictly-increasing timestamp source. Date.now() has 1ms granularity, so two
+  // ops in the same millisecond would tie on `updated` and list ordering would
+  // be non-deterministic (a real flake: which of two same-ms sessions sorts
+  // first is undefined). Clamping to max(now, last+1) guarantees every create /
+  // touch gets a strictly-greater stamp than the previous one, so "most-recently
+  // active first" is deterministic while staying ~wall-clock.
+  private lastTs = 0;
+  private now(): number {
+    this.lastTs = Math.max(Date.now(), this.lastTs + 1);
+    return this.lastTs;
+  }
 
   constructor(dbPath = ":memory:") {
     this.db = new Database(dbPath);
@@ -133,7 +144,7 @@ export class Conversations {
   }
 
   private insert(id: string, personaId: string, title?: string): Conversation {
-    const now = Date.now();
+    const now = this.now();
     this.db
       .query(
         "INSERT INTO conversations (id, persona_id, title, created, updated) VALUES (?, ?, ?, ?, ?)",
@@ -152,7 +163,7 @@ export class Conversations {
       .query(
         "UPDATE conversations SET title = ?, updated = ? WHERE id = ? AND persona_id = ?",
       )
-      .run(clean, Date.now(), id, personaId);
+      .run(clean, this.now(), id, personaId);
     const r = this.get(id);
     return r && r.personaId === personaId ? r : null;
   }
@@ -190,7 +201,7 @@ export class Conversations {
   append(id: string, role: "user" | "agent", text: string): void {
     const conv = this.get(id);
     if (!conv) return;
-    const now = Date.now();
+    const now = this.now();
     this.db
       .query(
         "INSERT INTO conversation_messages (conversation_id, role, text, created) VALUES (?, ?, ?, ?)",
