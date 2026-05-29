@@ -2,6 +2,7 @@
 id: 118
 title: "e2e: Vault withdraw — agent within-cap + pending→confirmed UI status"
 status: in-progress
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/97"]
 priority: high
 type: testing
 source: trevor
