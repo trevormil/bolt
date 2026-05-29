@@ -9,6 +9,7 @@ import {
   type Engine,
 } from "@vellum/engine";
 import { env } from "@vellum/shared";
+import { runKeysCommand } from "./keys.ts";
 
 const fmtUsdc = (micro: string) => (Number(micro) / 1e6).toFixed(2);
 
@@ -38,6 +39,7 @@ const USAGE = `vellum — local-first agent CLI
   vellum faucet <persona>         claim devnet USDC
   vellum ledger <persona>         recent proof-of-action entries
   vellum model <persona> [id]     show / set the persona's model (id, "inherit", or list)
+  vellum keys <status|migrate>    agent seed at rest: status, or migrate .env → OS keychain
   vellum help                     this help`;
 
 /**
@@ -144,6 +146,9 @@ export async function runCommand(
       });
       return r.reply;
     }
+
+    case "keys":
+      return runKeysCommand(rest);
 
     default:
       throw new Error(`unknown command: ${cmd}\n\n${USAGE}`);

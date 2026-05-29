@@ -9,6 +9,9 @@ import {
   dataDir,
   upsertEnvFile,
   verifyTelegramToken,
+  setAgentMnemonic,
+  defaultBackend,
+  type SecretBackend,
 } from "@vellum/shared";
 import { slug } from "./commands.ts";
 
@@ -21,7 +24,7 @@ export interface SetupAnswers {
   // just can't think until a key is set. Nothing else is ever hosted.
   openRouterKey?: string;
   // The master mnemonic all per-persona wallets derive from (generated fresh or
-  // imported). Written to .env so a fresh process re-derives the same wallets.
+  // imported). Stored in the OS keychain (ADR-0007), never plaintext .env.
   mnemonic: string;
   personaName: string;
   // Set ONLY if the user wants the daemon reachable beyond loopback — guards
@@ -40,13 +43,17 @@ export interface SetupResult {
   address: string;
   dataDir: string;
   envPath: string;
-  wroteKeys: string[];
+  wroteKeys: string[]; // .env keys written (non-seed secrets only)
+  seedBackend: string; // where the master seed was stored (e.g. macos-keychain)
   card: string; // the personality card (#25), ready to print
 }
 
 export interface SetupDeps {
-  envPath: string; // where to persist secrets (the repo .env Bun auto-loads)
+  envPath: string; // where to persist NON-seed secrets (the repo .env Bun loads)
   createEngine?: typeof defaultCreateEngine; // injectable for tests
+  // OS secret store for the master seed (ADR-0007), injectable so tests never
+  // touch the real keychain. Defaults to the platform backend.
+  secretBackend?: SecretBackend;
   // Telegram bot-token health-check (#74 review). Mirrors the web setup route:
   // validate via getMe before persisting so a mistyped token isn't written +
   // reported "enabled" only to silently fail at the next daemon boot. Injectable
@@ -68,9 +75,7 @@ export async function runSetup(
 ): Promise<SetupResult> {
   ensureDataDir();
 
-  const updates: Record<string, string> = {
-    AGENT_SIGNER_MNEMONIC: answers.mnemonic,
-  };
+  const updates: Record<string, string> = {};
   if (answers.openRouterKey) updates.OPENROUTER_API_KEY = answers.openRouterKey;
   if (answers.apiToken) updates.VELLUM_API_TOKEN = answers.apiToken;
   // Telegram is OPTIONAL (#49) — only persisted when a token was provided, and
@@ -94,10 +99,16 @@ export async function runSetup(
       throw new Error("Telegram chat id must be an integer");
     updates.TELEGRAM_PRINCIPAL_CHAT_ID = chat;
   }
-  const wroteKeys = upsertEnvFile(deps.envPath, updates);
+  // Store the master seed in the OS keychain — never plaintext .env (ADR-0007).
+  // After all validation above, so a bad Telegram token leaves no persisted state.
+  const secretBackend = deps.secretBackend ?? defaultBackend();
+  await setAgentMnemonic(answers.mnemonic, secretBackend);
+  const wroteKeys = Object.keys(updates).length
+    ? upsertEnvFile(deps.envPath, updates)
+    : [];
 
-  // Build the engine with the chosen mnemonic explicitly — env was just written
-  // but the current process parsed it once at import, so pass it directly.
+  // Build the engine with the chosen mnemonic explicitly — the seed is in the
+  // keychain but this process resolved its env once at import, so pass it directly.
   const engine = (deps.createEngine ?? defaultCreateEngine)({
     mnemonic: answers.mnemonic,
   });
@@ -120,6 +131,7 @@ export async function runSetup(
     dataDir: dataDir(),
     envPath: deps.envPath,
     wroteKeys,
+    seedBackend: secretBackend.name,
     card: renderPersonaCard(persona.soul, w.address),
   };
 }

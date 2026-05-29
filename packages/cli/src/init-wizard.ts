@@ -72,7 +72,7 @@ export async function initWizard(
   console.log(step(2, "Agent signer wallet"));
   const { mnemonic } = await generateWallet();
   console.log(
-    `   ${check} generated a new mnemonic ${dim("— saved to .env,")} ${copper("BACK IT UP")}${dim(":")}`,
+    `   ${check} generated a new mnemonic ${dim("— stored in your OS keychain,")} ${copper("BACK IT UP")}${dim(":")}`,
   );
   console.log("\n     " + gold(mnemonic) + "\n");
 
@@ -230,7 +230,10 @@ export async function initWizard(
   );
   console.log(`   ${dim("• data dir")}  ${fg(res.dataDir)}`);
   console.log(
-    `   ${dim("• secrets")}   ${fg(res.envPath)} ${dim("(" + res.wroteKeys.join(", ") + ")")}`,
+    `   ${dim("• seed")}      ${fg(res.seedBackend)} ${dim("(OS keychain — not in .env)")}`,
+  );
+  console.log(
+    `   ${dim("• secrets")}   ${fg(res.envPath)} ${dim("(" + (res.wroteKeys.join(", ") || "none") + ")")}`,
   );
 
   // 6) Run Bolt — seamlessly. The user shouldn't have to run any command: the
