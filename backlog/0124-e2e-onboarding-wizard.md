@@ -2,6 +2,7 @@
 id: 124
 title: "e2e: Onboarding wizard — first-run SetupFlow (no-wallet test-server variant)"
 status: in-progress
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/104"]
 priority: high
 type: testing
 source: audit-2026-05-29
