@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateWallet } from "@vellum/chain";
@@ -146,6 +152,24 @@ describe("run_command exec tool (#52)", () => {
     const elapsed = Date.now() - t0;
     expect(out).toContain("timed out");
     expect(elapsed).toBeLessThan(5000); // killed well before the 10s sleep
+  });
+
+  test("a timeout kills the whole process tree, not just the shell (#65 review)", async () => {
+    setRuntimeEnv({ VELLUM_EXEC_TIMEOUT_MS: 300 });
+    const e = eng();
+    grantExec(e);
+    const marker = join(workspace, "orphan-alive.txt");
+    // The shell backgrounds a child that, after 1s, writes a marker; then the
+    // shell itself sleeps so the 300ms timeout fires while BOTH are alive. If the
+    // timeout killed only the shell, the orphaned child would survive and write
+    // the marker ~1s later. Killing the whole process group takes the child too.
+    const out = await execTools(e, "p").invoke("run_command", {
+      command: `( sleep 1; echo alive > "${marker}" ) & sleep 5`,
+    });
+    expect(out).toContain("timed out");
+    // Wait past the child's 1s sleep: with a group kill the marker never appears.
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(existsSync(marker)).toBe(false);
   });
 
   describe("catastrophic-op denylist (refused even in YOLO)", () => {

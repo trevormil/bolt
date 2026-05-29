@@ -1,4 +1,6 @@
 import { mkdirSync } from "node:fs";
+import { spawn } from "node:child_process";
+import type { Readable } from "node:stream";
 import { env, ensureWorkspaceDir } from "@vellum/shared";
 import type { ToolInvoker, ToolSpec } from "@vellum/agent";
 import type { Engine } from "./engine.ts";
@@ -72,42 +74,36 @@ function catastrophicReason(command: string): string | null {
   return null;
 }
 
-// Read a stream to a string but STOP after maxBytes, then cancel — so a flooding
-// command (`yes`, `cat /dev/zero`) can't balloon daemon memory before the timeout
-// kills it (the full-buffer `Response(stream).text()` would OOM first). Appends a
-// truncation marker when it caps.
-async function readCapped(
-  stream: ReadableStream<Uint8Array>,
-  maxBytes: number,
-): Promise<string> {
-  const reader = stream.getReader();
-  const chunks: Uint8Array[] = [];
+// Read a stream to a string but STOP after maxBytes, then destroy it — so a
+// flooding command (`yes`, `cat /dev/zero`) can't balloon daemon memory before
+// the timeout kills it. Destroying our read end SIGPIPEs the writer (the child),
+// so a flood self-terminates promptly. Appends a truncation marker when it caps.
+async function readCapped(stream: Readable, maxBytes: number): Promise<string> {
+  const chunks: Buffer[] = [];
   let total = 0;
   let capped = false;
   try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (!value) continue;
-      chunks.push(value);
-      total += value.length;
+    for await (const chunk of stream as AsyncIterable<Buffer>) {
+      chunks.push(chunk);
+      total += chunk.length;
       if (total >= maxBytes) {
         capped = true;
         break;
       }
     }
   } finally {
-    reader.cancel().catch(() => {}); // closes our end; the child SIGPIPEs/gets killed
+    stream.destroy();
   }
   const text = Buffer.concat(chunks).subarray(0, maxBytes).toString("utf8");
   return capped ? `${text}\n…(truncated at ${maxBytes} bytes)` : text;
 }
 
-// Run `command` under the system shell with cwd pinned to the workspace. Bun's
-// spawn with a string array would skip the shell; we want shell semantics
-// (pipes, &&) like a dev terminal, so we invoke `sh -c`. The timeout races a
-// kill against process exit so a hung command can't block the loop; reads are
-// byte-capped so a flood can't blow up memory either.
+// Run `command` under the system shell with cwd pinned to the workspace. We want
+// shell semantics (pipes, &&) like a dev terminal, so we invoke `sh -c`. Spawned
+// `detached` so the shell becomes its OWN process-group LEADER (pgid === pid):
+// the timeout then kills the WHOLE group (`-pid`), not just the shell, so a
+// command that backgrounds children can't leave them orphaned after we return
+// (!65 review). Reads are byte-capped so a flood can't blow up memory either.
 async function runInWorkspace(
   command: string,
   cwd: string,
@@ -119,27 +115,53 @@ async function runInWorkspace(
   exitCode: number;
   timedOut: boolean;
 }> {
-  const proc = Bun.spawn(["sh", "-c", command], {
+  const proc = spawn("sh", ["-c", command], {
     cwd,
-    stdout: "pipe",
-    stderr: "pipe",
     // Inherit env but never the agent's secrets/keys — strip them so a spawned
     // command can't exfiltrate the mnemonic / API keys via the environment.
     env: redactedEnv(),
+    detached: true, // new process group so we can signal the whole tree
+    stdio: ["ignore", "pipe", "pipe"],
   });
+
+  // Kill the entire process group (negative pid). `detached` makes pid the group
+  // leader, so `-pid` reaches every descendant. Fall back to the lone process if
+  // the group is already gone (ESRCH), and swallow — the child has exited.
+  const killTree = (signal: NodeJS.Signals) => {
+    if (proc.pid === undefined) return;
+    try {
+      process.kill(-proc.pid, signal);
+    } catch {
+      try {
+        proc.kill(signal);
+      } catch {
+        /* already exited */
+      }
+    }
+  };
 
   let timedOut = false;
   const timer = setTimeout(() => {
     timedOut = true;
-    proc.kill("SIGKILL"); // hard kill — SIGTERM may be ignored by a busy build
+    killTree("SIGKILL"); // hard kill the tree — SIGTERM may be ignored
   }, timeoutMs);
+
+  // The exit code, from `close` (fires after stdio EOF). A signalled kill reports
+  // code=null → surface a non-zero code so callers see it didn't exit cleanly.
+  const exited = new Promise<number>((resolve) => {
+    proc.on("close", (code, signal) => resolve(code ?? (signal ? 137 : -1)));
+    proc.on("error", () => resolve(-1)); // spawn failure (e.g. sh missing)
+  });
 
   try {
     const [stdout, stderr] = await Promise.all([
-      readCapped(proc.stdout, maxOutput),
-      readCapped(proc.stderr, maxOutput),
+      readCapped(proc.stdout!, maxOutput),
+      readCapped(proc.stderr!, maxOutput),
     ]);
-    const exitCode = await proc.exited;
+    // Reads finished but the child (or a descendant it backgrounded) may still
+    // be alive — e.g. a flood we capped. Reap the whole tree so nothing orphans.
+    if (proc.exitCode === null && proc.signalCode === null) killTree("SIGKILL");
+    const exitCode = await exited;
     return { stdout, stderr, exitCode, timedOut };
   } finally {
     clearTimeout(timer);
