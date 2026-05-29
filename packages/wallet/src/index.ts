@@ -8,9 +8,10 @@ export {
 } from "./wallet.ts";
 
 if (import.meta.main) {
-  const { createLogger, env } = await import("@vellum/shared");
+  const { createLogger, getAgentMnemonic } = await import("@vellum/shared");
+  const present = !!(await getAgentMnemonic());
   createLogger("wallet").info(
     `ready · per-persona bb1 wallets` +
-      (env.AGENT_SIGNER_MNEMONIC ? "" : " · (no AGENT_SIGNER_MNEMONIC set)"),
+      (present ? "" : " · (no signer seed configured)"),
   );
 }

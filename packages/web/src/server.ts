@@ -12,6 +12,10 @@ import {
   ensureDataDir,
   migrateLegacyDb,
   verifyTelegramToken,
+  getAgentMnemonic,
+  setAgentMnemonic,
+  defaultBackend,
+  type SecretBackend,
 } from "@vellum/shared";
 import {
   createEngine,
@@ -285,11 +289,15 @@ export function buildApp(
       attach(token: string): Promise<void>;
       detach(): Promise<void>;
     };
+    // OS secret store for the agent master seed (ADR-0007), injectable so tests
+    // never touch the real keychain. Defaults to the platform backend.
+    secretBackend?: SecretBackend;
   } = {},
 ) {
   const app = new Hono();
   const setupEnvFilePath = setup.envFilePath ?? join(process.cwd(), ".env");
   const applyRuntimeEnv = setup.applyRuntime ?? setRuntimeEnv;
+  const secretBackend = setup.secretBackend ?? defaultBackend();
   const distDir = setup.distDir ?? DIST;
   const verifyKey = setup.verifyKey ?? verifyOpenRouterKey;
   const verifyTelegram = setup.verifyTelegram ?? verifyTelegramToken;
@@ -406,14 +414,14 @@ export function buildApp(
   // (SetupFlow) knows whether to show the first-run flow. Booleans/counts ONLY:
   // never the key/mnemonic values, and never the local data-dir path
   // (unauthenticated route — no local filesystem disclosure; !48 review).
-  app.get("/api/setup-status", (c) =>
+  app.get("/api/setup-status", async (c) =>
     c.json({
       hasLlmKey: !!(
         env.OPENROUTER_API_KEY ||
         env.ANTHROPIC_API_KEY ||
         env.OPENAI_API_KEY
       ),
-      hasWallet: !!env.AGENT_SIGNER_MNEMONIC,
+      hasWallet: !!(await getAgentMnemonic(secretBackend)),
       personaCount: engine.store.listPersonas().length,
       daemonExposed: !isLoopback(env.WEB_HOST),
       telegramConfigured: !!env.TELEGRAM_BOT_TOKEN,
@@ -436,7 +444,7 @@ export function buildApp(
         },
         403,
       );
-    if (env.AGENT_SIGNER_MNEMONIC)
+    if (await getAgentMnemonic(secretBackend))
       return c.json({ error: "already set up" }, 409);
 
     const body = (await c.req.json().catch(() => ({}))) as {
@@ -480,12 +488,13 @@ export function buildApp(
     // is the agent's key; it never enters the app from the user side.
     const mnemonic = (await generateWallet()).mnemonic;
 
+    // The master seed goes to the OS keychain (ADR-0007), never plaintext .env;
+    // only the non-seed secrets persist to the env file. The seed is adopted into
+    // the running daemon below via wallets.setMnemonic (no env round-trip).
     const updates: Record<string, string> = {
-      AGENT_SIGNER_MNEMONIC: mnemonic,
       OPENROUTER_API_KEY: openRouterKey,
     };
     const runtime: Partial<typeof env> = {
-      AGENT_SIGNER_MNEMONIC: mnemonic,
       OPENROUTER_API_KEY: openRouterKey,
     };
     if (typeof body.apiToken === "string" && body.apiToken.trim()) {
@@ -521,6 +530,9 @@ export function buildApp(
       }
     }
 
+    // Store the master seed in the OS keychain (after all validation, so a bad
+    // Telegram token above leaves no persisted state). Then the non-seed secrets.
+    await setAgentMnemonic(mnemonic, secretBackend);
     upsertEnvFile(setupEnvFilePath, updates); // persist for next boot
     applyRuntimeEnv(runtime); // live daemon adopts it now (no restart)
     engine.wallets.setMnemonic(mnemonic);
@@ -640,12 +652,12 @@ export function buildApp(
   // (Settings → Export). Same trust boundary as POST /api/setup: NOT public, so it
   // stays behind the Host/Origin guard + token auth, and the route itself is
   // additionally loopback-only — the phrase never crosses a network boundary.
-  app.get("/api/agent/mnemonic", (c) => {
+  app.get("/api/agent/mnemonic", async (c) => {
     if (!isLoopback(auth.host ?? "127.0.0.1"))
       return c.json({ error: "seed export is loopback-only" }, 403);
-    if (!env.AGENT_SIGNER_MNEMONIC)
-      return c.json({ error: "no agent wallet configured" }, 404);
-    return c.json({ mnemonic: env.AGENT_SIGNER_MNEMONIC });
+    const mnemonic = await getAgentMnemonic(secretBackend);
+    if (!mnemonic) return c.json({ error: "no agent wallet configured" }, 404);
+    return c.json({ mnemonic });
   });
 
   app.get("/api/personas", (c) => {

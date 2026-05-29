@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { LlmAuthError, type Meter } from "@vellum/llm";
 import type { RunLoop } from "@vellum/orchestrator";
 import type { TxChain } from "@vellum/tx";
-import { env } from "@vellum/shared";
+import { env, type SecretBackend } from "@vellum/shared";
 import { createEngine, PaymentRequests, DepositRequests } from "@vellum/engine";
 import {
   buildApp,
@@ -19,6 +19,25 @@ import {
   webServeOptions,
   parseGating,
 } from "./server.ts";
+
+// In-memory secret store so mnemonic routes never touch the real macOS keychain
+// (ADR-0007). Returns the backend + a peek into what was stored.
+function fakeSecretBackend(initial: string | null = null) {
+  let store = initial;
+  const backend: SecretBackend = {
+    name: "fake-store",
+    async get() {
+      return store;
+    },
+    async set(_account, value) {
+      store = value;
+    },
+    async delete() {
+      store = null;
+    },
+  };
+  return { backend, peek: () => store };
+}
 
 const METER: Meter = {
   model: "test",
@@ -101,6 +120,8 @@ beforeEach(() => {
     engine,
     new PaymentRequests(":memory:"),
     new DepositRequests(":memory:"),
+    undefined,
+    { secretBackend: fakeSecretBackend().backend },
   );
 });
 
@@ -1446,6 +1467,7 @@ describe("first-run web setup (/api/setup)", () => {
       `vellum-setup-${Math.random().toString(36).slice(2)}.env`,
     );
     const applied: Partial<typeof env>[] = [];
+    const secret = fakeSecretBackend();
     const app = buildApp(
       makeEngine(),
       new PaymentRequests(":memory:"),
@@ -1456,9 +1478,10 @@ describe("first-run web setup (/api/setup)", () => {
         applyRuntime: (p) => applied.push(p),
         verifyKey,
         verifyTelegram,
+        secretBackend: secret.backend,
       },
     );
-    return { app, envFilePath, applied };
+    return { app, envFilePath, applied, seed: secret.peek };
   }
 
   const postSetup = (
@@ -1500,9 +1523,9 @@ describe("first-run web setup (/api/setup)", () => {
     expect(applied).toHaveLength(0); // no runtime mutation on a refused call
   });
 
-  test("generate flow creates a 24-word wallet + persists it, never echoing the phrase", async () => {
+  test("generate flow creates a 24-word wallet + stores it in the keychain, never echoing the phrase or writing it to .env", async () => {
     env.AGENT_SIGNER_MNEMONIC = undefined;
-    const { app, envFilePath, applied } = setupApp();
+    const { app, envFilePath, applied, seed } = setupApp();
     const res = await postSetup(app, { openRouterKey: "sk-or-test" });
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
@@ -1511,15 +1534,17 @@ describe("first-run web setup (/api/setup)", () => {
     // Settings) — the response carries no mnemonic field.
     expect(JSON.stringify(body)).not.toContain("mnemonic");
 
-    // It WAS generated + adopted at runtime (so the live daemon works without
-    // restart) — a real 24-word phrase, observable only server-side.
-    const adopted = applied[0]?.AGENT_SIGNER_MNEMONIC ?? "";
-    expect(adopted.trim().split(/\s+/)).toHaveLength(24);
+    // It WAS generated + stored in the OS keychain (ADR-0007) — a real 24-word
+    // phrase, never round-tripped through runtime env or plaintext .env.
+    const stored = seed() ?? "";
+    expect(stored.trim().split(/\s+/)).toHaveLength(24);
+    expect(applied[0]?.AGENT_SIGNER_MNEMONIC).toBeUndefined();
     expect(applied[0]?.OPENROUTER_API_KEY).toBe("sk-or-test");
 
-    // Persisted to the (temp) .env for the next boot.
+    // The non-seed secrets persist to the (temp) .env for the next boot; the
+    // seed never does.
     const written = readFileSync(envFilePath, "utf8");
-    expect(written).toContain("AGENT_SIGNER_MNEMONIC=");
+    expect(written).not.toContain("AGENT_SIGNER_MNEMONIC");
     expect(written).toContain("OPENROUTER_API_KEY=sk-or-test");
     rmSync(envFilePath, { force: true });
   });
@@ -1608,17 +1633,19 @@ describe("first-run web setup (/api/setup)", () => {
   });
 
   test("ignores any mnemonic in the body — wallets are always generated (#59)", async () => {
-    // No import: even if a caller sends a phrase, setup generates a fresh one.
+    // No import: even if a caller sends a phrase, setup generates a fresh one
+    // and stores it in the keychain (never the attacker phrase).
     env.AGENT_SIGNER_MNEMONIC = undefined;
-    const { app, applied } = setupApp();
+    const { app, applied, seed } = setupApp();
     const res = await postSetup(app, {
       openRouterKey: "sk-or-test",
       mnemonic: "attacker supplied phrase that must be ignored",
     });
     expect(res.status).toBe(200);
-    const adopted = applied[0]?.AGENT_SIGNER_MNEMONIC ?? "";
-    expect(adopted.trim().split(/\s+/)).toHaveLength(24); // freshly generated
-    expect(adopted).not.toContain("attacker");
+    const stored = seed() ?? "";
+    expect(stored.trim().split(/\s+/)).toHaveLength(24); // freshly generated
+    expect(stored).not.toContain("attacker");
+    expect(applied[0]?.AGENT_SIGNER_MNEMONIC).toBeUndefined(); // never via env
   });
 
   test("requires an OpenRouter key (#60)", async () => {
@@ -1649,6 +1676,8 @@ describe("agent seed export (/api/agent/mnemonic)", () => {
     env.AGENT_SIGNER_MNEMONIC = savedMnemonic;
   });
 
+  // A null secret backend so resolution depends only on the env the tests set
+  // (env-first), never the real keychain — the 404 case must be deterministic.
   const app = (
     auth: { token?: string; host?: string } = { host: "127.0.0.1" },
   ) =>
@@ -1657,6 +1686,7 @@ describe("agent seed export (/api/agent/mnemonic)", () => {
       new PaymentRequests(":memory:"),
       new DepositRequests(":memory:"),
       auth,
+      { secretBackend: fakeSecretBackend().backend },
     );
 
   const get = (

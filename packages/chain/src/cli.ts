@@ -4,7 +4,7 @@
 //   bun run packages/chain/src/cli.ts whoami
 //   bun run packages/chain/src/cli.ts balance [bb1addr]
 //   bun run packages/chain/src/cli.ts send <bb1addr> <amount> [denom]
-import { env } from "@vellum/shared";
+import { getAgentMnemonic } from "@vellum/shared";
 import {
   addressOf,
   generateWallet,
@@ -13,9 +13,14 @@ import {
   confirmTx,
 } from "./client.ts";
 
-function requireSigner(): string {
-  const m = env.AGENT_SIGNER_MNEMONIC;
-  if (!m) throw new Error("AGENT_SIGNER_MNEMONIC not set (devnet signer)");
+// Resolve the devnet signer seed via env → OS keychain (ADR-0007), so this CLI
+// still works after the seed moves out of plaintext .env.
+async function requireSigner(): Promise<string> {
+  const m = await getAgentMnemonic();
+  if (!m)
+    throw new Error(
+      "no agent signer seed (set AGENT_SIGNER_MNEMONIC or store it in the keychain)",
+    );
   return m;
 }
 
@@ -28,11 +33,11 @@ switch (cmd) {
     break;
   }
   case "whoami": {
-    console.log(await addressOf(requireSigner()));
+    console.log(await addressOf(await requireSigner()));
     break;
   }
   case "balance": {
-    const addr = args[0] ?? (await addressOf(requireSigner()));
+    const addr = args[0] ?? (await addressOf(await requireSigner()));
     console.log(addr);
     console.log(JSON.stringify(await getBalances(addr), null, 2));
     break;
@@ -41,7 +46,7 @@ switch (cmd) {
     const [to, amount, denom] = args;
     if (!to || !amount)
       throw new Error("usage: send <bb1addr> <amount> [denom]");
-    const res = await sendCoins(requireSigner(), to, amount, denom);
+    const res = await sendCoins(await requireSigner(), to, amount, denom);
     const confirmed = await confirmTx(res.transactionHash);
     console.log(
       JSON.stringify({ txHash: res.transactionHash, ...confirmed }, null, 2),

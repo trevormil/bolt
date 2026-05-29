@@ -1,6 +1,7 @@
-import { beforeAll, describe, expect, test } from "bun:test";
+import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { unlinkSync } from "node:fs";
 import { generateWallet, type Coin } from "@vellum/chain";
+import { env } from "@vellum/shared";
 import { PersonaWallets } from "./index.ts";
 
 let MNEMONIC: string;
@@ -11,6 +12,21 @@ beforeAll(async () => {
 function fresh(getBalances?: (a: string) => Promise<readonly Coin[]>) {
   return new PersonaWallets({ mnemonic: MNEMONIC, getBalances });
 }
+
+describe("master-seed resolution (#96 / ADR-0007)", () => {
+  const saved = env.AGENT_SIGNER_MNEMONIC;
+  afterEach(() => {
+    env.AGENT_SIGNER_MNEMONIC = saved;
+  });
+
+  test("with no explicit mnemonic, derives from the resolved env seed", async () => {
+    env.AGENT_SIGNER_MNEMONIC = MNEMONIC;
+    const w = new PersonaWallets({}); // no opts.mnemonic → lazy getAgentMnemonic
+    const a = await w.ensureWallet("atlas");
+    expect(a.address.startsWith("bb1")).toBe(true);
+    w.close();
+  });
+});
 
 describe("PersonaWallets", () => {
   test("derives a distinct bb1 wallet per persona at incrementing indices", async () => {
@@ -111,12 +127,17 @@ describe("PersonaWallets", () => {
     w.close();
   });
 
-  test("refuses to derive without a master mnemonic", async () => {
-    // Empty string = not configured (the env fallback is bypassed explicitly).
-    const w = new PersonaWallets({ mnemonic: "" });
-    await expect(w.ensureWallet("atlas")).rejects.toThrow(
-      "AGENT_SIGNER_MNEMONIC",
-    );
+  test("refuses to derive when no master seed resolves", async () => {
+    // No explicit seed, no env, env-only backend (no keychain) → nothing resolves
+    // and derivation fails loudly (ADR-0007). Save/restore the env we toggle.
+    const savedSeed = env.AGENT_SIGNER_MNEMONIC;
+    const savedBackend = env.VELLUM_SECRET_BACKEND;
+    env.AGENT_SIGNER_MNEMONIC = undefined;
+    env.VELLUM_SECRET_BACKEND = "env";
+    const w = new PersonaWallets({});
+    await expect(w.ensureWallet("atlas")).rejects.toThrow(/no agent signer/i);
+    env.AGENT_SIGNER_MNEMONIC = savedSeed;
+    env.VELLUM_SECRET_BACKEND = savedBackend;
     w.close();
   });
 
