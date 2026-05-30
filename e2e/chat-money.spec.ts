@@ -56,6 +56,8 @@ test.describe("autonomous money paths (faucet + send)", () => {
       .last() // WalletPanel has Fund + Send sections; Send is later in the DOM.
       .fill("1");
     await page.getByRole("button", { name: /Send USDC/ }).click();
-    await expect(page.getByText(/Sent 1 USDC.*e2e0babe/)).toBeVisible();
+    // Agent-broadcast hash prefix is a9e470b8 (distinct from human-signed
+    // e2e0babe so the two paths can't collide on ledger UNIQUE).
+    await expect(page.getByText(/Sent 1 USDC.*a9e470b8/)).toBeVisible();
   });
 });

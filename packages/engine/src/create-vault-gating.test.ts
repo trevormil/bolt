@@ -52,9 +52,13 @@ function eng(): Engine {
     embedder: null,
     mnemonic,
     runLoop: async () => ({ text: "", meters: [] }),
+    txChain: {
+      getBalances: async () => [{ denom: "ubadge", amount: "10000000" }],
+      signAndBroadcast: async () => "abcd".repeat(16),
+      confirmTx: async () => ({ height: 1, code: 0 }),
+    },
     vault: {
       defaultManager: "bb1zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zql3w7",
-      createVault: async () => ({ txHash: "VAULTCREATE1" }),
       confirmTx: async () => ({ height: 9, code: 0 }),
       fetchTx: async () => fakeCreateTxEvents,
       fetchTokenBalance: async () => "0",

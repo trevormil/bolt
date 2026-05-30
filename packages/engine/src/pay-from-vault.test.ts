@@ -83,7 +83,6 @@ function eng(chain: TxChain): Engine {
     txChain: chain,
     vault: {
       defaultManager: "bb1zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zql3w7",
-      createVault: async () => ({ txHash: "VAULTCREATE1" }),
       confirmTx: async () => ({ height: 9, code: 0 }),
       fetchTx: async () => fakeCreateTxEvents,
       fetchTokenBalance: async () => "3000000",
@@ -104,6 +103,9 @@ describe("engine.vaults.pay — gated pay-from-vault-to-recipient (#51)", () => 
     const { chain, broadcasts } = captureChain();
     const e = eng(chain);
     const collectionId = await provisionVault(e);
+    // The vault create itself now broadcasts through TxManager.submit (#100 §1)
+    // — clear so the assertions below see ONLY the pay tx's broadcasts.
+    broadcasts.length = 0;
     const from = e.wallets.addressFor("p")!;
 
     const p = await e.vaults.pay("p", collectionId, "2000000", RECIPIENT);
@@ -144,9 +146,16 @@ describe("engine.vaults.pay — gated pay-from-vault-to-recipient (#51)", () => 
   });
 
   test("over-cap / locked / no-quorum is rejected at CheckTx — no value moves", async () => {
-    const { chain } = captureChain({ reject: true });
-    const e = eng(chain);
+    // The reject-on-broadcast chain rejects EVERY broadcast — including the
+    // vault create — so we provision with a non-rejecting chain, then swap.
+    const { chain: okChain } = captureChain();
+    const e = eng(okChain);
     const id = await provisionVault(e);
+    // Now rewire the txChain to reject. (No public setter — we mutate via
+    // direct dependency overwrite: tests at this layer have access.)
+    const { chain: rejectChain } = captureChain({ reject: true });
+    (e.txManager as unknown as { chain: typeof rejectChain }).chain =
+      rejectChain;
     await expect(e.vaults.pay("p", id, "9000000", RECIPIENT)).rejects.toThrow(
       /rejected/,
     );
@@ -160,6 +169,7 @@ describe("engine.vaults.pay — gated pay-from-vault-to-recipient (#51)", () => 
     const { chain, broadcasts } = captureChain();
     const e = eng(chain);
     const id = await provisionVault(e);
+    broadcasts.length = 0;
     await expect(
       e.vaults.pay("p", id, "1000000", "0xdeadbeef"),
     ).rejects.toThrow(/invalid recipient/);
@@ -170,6 +180,7 @@ describe("engine.vaults.pay — gated pay-from-vault-to-recipient (#51)", () => 
     const { chain, broadcasts } = captureChain();
     const e = eng(chain);
     const id = await provisionVault(e);
+    broadcasts.length = 0;
     for (const bad of ["0", "-1000000", "1.5", "abc"]) {
       await expect(e.vaults.pay("p", id, bad, RECIPIENT)).rejects.toThrow(
         /positive integer/,
@@ -184,6 +195,7 @@ describe("engine.vaults.pay — gated pay-from-vault-to-recipient (#51)", () => 
     const { chain, broadcasts } = captureChain();
     const e = eng(chain);
     const id = await provisionVault(e);
+    broadcasts.length = 0;
     const tools = vaultTools(e, "p");
     for (const bad of [0, -1, "abc", Infinity]) {
       const out = await tools.invoke("pay_from_vault", {
@@ -243,7 +255,6 @@ describe("check_balance — read-only wallet + per-vault escrow (#51)", () => {
       getBalances: async () => [{ denom: env.VELLUM_DENOM, amount: "4500000" }],
       vault: {
         defaultManager: "bb1zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zql3w7",
-        createVault: async () => ({ txHash: "VAULTCREATE1" }),
         confirmTx: async () => ({ height: 9, code: 0 }),
         fetchTx: async () => fakeCreateTxEvents,
         fetchTokenBalance: async () => "3000000", // 3 USDC escrowed in the vault

@@ -37,10 +37,12 @@ test.describe("vault withdraw (agent in-cap, pending → confirmed UI)", () => {
       .click();
 
     // The TxManager reconciler flips the in-memory tx to "confirmed" via the
-    // seamed confirmTx; the SPA poll surfaces the final note. Asserting on the
-    // terminal "confirmed" message proves the pending → confirmed pipeline ran.
+    // seamed confirmTx; the SPA poll surfaces the final note. The agent-signed
+    // path uses the a9e470b8 hash prefix (distinct from the LCD POST stub's
+    // e2e0babe so vault-create and human-signed txs don't collide on the
+    // ledger UNIQUE(tx_hash) index across specs in one suite).
     await expect(
-      page.getByText(/Withdrawal confirmed.*e2e0babe/),
+      page.getByText(/Withdrawal confirmed.*a9e470b8/),
     ).toBeVisible();
   });
 });

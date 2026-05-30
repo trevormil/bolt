@@ -39,9 +39,15 @@ function eng(): Engine {
     embedder: null,
     mnemonic,
     runLoop: async () => ({ text: "", meters: [] }),
+    // Post-#100 §1 vault.create routes through txChain.signAndBroadcast,
+    // so an unseamed txChain hits the real LCD → "account unregistered".
+    txChain: {
+      getBalances: async () => [{ denom: "ubadge", amount: "10000000" }],
+      signAndBroadcast: async () => "abcd".repeat(16),
+      confirmTx: async () => ({ height: 1, code: 0 }),
+    },
     vault: {
       defaultManager: "bb1human",
-      createVault: async () => ({ txHash: "VAULTCREATE1" }),
       confirmTx: async () => ({ height: 9, code: 0 }),
       fetchTx: async () => fakeCreateTxEvents,
       fetchTokenBalance: async () => "2000000", // 2 vUSDC escrowed (for reads)
@@ -200,7 +206,6 @@ describe("balance read/awareness tools (#88)", () => {
       },
       vault: {
         defaultManager: "bb1human",
-        createVault: async () => ({ txHash: "VAULTCREATE1" }),
         confirmTx: async () => ({ height: 9, code: 0 }),
         fetchTx: async () => fakeCreateTxEvents,
         fetchTokenBalance: async () => null, // LCD unreachable
@@ -225,12 +230,14 @@ describe("balance read/awareness tools (#88)", () => {
   });
 
   test("vault_details subtracts in-flight withdraws from the displayed remaining allowance (#104 §2)", async () => {
-    // Use a gated txChain that NEVER resolves confirmTx — the withdraw row
-    // stays "pending" so vault_details can observe an unsettled in-flight
-    // withdraw vs. tracker still reading zero on-chain.
+    // The vault create AND the withdraw both go through txChain (post-#100 §1).
+    // The first call (create) must confirm so awaitSettled returns; the
+    // second (withdraw) must stall so vault_details sees an unsettled
+    // in-flight row vs. the tracker still reading zero on-chain.
     const stallConfirm = new Promise<{ height: number; code: number }>(
       () => {},
     );
+    let confirmCalls = 0;
     const e = createEngine({
       dbPath: ":memory:",
       embedder: null,
@@ -239,11 +246,16 @@ describe("balance read/awareness tools (#88)", () => {
       txChain: {
         getBalances: async () => [{ denom: "ubadge", amount: "0" }],
         signAndBroadcast: async () => "h",
-        confirmTx: async () => stallConfirm,
+        confirmTx: async () => {
+          confirmCalls++;
+          // First call = the vault create's confirm → returns ok so the
+          // setup completes. Subsequent calls (the withdraw) → stall.
+          if (confirmCalls === 1) return { height: 9, code: 0 };
+          return stallConfirm;
+        },
       },
       vault: {
         defaultManager: "bb1human",
-        createVault: async () => ({ txHash: "VAULTCREATE1" }),
         confirmTx: async () => ({ height: 9, code: 0 }),
         fetchTx: async () => fakeCreateTxEvents,
         fetchTokenBalance: async () => "0",

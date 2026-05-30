@@ -64,12 +64,10 @@ export interface EngineOptions {
   mnemonic?: string; // test seam — wallet derivation (else env.AGENT_SIGNER_MNEMONIC)
   vault?: Pick<
     VaultServiceDeps,
-    | "createVault"
-    | "confirmTx"
-    | "fetchTx"
-    | "defaultManager"
-    | "fetchTokenBalance"
-  >; // vault test seams
+    "confirmTx" | "fetchTx" | "defaultManager" | "fetchTokenBalance"
+  >; // vault test seams (post-#100 §1: the createVault seam is removed —
+  //   vault.create now routes through txChain.signAndBroadcast inside
+  //   TxManager.submit, so tests inject via the `txChain` seam)
   approve?: Approver; // capability approval prompt (#37); surfaces inject. Default fail-closed.
   mcpConnect?: McpConnector; // test seam — connect MCP servers without spawning subprocesses (#46)
 }

@@ -45,6 +45,10 @@ export interface PendingTx {
   error: string | null;
   created: number;
   updated: number;
+  // Auto-reconcile retry counter (#99 §3). 0 = fresh; bumped each time
+  // confirmPending sees an unconfirmed (timeout/network) result and leaves
+  // the row pending for re-drive. Capped at MAX_RECONCILE_RETRIES.
+  reconciles: number;
 }
 
 // Injected so the manager is unit-testable without the network. Defaults are the
@@ -102,6 +106,7 @@ interface TxRow {
   error: string | null;
   created: number;
   updated: number;
+  reconciles: number;
 }
 const toTx = (r: TxRow): PendingTx => ({
   id: r.id,
@@ -117,6 +122,7 @@ const toTx = (r: TxRow): PendingTx => ({
   error: r.error,
   created: r.created,
   updated: r.updated,
+  reconciles: r.reconciles ?? 0,
 });
 
 function usdc(base: string): string {
@@ -194,10 +200,27 @@ export class TxManager {
       error TEXT,
       created INTEGER NOT NULL,
       updated INTEGER NOT NULL)`);
+    // Migration: add the reconcile-retry counter (#99 §3) — bounded retries
+    // so a never-canonically-committed tx (LCD reorg / fork on mainnet) does
+    // not loop forever and leave the persona's wallet permanently locked.
+    const cols = this.db.query("PRAGMA table_info(tx)").all() as {
+      name: string;
+    }[];
+    if (!cols.some((c) => c.name === "reconciles")) {
+      this.db.run(
+        "ALTER TABLE tx ADD COLUMN reconciles INTEGER NOT NULL DEFAULT 0",
+      );
+    }
     this.db.run(
       "CREATE INDEX IF NOT EXISTS idx_tx_persona_status ON tx(persona_id, status)",
     );
   }
+
+  // Auto-reconcile retry cap (#99 §3). At 15s sweeps, 25 retries ≈ 6 minutes
+  // of post-broadcast confirmation budget before we declare the tx
+  // unreconcilable and unblock the persona. The row's stored error + hash
+  // are preserved so an operator can investigate via the dashboard.
+  private static readonly MAX_RECONCILE_RETRIES = 25;
 
   // Per-persona async mutex. Held from spend start THROUGH confirmation so no
   // second tx leaves a wallet until the first confirms or fails (§13.4).
@@ -300,6 +323,7 @@ export class TxManager {
         error: null,
         created: now,
         updated: now,
+        reconciles: 0,
       });
 
       const chainSpan = (input.trace ?? NOOP_SPAN).child(`chain:${kind}`, {
@@ -427,11 +451,77 @@ export class TxManager {
         this.setStatus(id, "failed", { error });
         log.warn(`failed ${hash.slice(0, 10)}: ${error}`);
       } else {
-        // Unknown (timeout/network) — keep PENDING so reconcile retries.
-        this.setStatus(id, "pending", { error });
-        log.warn(`unconfirmed ${hash.slice(0, 10)}: ${error} — left pending`);
+        // Unknown (timeout/network) — keep PENDING so reconcile retries, but
+        // CAP the retries (#99 §3). At ~15s sweeps × 25 retries ≈ 6 min, the
+        // tx is declared unreconcilable and the persona is unblocked. The
+        // row's last error + hash are preserved for operator review.
+        const next = (row.reconciles ?? 0) + 1;
+        if (next >= TxManager.MAX_RECONCILE_RETRIES) {
+          this.setStatus(id, "failed", {
+            error: `unreconciled after ${next} retries — last: ${error}`,
+          });
+          log.warn(
+            `giving up on ${hash.slice(0, 10)} after ${next} retries; marked failed/unreconciled`,
+          );
+        } else {
+          this.setStatus(id, "pending", { error, reconciles: next });
+          log.warn(`unconfirmed ${hash.slice(0, 10)}: ${error} — left pending`);
+        }
       }
     }
+  }
+
+  /**
+   * Wait until a submitted tx reaches a terminal state (confirmed | failed).
+   * Used by setup-style actions (vault.create) that need to complete before
+   * returning — the chokepoint runs the lifecycle but the caller awaits the
+   * outcome. Polls the durable store every `pollMs` until terminal, then
+   * returns the row. Times out after `timeoutMs` — the tx stays in the
+   * store either way; the timeout reflects the caller's patience, not the
+   * tx's outcome.
+   */
+  async awaitSettled(
+    id: string,
+    timeoutMs = 30_000,
+    pollMs = 100,
+  ): Promise<PendingTx> {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const row = this.get(id);
+      if (!row) throw new Error(`unknown tx: ${id}`);
+      if (row.status === "confirmed" || row.status === "failed") return row;
+      await new Promise((r) => setTimeout(r, pollMs));
+    }
+    throw new Error(
+      `tx ${id} did not settle within ${timeoutMs}ms — still ${this.get(id)?.status ?? "unknown"}`,
+    );
+  }
+
+  /**
+   * Boot-time recovery (#99 §2). A row stuck in `submitting` means a crash
+   * happened between the durable INSERT and the hash recording — the tx may
+   * or may not have actually broadcast. The wallet stays locked forever
+   * because the per-persona guard counts this row as in-flight.
+   *
+   * Pragmatic recovery (chain-scan is its own scope): rows older than
+   * `staleMs` get marked `failed` with `unreconciled` annotation so the
+   * wallet unblocks. The operator can investigate via the stored error.
+   * Returns how many rows were recovered.
+   */
+  async recoverStuckSubmitting(staleMs = 5 * 60_000): Promise<number> {
+    const cutoff = Date.now() - staleMs;
+    const stuck = this.db
+      .query("SELECT id FROM tx WHERE status = 'submitting' AND created < ?")
+      .all(cutoff) as { id: string }[];
+    for (const { id } of stuck) {
+      this.setStatus(id, "failed", {
+        error: "unreconciled — recovered at boot; tx outcome unknown",
+      });
+      log.warn(
+        `recovered stuck submitting tx ${id} — marked failed/unreconciled`,
+      );
+    }
+    return stuck.length;
   }
 
   /** On startup: drive every unsettled row toward terminal state. Rows with a
@@ -546,13 +636,28 @@ export class TxManager {
   private setStatus(
     id: string,
     status: TxStatus,
-    extra: { height?: number; error?: string },
+    extra: { height?: number; error?: string; reconciles?: number },
   ): void {
-    this.db
-      .query(
-        "UPDATE tx SET status = ?, height = ?, error = ?, updated = ? WHERE id = ?",
-      )
-      .run(status, extra.height ?? null, extra.error ?? null, Date.now(), id);
+    if (extra.reconciles != null) {
+      this.db
+        .query(
+          "UPDATE tx SET status = ?, height = ?, error = ?, reconciles = ?, updated = ? WHERE id = ?",
+        )
+        .run(
+          status,
+          extra.height ?? null,
+          extra.error ?? null,
+          extra.reconciles,
+          Date.now(),
+          id,
+        );
+    } else {
+      this.db
+        .query(
+          "UPDATE tx SET status = ?, height = ?, error = ?, updated = ? WHERE id = ?",
+        )
+        .run(status, extra.height ?? null, extra.error ?? null, Date.now(), id);
+    }
   }
 
   close(): void {
