@@ -22,5 +22,17 @@
   <body class="vellum-ui">
     <div id="root"></div>
     <script type="module" src="/src/app/main.tsx"></script>
+
+    <!-- Beacon feedback widget. Bottom-right bubble; submissions route to the
+         "bolt" project on beacon.trevormil.com and are processed into harness
+         backlog tickets by a 15-min launchd poller. -->
+    <script
+      src="https://cdn.jsdelivr.net/npm/@beacon/widget/dist/beacon.js"
+      data-project="pub_Fs6whQdb9dheT8tXwi6cEMaqTkF0UV59"
+      data-endpoint="https://beacon.trevormil.com"
+      data-primary="#d4af37"
+      data-title="Spotted something? Tell us."
+      defer
+    ></script>
   </body>
 </html>
