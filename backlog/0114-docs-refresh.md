@@ -6,7 +6,7 @@ priority: low
 type: docs
 source: audit-2026-05-29
 created: 2026-05-29
-prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/<MR-10>"]
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/115"]
 refs: []
 ---
 
