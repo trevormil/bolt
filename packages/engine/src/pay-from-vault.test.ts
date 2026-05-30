@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { generateWallet, type MsgJson } from "@vellum/chain";
+import {
+  BroadcastRejectedError,
+  generateWallet,
+  type MsgJson,
+} from "@vellum/chain";
 import type { TxChain } from "@vellum/tx";
 import { env } from "@vellum/shared";
 import {
@@ -52,7 +56,12 @@ function captureChain(opts: { reject?: boolean } = {}): {
     getBalances: async () => [{ denom: env.VELLUM_DENOM, amount: "10000000" }],
     signAndBroadcast: async (_adapter, msgs) => {
       broadcasts.push(msgs as MsgJson[]);
-      if (opts.reject) throw new Error("tx rejected: over withdrawal cap");
+      if (opts.reject)
+        throw new BroadcastRejectedError(
+          "broadcast rejected (code 7): over withdrawal cap",
+          7,
+          "PAYHASH-RJ",
+        );
       return "PAYHASH";
     },
     confirmTx: async () => ({ height: 5, code: 0 }),

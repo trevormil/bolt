@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import {
   bankSendMsg,
+  BroadcastRejectedError,
   confirmTx,
   getBalances,
   signAndBroadcast,
@@ -208,20 +209,37 @@ export class TxManager {
     authority?: string;
     memo?: string;
     trace?: TraceSpan;
+    // Capability gate at the chokepoint (#100). For kind "spend" the gate is
+    // synthesized internally ("spend" capability, target = recipient). For
+    // vault_op the caller MUST pass its capability ("vault.create" /
+    // "vault.withdraw") — without it, a vault_op submission goes ungated and
+    // a future tool/route/MCP server constructing a vault_op directly bypasses
+    // the upstream VaultService gate. The chokepoint promise from #37 only
+    // holds if EVERY money-moving kind is gated HERE.
+    capability?: { name: string; target?: string; summary: string };
   }): Promise<PendingTx> {
     const { personaId, kind, msgs, to, amount } = input;
     const authority = input.authority ?? "agent";
-    // Capability chokepoint (#37): EVERY free-form spend passes through submit(),
-    // so gating here means no public entry (spend() or a direct submit()) can
-    // bypass the authorizer. Throws CapabilityDeniedError when denied; surfaces
-    // catch it → 403. vault_op is gated upstream in VaultService; funding is
-    // incoming value (not gated). Gate before acquiring the lock so a denial
-    // never holds the per-persona mutex.
+    // Capability chokepoint (#37 + #100): EVERY money-moving submission gates
+    // here. spend synthesizes its own gate; vault_op REQUIRES the caller to
+    // declare a capability. funding (incoming value) is not gated. Gate before
+    // acquiring the lock so a denial never holds the per-persona mutex.
     if (kind === "spend") {
       await this.authorize?.(personaId, {
         capability: "spend",
         target: to,
         summary: `spend ${usdc(amount)} → ${to}`,
+      });
+    } else if (kind === "vault_op") {
+      if (!input.capability) {
+        throw new Error(
+          `vault_op submission must declare a capability (#100) — a code path lacking the upstream authorize must not bypass the chokepoint`,
+        );
+      }
+      await this.authorize?.(personaId, {
+        capability: input.capability.name,
+        target: input.capability.target,
+        summary: input.capability.summary,
       });
     }
     const release = await this.acquire(personaId);
@@ -279,15 +297,19 @@ export class TxManager {
       } catch (e) {
         const error = e instanceof Error ? e.message : String(e);
         releaseOnce();
-        if (/rejected/.test(error)) {
+        if (e instanceof BroadcastRejectedError) {
           // Definitive CheckTx rejection (over a vault cap / time-locked / missing
-          // sign-off / bad sig) — nothing landed; fail the row and surface a typed,
-          // user-mappable error instead of the raw chain string (#85).
+          // sign-off / bad sig). The chain SAW the tx and refused it — nothing
+          // landed; fail the row and surface a typed, user-mappable error
+          // instead of the raw chain string (#85). Classification is by TYPE,
+          // not by substring — a TLS error like "connection rejected by peer"
+          // (#99) must NOT be misclassified as definitive.
           this.setStatus(id, "failed", { error });
           throw new TxRejectedError(error);
         }
-        // Ambiguous (network) — the tx MAY have reached the node. Leave the intent
-        // "submitting" (discoverable, never auto-rebroadcast) and rethrow as-is.
+        // Ambiguous (network / timeout / TLS / serialization) — the tx MAY have
+        // reached the node. Leave the intent "submitting" (discoverable, never
+        // auto-rebroadcast) and rethrow as-is so reconcile can drive recovery.
         this.setStatus(id, "submitting", { error });
         throw e;
       }

@@ -59,3 +59,19 @@ refs: ["0099-tx-state-machine-hardening.md", "0066-agent-vault-criteria.md"]
 
 ## Notes
 Findings #3, #5, #9 from the adversarial-money-path review.
+
+## Status (2026-05-30) — partial via MR-1
+- §3 chokepoint gate for `vault_op` → **shipped**. `txManager.submit({kind:
+  "vault_op"})` now REQUIRES a `capability` field at the chokepoint; a code
+  path lacking it throws before the per-persona lock is acquired. Existing
+  `vault.withdraw` + `vault.pay` callers updated to pass the declared
+  capability. Regression: `"a direct submit({kind:'vault_op'}) WITHOUT
+  capability is rejected at the chokepoint (#100)"` in
+  `packages/tx/src/tx.test.ts`.
+- §1 route `vault.create` through `txManager.submit` → **deferred**. Needs
+  the test-server's vault-create seam reworked to emit per-call unique
+  txHashes (currently a fixed counter shared between `createVault` and
+  `fetchTx`); the e2e specs assert on the seam's exact hashes. Tracked as
+  follow-up.
+- §2 orphan vault reconciliation → **deferred** (separate scope — needs a
+  chain query helper).

@@ -9,6 +9,7 @@ export {
   claimFaucet,
   withRetry,
   TxRevertedError,
+  BroadcastRejectedError,
   type Coin,
 } from "./client.ts";
 export {

@@ -78,6 +78,27 @@ export class TxRevertedError extends Error {
   }
 }
 
+/**
+ * Thrown by signAndBroadcast ONLY when the LCD returned a structured CheckTx
+ * rejection (`tx_response.code !== 0` with a txhash) — i.e. the node saw the tx
+ * and refused it pre-inclusion (over a vault cap, missing sign-off, bad
+ * signature). Distinct from network/timeout/serialization errors (plain
+ * `Error`) so TxManager can classify by TYPE rather than by `/rejected/`
+ * substring — a TLS intermediary error like "connection rejected by peer"
+ * MUST NOT be classified as a definitive CheckTx rejection, since the tx may
+ * actually have committed on-chain (#99).
+ */
+export class BroadcastRejectedError extends Error {
+  constructor(
+    message: string,
+    readonly code: number,
+    readonly txhash: string,
+  ) {
+    super(message);
+    this.name = "BroadcastRejectedError";
+  }
+}
+
 /** Derive a secp256k1 HD wallet (bb-prefixed) from a mnemonic. */
 export function walletFromMnemonic(
   mnemonic: string,
