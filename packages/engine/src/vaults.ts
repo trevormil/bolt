@@ -8,7 +8,7 @@ import {
 } from "@vellum/tokenization";
 import type { Ledger } from "@vellum/ledger";
 import type { PersonaWallets, Signer } from "@vellum/wallet";
-import type { PendingTx, TxManager } from "@vellum/tx";
+import { isBb1Address, type PendingTx, type TxManager } from "@vellum/tx";
 import { env, createLogger } from "@vellum/shared";
 
 const log = createLogger("vaults");
@@ -66,13 +66,8 @@ export interface VaultServiceDeps {
 
 const DEFAULT_IMAGE = "https://avatars.githubusercontent.com/u/0?v=4";
 
-// A bech32 bb1 recipient (the chain prefix is "bb"). Cheap structural check —
-// CheckTx is the authority, but rejecting an obviously-wrong recipient before
-// broadcast gives the agent a clean error instead of a chain revert. Mirrors the
-// pattern asserted in chain/client.test (/^bb1[0-9a-z]{38,}$/).
-function isBb1Address(addr: string): boolean {
-  return /^bb1[0-9a-z]{38,}$/.test(addr);
-}
+// (Was a regex-only duplicate of @vellum/tx's isBb1Address; removed in #103
+// — the checksummed version is now the single source of truth.)
 
 // Defensive amount guard (!58): reject anything that isn't a positive integer
 // µUSDC string before a bad amount enters the durable tx lifecycle (a failed

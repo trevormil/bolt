@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { generateWallet } from "@vellum/chain";
+import { TEST_BB1 } from "@vellum/tx";
 import {
   createEngine,
   grantDefaultCapabilities,
@@ -33,11 +34,12 @@ const fakeCreateTxEvents = {
   ],
 };
 
-// Structurally-valid bb1 signer addresses — create_vault now does a full bb1
-// check on multisig signers (#62 review), so fixtures must be well-formed.
-const SA = `bb1${"a".repeat(39)}`;
-const SB = `bb1${"b".repeat(39)}`;
-const SC = `bb1${"c".repeat(39)}`;
+// Bech32-checksummed bb1 signer addresses — create_vault validates the full
+// checksum on multisig signers (#62 + #103), so fixtures must round-trip
+// through cosmjs.
+const SA = TEST_BB1.TO1;
+const SB = TEST_BB1.TO2;
+const SC = TEST_BB1.TO3;
 
 let mnemonic: string;
 beforeEach(async () => {
@@ -51,7 +53,7 @@ function eng(): Engine {
     mnemonic,
     runLoop: async () => ({ text: "", meters: [] }),
     vault: {
-      defaultManager: "bb1human000000000000000000000000000000000",
+      defaultManager: "bb1zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zql3w7",
       createVault: async () => ({ txHash: "VAULTCREATE1" }),
       confirmTx: async () => ({ height: 9, code: 0 }),
       fetchTx: async () => fakeCreateTxEvents,

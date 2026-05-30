@@ -5,8 +5,8 @@ import {
   type CreateVaultInput,
 } from "./index.ts";
 
-const AGENT = "bb1agent0000000000000000000000000000000000";
-const HUMAN = "bb1human0000000000000000000000000000000000";
+const AGENT = "bb1amhwamhwamhwamhwamhwamhwamhwamhww377f5";
+const HUMAN = "bb1zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zql3w7";
 const INPUT: CreateVaultInput = {
   name: "Atlas Grocery Vault",
   symbol: "vUSDC",
@@ -59,7 +59,7 @@ describe("buildVaultMsg — 0012 trust properties", () => {
 });
 
 describe("vaultTransferMsg — 0013 back/unback (validated live)", () => {
-  const BACKING = "bb1backing000000000000000000000000000000000";
+  const BACKING = "bb1hwamhwamhwamhwamhwamhwamhwamhwamvay6jl";
 
   test("withdraw = vault tokens TO the backing address, prioritizing the withdraw approval", () => {
     const msg = vaultTransferMsg({

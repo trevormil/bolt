@@ -12,6 +12,11 @@ export {
   type TxManagerOptions,
 } from "./tx.ts";
 
+// Test-only constants — real bech32-checksummed bb1 addresses used by unit
+// tests across the workspace. Exported here so any package's tests can import
+// them without re-deriving via @cosmjs/crypto. Not part of the prod surface.
+export { TEST_BB1 } from "./test-bb1.ts";
+
 if (import.meta.main) {
   const { createLogger } = await import("@vellum/shared");
   createLogger("tx").info(

@@ -71,3 +71,17 @@ Three related gating attacks:
 
 ## Notes
 Joint findings: security #4, #8, #11, money path #10, #11, #12, #17.
+
+## Status (2026-05-30) — partial via MR-2
+- §1 bech32 checksum → **shipped**. `isBb1Address` in `@vellum/tx` now calls
+  `fromBech32` (cosmjs) to validate the checksum on every address; a
+  single-character mutation of a real address is now rejected at the boundary.
+  Duplicate copy in `packages/engine/src/vaults.ts` removed. Property test in
+  `validators.test.ts` covers round-trip + the typo-squat case. Tests across
+  the workspace migrated to a shared `TEST_BB1` helper (real
+  bech32-checksummed test addresses).
+- §2 zod `vaultGatingSchema` → **deferred** (next MR, plus §3 multisig safety
+  rails which naturally co-locate with the schema).
+- §3 multisig safety rails → **deferred** with §2.
+- §4 period anchor canonical boundary → **deferred** (its own scope — needs
+  chain-time read).

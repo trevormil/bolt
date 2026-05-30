@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { LlmAuthError, type Meter } from "@vellum/llm";
 import type { RunLoop } from "@vellum/orchestrator";
 import { BroadcastRejectedError } from "@vellum/chain";
-import type { TxChain } from "@vellum/tx";
+import { TEST_BB1, type TxChain } from "@vellum/tx";
 import { env, type SecretBackend } from "@vellum/shared";
 import { createEngine, PaymentRequests, DepositRequests } from "@vellum/engine";
 import {
@@ -63,7 +63,7 @@ const fakeTxChain: TxChain = {
   confirmTx: async () => ({ height: 5, code: 0 }),
 };
 
-const HUMAN = "bb1human0000000000000000000000000000000000";
+const HUMAN = "bb1zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zql3w7";
 // A fake create-vault tx whose events parse to a VaultRef.
 const fakeCreateTxEvents = {
   events: [
@@ -288,7 +288,7 @@ describe("web API", () => {
   test("spend route returns a PENDING tx; ledger fills from confirmed state", async () => {
     await post("/api/personas", { name: "Atlas" });
     const res = await post("/api/personas/atlas/spend", {
-      to: "bb1" + "q".repeat(39),
+      to: TEST_BB1.DEST,
       amount: "1000000",
     });
     expect(res.status).toBe(200);
@@ -439,7 +439,7 @@ describe("web API", () => {
 
   test("vault create uses the supplied managerAddress (the connected wallet) (#75)", async () => {
     await post("/api/personas", { name: "Atlas" });
-    const manager = "bb1" + "m".repeat(39);
+    const manager = TEST_BB1.HUMAN;
     const res = await post("/api/personas/atlas/vaults", {
       name: "Rent",
       symbol: "vRENT",
@@ -577,7 +577,7 @@ describe("web API", () => {
     expect(
       (
         await post("/api/personas/atlas/spend", {
-          to: "bb1" + "q".repeat(39),
+          to: TEST_BB1.DEST,
           amount: "0",
         })
       ).status,
@@ -736,7 +736,7 @@ describe("web API", () => {
       conversationId: "c-good-addr",
       personaId: "atlas",
       message: "send to my wallet",
-      humanAddress: "bb1" + "q".repeat(39),
+      humanAddress: TEST_BB1.DEST,
     });
     expect(res.status).toBe(200);
   });
@@ -861,8 +861,8 @@ describe("approved-models allowlist (#43 review fix)", () => {
 describe("vault gating parse (#45 slice 2)", () => {
   test("accepts valid amount + time, rejects bad shapes", () => {
     // Structurally-valid bb1 signers — parseGating now does the full bb1 check.
-    const VS1 = `bb1${"a".repeat(39)}`;
-    const VS2 = `bb1${"b".repeat(39)}`;
+    const VS1 = TEST_BB1.TO1;
+    const VS2 = TEST_BB1.TO2;
     expect(parseGating(undefined)).toBeUndefined();
     expect(parseGating({})).toBeUndefined();
     expect(parseGating({ amount: { limitUsd: 25, period: "weekly" } })).toEqual(
@@ -2027,7 +2027,7 @@ describe("edge/failure hardening (#85)", () => {
     // fakeTxChain reports 10 USDC; spend 20 → insufficient → TxRejectedError → 422.
     await post("/api/personas", { name: "Atlas" });
     const res = await post("/api/personas/atlas/spend", {
-      to: "bb1" + "q".repeat(39),
+      to: TEST_BB1.DEST,
       amount: "20000000",
     });
     expect(res.status).toBe(422);

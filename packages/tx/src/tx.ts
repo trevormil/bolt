@@ -1,4 +1,5 @@
 import { Database } from "bun:sqlite";
+import { fromBech32 } from "@cosmjs/encoding";
 import {
   bankSendMsg,
   BroadcastRejectedError,
@@ -127,8 +128,27 @@ function usdc(base: string): string {
 // "-1", "1.5", "abc"). Exported so each spend surface can return a clean
 // 400/tool/chat message at its boundary while TxManager.spend stays the final
 // chokepoint that no malformed input can slip past.
-export const isBb1Address = (addr: string): boolean =>
-  /^bb1[0-9a-z]{38,}$/.test(addr);
+//
+// Bech32-checksummed (#103). The previous regex-only check (`/^bb1[0-9a-z]{38,}$/`)
+// accepted any well-formed-looking string — a typo-squat like
+// `bb1abc…xyz` with a one-char mutation IS a valid bech32 string structurally
+// but with a corrupted checksum; the chain would reject it but the LLM read-back
+// (and the user's eyeball check of first/last chars) wouldn't catch it. cosmjs
+// `fromBech32` validates the BCH checksum so a single-character mutation is
+// rejected at the boundary, NOT after the spend chokepoint. Upper length is
+// also bounded — bech32 capped at 90 chars — so a prompt-injected agent can't
+// submit huge "addresses" to spin the per-persona mutex.
+const BECH32_MAX_LENGTH = 90;
+export const isBb1Address = (addr: string): boolean => {
+  if (typeof addr !== "string" || addr.length > BECH32_MAX_LENGTH) return false;
+  if (!/^bb1[0-9a-z]{38,}$/.test(addr)) return false;
+  try {
+    const { prefix } = fromBech32(addr);
+    return prefix === "bb";
+  } catch {
+    return false;
+  }
+};
 export const isPositiveMicroAmount = (amount: string): boolean =>
   /^[1-9][0-9]*$/.test(amount);
 

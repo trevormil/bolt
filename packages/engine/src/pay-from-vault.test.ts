@@ -14,7 +14,7 @@ import {
   type Engine,
 } from "./index.ts";
 
-const RECIPIENT = "bb1recipient000000000000000000000000000000";
+const RECIPIENT = "bb1yg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zda6hxf";
 
 // A confirmed create-vault tx whose events parse to backingAddress "bb1backing"
 // + withdraw approvalId "vault-withdraw-xyz" (same shape the web/escrow tests use).
@@ -82,7 +82,7 @@ function eng(chain: TxChain): Engine {
     runLoop: async () => ({ text: "", meters: [] }),
     txChain: chain,
     vault: {
-      defaultManager: "bb1human000000000000000000000000000000000",
+      defaultManager: "bb1zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zql3w7",
       createVault: async () => ({ txHash: "VAULTCREATE1" }),
       confirmTx: async () => ({ height: 9, code: 0 }),
       fetchTx: async () => fakeCreateTxEvents,
@@ -242,7 +242,7 @@ describe("check_balance — read-only wallet + per-vault escrow (#51)", () => {
       // Wallet free balance read seam (PersonaWallets.balanceFor).
       getBalances: async () => [{ denom: env.VELLUM_DENOM, amount: "4500000" }],
       vault: {
-        defaultManager: "bb1human000000000000000000000000000000000",
+        defaultManager: "bb1zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zql3w7",
         createVault: async () => ({ txHash: "VAULTCREATE1" }),
         confirmTx: async () => ({ height: 9, code: 0 }),
         fetchTx: async () => fakeCreateTxEvents,

@@ -8,6 +8,7 @@
     "dev": "bun run src/index.ts"
   },
   "dependencies": {
+    "@cosmjs/encoding": "0.32.4",
     "@vellum/chain": "workspace:*",
     "@vellum/ledger": "workspace:*",
     "@vellum/shared": "workspace:*",
