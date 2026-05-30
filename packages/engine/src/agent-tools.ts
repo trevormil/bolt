@@ -383,7 +383,7 @@ export function balanceTools(
         ? escrows
             .map(
               (e) =>
-                `${e.symbol} (collection ${e.collectionId}): ${fmtUsdc(e.escrowedMicro)} USDC escrowed`,
+                `${e.symbol} (collection ${e.collectionId}): ${e.escrowedMicro === null ? "escrow unknown — chain unreachable" : `${fmtUsdc(e.escrowedMicro)} USDC escrowed`}`,
             )
             .join("; ")
         : "no vaults";
@@ -433,10 +433,13 @@ export function balanceTools(
           `${v.gating.multisig.threshold}-of-${v.gating.multisig.signers.length} multisig sign-off`,
         );
       const rule = rules.length ? rules.join("; ") : "no withdrawal limits";
-      // Per-period remaining allowance (#94): read the on-chain usage tracker.
-      // The vault's cap is per-initiatedBy (the agent), so the tracker is keyed by
-      // trackerType="initiatedBy" + the agent address. Best-effort — if the chain
-      // read fails, just omit it rather than block the (otherwise local) reply.
+      // Per-period remaining allowance (#94 + #104): read the on-chain usage
+      // tracker, then SUBTRACT in-flight withdraws (#104 §2) so a same-turn
+      // call after a still-confirming withdraw doesn't tell the user "you
+      // still have $10 left" when $5 is already broadcast. Tracker-read
+      // failure surfaces as "chain unreachable" rather than silent omission
+      // (#104 §3), because the agent must distinguish "no usage yet" from
+      // "I can't tell".
       let allowance = "";
       const cap = v.gating?.amount;
       const agentAddress = engine.wallets.addressFor(personaId);
@@ -450,16 +453,41 @@ export function balanceTools(
             approvedAddress: agentAddress,
           });
           const usedMicro = Number(tracker?.amount ?? "0");
+          // In-flight: TxManager rows for THIS vault (kind: vault_op, to ==
+          // backing address, status: submitting | pending). The amount field
+          // is the µUSDC moved per-row. Confirmed rows are already counted by
+          // the chain tracker; we add only the unsettled (lower bound).
+          const inflightMicro = engine.txManager
+            .list(personaId)
+            .filter(
+              (r) =>
+                r.kind === "vault_op" &&
+                r.to === v.backingAddress &&
+                (r.status === "submitting" || r.status === "pending"),
+            )
+            .reduce((sum, r) => sum + Number(r.amount), 0);
           const remainingMicro = Math.max(
             0,
-            Math.round(cap.limitUsd * 1e6) - usedMicro,
+            Math.round(cap.limitUsd * 1e6) - usedMicro - inflightMicro,
           );
-          allowance = ` You have ${fmtUsdc(String(remainingMicro))} of ${cap.limitUsd} USDC left to withdraw this ${cap.period}.`;
+          const inflightNote = inflightMicro
+            ? ` (${fmtUsdc(String(inflightMicro))} USDC of withdraws still confirming)`
+            : "";
+          allowance = ` You have ${fmtUsdc(String(remainingMicro))} of ${cap.limitUsd} USDC left to withdraw this ${cap.period}${inflightNote}.`;
         } catch {
-          // chain unreachable — omit the live allowance
+          // Chain unreachable — surface that the live cap is unknown rather
+          // than silently dropping the line. The agent must not guess.
+          allowance = ` Remaining cap unknown — chain unreachable.`;
         }
       }
-      return `${v.symbol} (collection ${v.collectionId}): ${fmtUsdc(escrowedMicro)} USDC escrowed. Withdrawal rule: ${rule}.${allowance}`;
+      // Escrow null = LCD read failed. Surface as "unknown" so the agent
+      // doesn't tell the user "vault is empty" and trigger a duplicate
+      // deposit (#104 §1).
+      const escrowLine =
+        escrowedMicro === null
+          ? "escrow unknown — chain unreachable"
+          : `${fmtUsdc(escrowedMicro)} USDC escrowed`;
+      return `${v.symbol} (collection ${v.collectionId}): ${escrowLine}. Withdrawal rule: ${rule}.${allowance}`;
     }
 
     if (name === "request_status") {

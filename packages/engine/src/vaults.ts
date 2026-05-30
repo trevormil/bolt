@@ -61,7 +61,7 @@ export interface VaultServiceDeps {
   fetchTokenBalance?: (
     collectionId: string,
     address: string,
-  ) => Promise<string>;
+  ) => Promise<string | null>;
 }
 
 const DEFAULT_IMAGE = "https://avatars.githubusercontent.com/u/0?v=4";
@@ -97,13 +97,17 @@ async function defaultFetchTx(hash: string) {
 async function defaultFetchTokenBalance(
   collectionId: string,
   address: string,
-): Promise<string> {
+): Promise<string | null> {
+  // Returns null on LCD failure, NOT "0" (#104 §1). Silently coercing a
+  // chain-unreachable read to zero would lie to the agent — "escrow is
+  // empty, ask the human to fund the vault" — and a trusting human would
+  // double-deposit. The caller surfaces "escrow unknown" to the agent + UI.
   try {
     const res = await fetch(
       `${env.BITBADGES_LCD}/bitbadges/bitbadgeschain/tokenization/get_balance/${collectionId}/${address}`,
       { signal: AbortSignal.timeout(15_000) },
     );
-    if (!res.ok) return "0";
+    if (!res.ok) return null;
     const json = (await res.json()) as {
       balance?: { balances?: { amount: string }[] };
     };
@@ -113,7 +117,7 @@ async function defaultFetchTokenBalance(
     );
     return total.toString();
   } catch {
-    return "0";
+    return null;
   }
 }
 
@@ -293,7 +297,9 @@ export class VaultService {
     backingAddress: string;
     holderAddress: string;
     denom: string;
-    escrowedMicro: string;
+    // null when the LCD read failed — distinguish "chain unreachable" from
+    // a real zero balance (#104 §1). Callers MUST NOT coerce to "0".
+    escrowedMicro: string | null;
   }> {
     const v = this.get(personaId, collectionId);
     if (!v)

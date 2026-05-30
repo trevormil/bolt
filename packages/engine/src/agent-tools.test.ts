@@ -184,6 +184,132 @@ describe("balance read/awareness tools (#88)", () => {
     ).toContain("No vault");
   });
 
+  test("vault_details surfaces 'escrow unknown — chain unreachable' when fetchTokenBalance returns null (#104 §1)", async () => {
+    // The honest-trust regression — when the LCD is unreachable the tool MUST
+    // NOT lie to the agent that the vault is empty. The agent would otherwise
+    // tell the user to top up an already-funded vault.
+    const e = createEngine({
+      dbPath: ":memory:",
+      embedder: null,
+      mnemonic,
+      runLoop: async () => ({ text: "", meters: [] }),
+      txChain: {
+        getBalances: async () => [{ denom: "ubadge", amount: "0" }],
+        signAndBroadcast: async () => "h",
+        confirmTx: async () => ({ height: 1, code: 0 }),
+      },
+      vault: {
+        defaultManager: "bb1human",
+        createVault: async () => ({ txHash: "VAULTCREATE1" }),
+        confirmTx: async () => ({ height: 9, code: 0 }),
+        fetchTx: async () => fakeCreateTxEvents,
+        fetchTokenBalance: async () => null, // LCD unreachable
+      },
+    });
+    await e.wallets.ensureWallet("p");
+    e.capabilities.grant({
+      personaId: "p",
+      capability: "vault.create",
+      scope: null,
+      mode: "allow",
+    });
+    await vaultTools(e, "p").invoke("create_vault", {
+      name: "Rent",
+      symbol: "vRENT",
+    });
+    const out = await balanceTools(e, "p").invoke("vault_details", {
+      collectionId: "777",
+    });
+    expect(out).toContain("escrow unknown — chain unreachable");
+    expect(out).not.toMatch(/0\.00 USDC escrowed/);
+  });
+
+  test("vault_details subtracts in-flight withdraws from the displayed remaining allowance (#104 §2)", async () => {
+    // Use a gated txChain that NEVER resolves confirmTx — the withdraw row
+    // stays "pending" so vault_details can observe an unsettled in-flight
+    // withdraw vs. tracker still reading zero on-chain.
+    const stallConfirm = new Promise<{ height: number; code: number }>(
+      () => {},
+    );
+    const e = createEngine({
+      dbPath: ":memory:",
+      embedder: null,
+      mnemonic,
+      runLoop: async () => ({ text: "", meters: [] }),
+      txChain: {
+        getBalances: async () => [{ denom: "ubadge", amount: "0" }],
+        signAndBroadcast: async () => "h",
+        confirmTx: async () => stallConfirm,
+      },
+      vault: {
+        defaultManager: "bb1human",
+        createVault: async () => ({ txHash: "VAULTCREATE1" }),
+        confirmTx: async () => ({ height: 9, code: 0 }),
+        fetchTx: async () => fakeCreateTxEvents,
+        fetchTokenBalance: async () => "0",
+      },
+    });
+    await e.wallets.ensureWallet("p");
+    e.capabilities.grant({
+      personaId: "p",
+      capability: "vault.create",
+      scope: null,
+      mode: "allow",
+    });
+    e.capabilities.grant({
+      personaId: "p",
+      capability: "vault.withdraw",
+      scope: null,
+      mode: "allow",
+    });
+    await vaultTools(e, "p").invoke("create_vault", {
+      name: "Rent",
+      symbol: "vRENT",
+      withdrawLimit: 10,
+      withdrawPeriod: "daily",
+    });
+    // Withdraw 5 USDC — submit returns the PENDING tx; confirm stalls so the
+    // row stays unsettled. The chain tracker still reads zero (pre-confirm).
+    void e.vaults.withdraw("p", "777", "5000000");
+    // Wait a tick so the tx row lands in the durable store.
+    await new Promise((r) => setTimeout(r, 30));
+    const tools = balanceTools(e, "p", {
+      approvalTracker: async () => ({
+        numTransfers: "0",
+        amount: "0",
+        lastUpdatedAt: "0",
+      }),
+    });
+    const out = await tools.invoke("vault_details", { collectionId: "777" });
+    expect(out).toContain("5.00 of 10 USDC left");
+    expect(out).toContain("5.00 USDC of withdraws still confirming");
+    expect(out).not.toMatch(/10\.00 of 10 USDC left/);
+  });
+
+  test("vault_details surfaces 'cap unknown — chain unreachable' when the tracker read fails (#104 §3)", async () => {
+    const e = eng();
+    await e.wallets.ensureWallet("p");
+    e.capabilities.grant({
+      personaId: "p",
+      capability: "vault.create",
+      scope: null,
+      mode: "allow",
+    });
+    await vaultTools(e, "p").invoke("create_vault", {
+      name: "Rent",
+      symbol: "vRENT",
+      withdrawLimit: 5,
+      withdrawPeriod: "daily",
+    });
+    const tools = balanceTools(e, "p", {
+      approvalTracker: async () => {
+        throw new Error("LCD unreachable");
+      },
+    });
+    const out = await tools.invoke("vault_details", { collectionId: "777" });
+    expect(out).toContain("Remaining cap unknown — chain unreachable");
+  });
+
   test("request_status lists outstanding payment + deposit requests (#94)", async () => {
     const e = eng();
     expect(await balanceTools(e, "p").invoke("request_status", {})).toContain(

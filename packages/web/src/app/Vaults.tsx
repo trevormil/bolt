@@ -432,7 +432,10 @@ function VaultRow({
     "withdraw" | "deposit" | "request" | "drain" | "revoke" | null
   >(null);
   const [note, setNote] = useState<string | null>(null);
-  const [escrowMicro, setEscrowMicro] = useState<string | null>(null);
+  // undefined = not yet loaded · null = LCD unreachable (#104) · string = real
+  const [escrowMicro, setEscrowMicro] = useState<string | null | undefined>(
+    undefined,
+  );
   // Deposit requests (#62) — the shareable "fund this vault" links for this vault.
   const [memo, setMemo] = useState("");
   const [requests, setRequests] = useState<DepositRequest[]>([]);
@@ -446,6 +449,9 @@ function VaultRow({
   async function reloadEscrow() {
     try {
       const e = await api.vaultEscrow(personaId, vault.collectionId);
+      // API can return null when the chain LCD is unreachable (#104 §1).
+      // Preserve that distinct signal — caller renders "unknown" instead
+      // of pretending the vault is empty.
       setEscrowMicro(e.escrowedMicro);
     } catch {
       setEscrowMicro(null);
@@ -649,16 +655,24 @@ function VaultRow({
             collection {vault.collectionId} · backing{" "}
             {vault.backingAddress.slice(0, 10)}…
           </div>
-          {escrowMicro !== null && (
+          {escrowMicro !== undefined && (
             <div className="mt-1.5 flex items-center gap-1.5 text-xs text-muted">
               <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-soft">
                 escrowed
               </span>
               <BrandLogo name="usdc" size={13} />
-              <span className="font-mono text-fg">
-                {(Number(escrowMicro) / 1e6).toFixed(2)}
-              </span>
-              <span className="text-soft">· agent's claim</span>
+              {escrowMicro === null ? (
+                <span className="font-mono text-danger">
+                  unknown — chain unreachable
+                </span>
+              ) : (
+                <>
+                  <span className="font-mono text-fg">
+                    {(Number(escrowMicro) / 1e6).toFixed(2)}
+                  </span>
+                  <span className="text-soft">· agent's claim</span>
+                </>
+              )}
             </div>
           )}
           <div className="mt-2 flex flex-wrap gap-1">

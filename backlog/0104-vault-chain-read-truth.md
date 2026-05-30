@@ -56,3 +56,19 @@ about vault state.
 Money path findings #6, #7 — both are honest-trust regressions in chain-read
 plumbing rather than money-loss bugs, but they degrade the agent's reasoning in
 ways the user trusts.
+
+## Status (2026-05-30) — shipped via MR-4
+- §1 `fetchTokenBalance` null on LCD failure → **shipped**. Return type now
+  `Promise<string | null>`; the silent "0" fallback is gone. `vault_details`
+  surfaces "escrow unknown — chain unreachable" and the SPA Vaults row shows
+  the same. The agent no longer tells a trusting user to top up a fully-funded
+  vault.
+- §2 in-flight subtraction in `vault_details` → **shipped**. The tool now
+  subtracts unsettled `vault_op` rows for the same persona + vault from the
+  on-chain confirmed-used and reports a lower-bound remaining. UI string
+  includes "(N USDC of withdraws still confirming)" so the user understands
+  the figure is a lower bound during the confirm window.
+- §3 tracker-read failure → **shipped**. The catch now surfaces "Remaining cap
+  unknown — chain unreachable" instead of silently omitting the line.
+
+Regressions: 3 new tests in `agent-tools.test.ts` (one per fix).

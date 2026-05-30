@@ -557,5 +557,8 @@ export interface EscrowInfo {
   collectionId: string;
   backingAddress: string;
   denom: string;
-  escrowedMicro: string;
+  // null when the chain LCD read failed (#104 §1). The UI surfaces "unknown"
+  // rather than coercing to 0, which would mislead the user into a duplicate
+  // deposit.
+  escrowedMicro: string | null;
 }
