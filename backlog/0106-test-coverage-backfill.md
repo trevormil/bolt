@@ -71,3 +71,17 @@ test-server seam pattern so grouping into one MR keeps the harness consistent.
 ## Notes
 Test review findings #1, #2, #3, #4, #5, #11, #12, #13, #15, #16. Pairs with
 the eval expansion ticket #107 (different layer).
+
+## Status (2026-05-29) — e2e items split into per-flow tickets
+The e2e gaps in this ticket are now tracked individually so each can ship
+as one focused MR:
+- §2 (public SPA pages) → #0120 (vote — folds in §3), #0121 (pay),
+  #0122 (deposit)
+- §4 (settings WRITE + onboarding) → #0123 (settings), #0124 (onboarding)
+This ticket retains §1 (`signAndBroadcast` unit branches) and §5 (misc
+tightening — chat budget/LlmAuth side-effects, auth-classification
+matrix gaps, `setTimeout` → `waitFor`). §3 (signoff route) is folded
+into #0120's e2e walk.
+Adjacent new e2e coverage filed separately: #0117 (in-app vault deposit),
+#0118 (vault withdraw UI), #0119 (manager drain + revoke), #0125 (chat
+money path).
