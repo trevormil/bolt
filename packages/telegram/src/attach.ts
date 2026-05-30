@@ -35,13 +35,14 @@ export function attachTelegram(engine: Engine, token: string): Bot {
     sessions,
   });
 
-  // TODO(#24 T-06): second-channel high-value-spend approval. When the
-  // capability gate returns "ask" for a spend, the engine calls its `approve`
-  // callback; the natural remote approver is a Telegram yes/no to the principal
-  // chat here. DEFERRED — T-06 (the "ask"/threshold policy + engine approver
-  // wiring) isn't built yet, so there is intentionally no approver injected. All
-  // money paths today are gated default-allow/deny via grants (#37); wiring a
-  // half-built approve prompt would fake a confirmation flow that nothing emits.
+  // TODO(#24): second-channel high-value-spend approval. When the capability
+  // gate returns "ask" for a spend, the engine calls its `approve` callback;
+  // the natural remote approver is a Telegram yes/no to the principal chat
+  // here. DEFERRED — the "ask"/threshold policy + engine approver wiring
+  // isn't built yet, so there is intentionally no approver injected. All
+  // money paths today are gated default-allow/deny via grants (#37); wiring
+  // a half-built approve prompt would fake a confirmation flow that nothing
+  // emits. File a follow-up ticket when the threshold policy lands.
 
   // Register the command menu so the surface is discoverable in the Telegram
   // client (#74). Independent of the long-poller — it's a plain Bot API call —

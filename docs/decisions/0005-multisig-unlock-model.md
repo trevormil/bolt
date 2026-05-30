@@ -3,6 +3,7 @@ id: 5
 title: "Multisig vaults are a one-time unlock, not per-transaction consent"
 status: accepted
 date: 2026-05-28
+last-verified: 2026-05-29
 relates-to: ["0003-vault-gating-revamp", "0004-yolo-host-exec"]
 ---
 

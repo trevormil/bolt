@@ -3,6 +3,7 @@ id: 7
 title: "Agent signer seed lives in the OS keychain, not plaintext .env — hot-wallet posture"
 status: accepted
 date: 2026-05-29
+last-verified: 2026-05-30
 relates-to: ["0005-multisig-one-time-unlock", "0003-vault-gating-revamp"]
 ---
 
