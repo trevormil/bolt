@@ -20,6 +20,7 @@ export type EventKind =
   | "task_run" // scheduled task fired (#36) — meta.taskId, ok
   | "spend" // value left a persona wallet
   | "vault_op" // vault create/withdraw
+  | "security" // sensitive non-capability action (#110) — meta.action
   | "error"; // unhandled error at a surface
 
 export interface EventInput {

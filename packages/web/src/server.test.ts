@@ -19,6 +19,7 @@ import {
   creditedAmount,
   webServeOptions,
   parseGating,
+  _resetSeedRevealWindow,
 } from "./server.ts";
 
 // In-memory secret store so mnemonic routes never touch the real macOS keychain
@@ -1966,6 +1967,52 @@ describe("agent seed export (/api/agent/mnemonic)", () => {
       authorization: "Bearer secret",
     });
     expect(res.status).toBe(403);
+  });
+
+  test("a successful reveal records a security ledger entry + observability event (#110 §1)", async () => {
+    _resetSeedRevealWindow();
+    env.AGENT_SIGNER_MNEMONIC = "alpha bravo charlie";
+    const engine = makeEngine();
+    engine.store.createPersona("atlas", "Atlas", {
+      name: "Atlas",
+      role: "x",
+      voice: "y",
+    });
+    const a = buildApp(
+      engine,
+      new PaymentRequests(":memory:"),
+      new DepositRequests(":memory:"),
+      { host: "127.0.0.1" },
+      { secretBackend: fakeSecretBackend().backend },
+    );
+    expect((await a.request("/api/agent/mnemonic")).status).toBe(200);
+    const events = engine.events.recent("atlas", 10);
+    const secEvent = events.find(
+      (e) =>
+        e.kind === "security" &&
+        (e.meta as { action?: string } | undefined)?.action === "seed-export",
+    );
+    expect(secEvent).toBeDefined();
+    expect(secEvent!.summary).toMatch(/seed/i);
+    // The phrase MUST NOT appear in the event summary or meta.
+    expect(JSON.stringify(secEvent)).not.toContain("alpha bravo charlie");
+  });
+
+  test("rate limit: the 4th reveal within 60s is rejected with 429 (#110 §3)", async () => {
+    _resetSeedRevealWindow();
+    env.AGENT_SIGNER_MNEMONIC = "alpha bravo charlie";
+    const a = app();
+    // First 3 succeed.
+    for (let i = 0; i < 3; i++) {
+      const res = await get(a);
+      expect(res.status).toBe(200);
+    }
+    // 4th hits the per-process window cap.
+    const blocked = await get(a);
+    expect(blocked.status).toBe(429);
+    expect(((await blocked.json()) as { error: string }).error).toMatch(
+      /rate limit/i,
+    );
   });
 });
 

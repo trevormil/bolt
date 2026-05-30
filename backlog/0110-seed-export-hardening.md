@@ -43,3 +43,17 @@ Three improvements raise the bar:
 ## Notes
 Security finding #5. Pairs with #0109 (Telegram token hardening) — both
 contribute to the "no single secret-token leak is one-shot game-over" posture.
+
+## Status (2026-05-30) — slim version shipped via MR-5
+- §1 visible ledger event → **shipped**. Every successful reveal records a
+  `kind: "security"` ledger entry + observability event (per persona) with the
+  summary "agent seed phrase exported"; the phrase is never logged. The
+  Activity feed surfaces it on the next dashboard open.
+- §2 recent-reauth requirement → **cut for submission**. Single-user
+  loopback-only app — the step-up adds UX friction without a matching threat
+  model. Revisit if the app moves to multi-user / network-bound.
+- §3 in-process rate limit → **shipped**. 3 reveals per rolling 60s per
+  daemon process; the 4th returns 429.
+
+Tests in `packages/web/src/server.test.ts`: ledger+event emission, no phrase
+leakage in event meta, and the 4th-reveal 429.

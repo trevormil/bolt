@@ -66,6 +66,31 @@ const CATASTROPHIC: { pattern: RegExp; why: string }[] = [
     pattern: new RegExp(`${CMD}(shutdown|reboot|halt|poweroff)\\b`),
     why: "host power state change",
   },
+  // Keychain-read denylist (#102 §3 / ADR-0007 residual). `redactedEnv()` strips
+  // secret env vars from the child, but the macOS keychain is queried by OS-user
+  // identity, not env. A prompt-injected agent running `security find-generic-
+  // password -s vellum-agent-signer -a AGENT_SIGNER_MNEMONIC -w` can exfil the
+  // seed even after ADR-0007. Refuse the `security` CLI's secret-read
+  // subcommands at the boundary. Real isolation is the ADR-0004 sandbox.
+  {
+    pattern: new RegExp(
+      `${CMD}security\\s+(?:-[A-Za-z]+\\s+)*` +
+        `(?:find-generic-password|find-internet-password|export|dump-keychain)\\b`,
+    ),
+    why: "OS keychain secret read",
+  },
+  // Vellum data-dir read (#102 §3). The local data home holds the engine SQLite
+  // (no seed in this DB, but vault metadata + persona memory) and the workspace
+  // dir. Reading them isn't catastrophic per se but it's a common exfil pattern
+  // an LLM injection lands on after the keychain denylist closes. Refuse `cat`
+  // / `head` / `tail` / `less` / `more` / `xxd` / `od` against `~/.vellum/`.
+  {
+    pattern: new RegExp(
+      `${CMD}(?:cat|head|tail|less|more|xxd|od|hexdump|strings)\\s+[^\\n]*` +
+        `(?:~|\\$HOME)/\\.vellum(?:\\b|/)`,
+    ),
+    why: "read of the vellum data home",
+  },
 ];
 
 function catastrophicReason(command: string): string | null {

@@ -14,7 +14,8 @@ export type LedgerKind =
   | "spend" // value left a persona wallet
   | "vault_op" // vault create/config/spend
   | "funding" // value entered a persona wallet
-  | "capability"; // a gated local action: granted, approved, or denied (#37)
+  | "capability" // a gated local action: granted, approved, or denied (#37)
+  | "security"; // a sensitive non-capability action (#110): seed reveal, key rotation
 
 export interface LedgerInput {
   personaId: string;

@@ -69,4 +69,10 @@ key-security ADR residual (#64).
   Property test in `vote-tally.test.ts` covers an adversarial corpus.
 - §2 vault.pay capability split → **cut for submission** (audit triage).
   Single-user app, no UX value in splitting; revisit if multi-user lands.
-- §3 run_command keychain denylist → **deferred to MR-5**.
+- §3 run_command keychain denylist → **shipped via MR-5**. The
+  catastrophic-op denylist in `packages/engine/src/exec-tools.ts` now
+  refuses `security find-generic-password`, `security find-internet-
+  password`, `security export`, `security dump-keychain`, and reads of the
+  vellum data home (`cat`/`head`/`tail`/`less`/`more`/`xxd`/`od`/`hexdump`/
+  `strings` against `~/.vellum/`). Tests in
+  `packages/engine/src/exec-tools.test.ts`. Real isolation is ADR-0004.

@@ -182,6 +182,16 @@ describe("run_command exec tool (#52)", () => {
       "mkfs.ext4 /dev/sda1",
       "shutdown -h now",
       "reboot",
+      // Keychain-read denylist (#102 §3). A prompt-injected agent running any
+      // of these can exfil the seed even after ADR-0007's keychain move.
+      "security find-generic-password -s vellum-agent-signer -a AGENT_SIGNER_MNEMONIC -w",
+      "security find-generic-password -wa AGENT_SIGNER_MNEMONIC",
+      "security export -k login.keychain",
+      "security dump-keychain login.keychain",
+      // Vellum data-home exfil — the engine SQLite + workspace dir.
+      "cat ~/.vellum/vellum.db",
+      "head -c 1024 $HOME/.vellum/vellum.db-wal",
+      "strings ~/.vellum/workspace/SOUL.md",
     ];
     for (const cmd of refused) {
       test(`refuses: ${cmd}`, async () => {
