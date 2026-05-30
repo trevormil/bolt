@@ -181,7 +181,20 @@ await engine.wallets.ensureWallet("atlas"); // provision the wallet (address sho
 // server-side credit verification reads zero credited and 400s, blocking the
 // public /pay/:id e2e (#121).
 const ATLAS_ADDRESS = engine.wallets.walletFor("atlas")!.address;
-const app = buildApp(engine);
+
+// Settings WRITE routes (rotate OpenRouter key, set Telegram token) hit the
+// live OpenRouter/Telegram APIs and write to .env by default. Stub both
+// channels so e2e is offline + can't corrupt the developer's actual .env.
+const SETTINGS_ENV_FILE = `/tmp/vellum-e2e-${port}-${Math.floor(Math.random() * 1e9)}.env`;
+const app = buildApp(engine, undefined, undefined, undefined, {
+  envFilePath: SETTINGS_ENV_FILE,
+  verifyKey: async () => true,
+  verifyTelegram: async () => ({ ok: true, username: "e2e_bot" }),
+  telegram: {
+    attach: async () => {},
+    detach: async () => {},
+  },
+});
 
 // Same-origin cosmos LCD stubs (#98). The page's `signAndBroadcast` hits these
 // after the (mocked) Keplr signs; the bitbadges SDK has already left the path

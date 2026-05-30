@@ -1,11 +1,13 @@
 ---
 id: 124
 title: "e2e: Onboarding wizard — first-run SetupFlow (no-wallet test-server variant)"
-status: open
+status: in-progress
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/104"]
 priority: high
 type: testing
 source: audit-2026-05-29
 created: 2026-05-29
+updated: 2026-05-29
 refs: ["0106-test-coverage-backfill.md", "0019-install-onboarding-wizard.md", "0086-telegram-visible-by-default-onboarding.md"]
 ---
 
