@@ -47,6 +47,43 @@ export class Recipients {
     return r?.chat_id ?? null;
   }
 
+  /**
+   * Atomic test-and-set for the TOFU principal claim (#109 §2). The previous
+   * shape — read principal(), then record(chatId) if null — is structurally
+   * a race even though Bun's single-thread JS makes the current sync path
+   * safe in practice; any future refactor that inserts an `await` between
+   * the two opens the door for two simultaneous chats to both claim the
+   * slot. Collapsing into one BEGIN IMMEDIATE transaction means the
+   * principal slot is decided by SQLite, not by event-loop interleaving,
+   * and a concurrent claimer reads the row that the winner just wrote.
+   *
+   * Returns the principal chat id (the winner — either this chatId on a
+   * fresh claim, or the already-recorded principal otherwise) plus whether
+   * THIS chatId is the principal.
+   */
+  claimPrincipal(chatId: number): { principal: number; isPrincipal: boolean } {
+    // BEGIN IMMEDIATE acquires the write lock up front so the read sees the
+    // committed state — no concurrent claimer can race in between.
+    this.db.run("BEGIN IMMEDIATE");
+    try {
+      const current = this.principal();
+      if (current === null) {
+        this.db
+          .query(
+            "INSERT INTO tg_recipients (chat_id, first_seen) VALUES (?, ?)",
+          )
+          .run(chatId, Date.now());
+        this.db.run("COMMIT");
+        return { principal: chatId, isPrincipal: true };
+      }
+      this.db.run("COMMIT");
+      return { principal: current, isPrincipal: chatId === current };
+    } catch (e) {
+      this.db.run("ROLLBACK");
+      throw e;
+    }
+  }
+
   close(): void {
     this.db.close();
   }

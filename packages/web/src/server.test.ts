@@ -25,20 +25,35 @@ import {
 // In-memory secret store so mnemonic routes never touch the real macOS keychain
 // (ADR-0007). Returns the backend + a peek into what was stored.
 function fakeSecretBackend(initial: string | null = null) {
-  let store = initial;
+  // Multi-account so the seed and the Telegram bot token (#109 §1) can
+  // coexist in one fake. The legacy single-store seed callers continue to
+  // work via the no-arg peek() — it returns whichever value was last set,
+  // matching the pre-#109 shape; account-aware callers use peek("ACCOUNT").
+  const store = new Map<string, string>();
+  if (initial !== null) store.set("AGENT_SIGNER_MNEMONIC", initial);
+  let lastSet: string | null = initial;
   const backend: SecretBackend = {
     name: "fake-store",
-    async get() {
-      return store;
+    async get(account) {
+      return store.get(account) ?? null;
     },
-    async set(_account, value) {
-      store = value;
+    async set(account, value) {
+      store.set(account, value);
+      lastSet = value;
     },
-    async delete() {
-      store = null;
+    async delete(account) {
+      if (store.has(account)) {
+        store.delete(account);
+        // lastSet stays the previously-set value — the legacy peek() reflects
+        // the most recent write, not the current state of any one account.
+      }
     },
   };
-  return { backend, peek: () => store };
+  function peek(account?: string): string | null {
+    if (account) return store.get(account) ?? null;
+    return lastSet;
+  }
+  return { backend, peek };
 }
 
 const METER: Meter = {
@@ -1811,9 +1826,9 @@ describe("first-run web setup (/api/setup)", () => {
     rmSync(envFilePath, { force: true });
   });
 
-  test("optionally enables Telegram: persists + adopts the token only when provided (#49)", async () => {
+  test("optionally enables Telegram: persists to keychain + adopts only when provided (#49 + #109 §1)", async () => {
     env.AGENT_SIGNER_MNEMONIC = undefined;
-    const { app, envFilePath, applied } = setupApp();
+    const { app, envFilePath, applied, seed } = setupApp();
     const res = await postSetup(app, {
       openRouterKey: "sk-or-test",
       telegramBotToken: "123456:ABC-token",
@@ -1823,12 +1838,14 @@ describe("first-run web setup (/api/setup)", () => {
     expect((await res.json()) as { telegramEnabled?: boolean }).toMatchObject({
       telegramEnabled: true,
     });
-    // Adopted into runtime env so the next daemon start attaches the bot, and
-    // persisted for that boot. The chat id is coerced to a number (env schema).
-    expect(applied[0]?.TELEGRAM_BOT_TOKEN).toBe("123456:ABC-token");
+    // The chat id (non-secret routing metadata) is adopted + persisted to
+    // .env. The bot token itself goes to the OS keychain (#109 §1) — never
+    // plaintext .env — mirroring the agent-seed pattern from ADR-0007.
+    expect(applied[0]?.TELEGRAM_BOT_TOKEN).toBeUndefined();
     expect(applied[0]?.TELEGRAM_PRINCIPAL_CHAT_ID).toBe(42);
+    expect(seed("TELEGRAM_BOT_TOKEN")).toBe("123456:ABC-token");
     const written = readFileSync(envFilePath, "utf8");
-    expect(written).toContain("TELEGRAM_BOT_TOKEN=123456:ABC-token");
+    expect(written).not.toContain("TELEGRAM_BOT_TOKEN=");
     expect(written).toContain("TELEGRAM_PRINCIPAL_CHAT_ID=42");
     rmSync(envFilePath, { force: true });
   });
@@ -1850,13 +1867,14 @@ describe("first-run web setup (/api/setup)", () => {
 
   test("Telegram stays optional: no token → nothing written, telegramEnabled false (#49)", async () => {
     env.AGENT_SIGNER_MNEMONIC = undefined;
-    const { app, envFilePath, applied } = setupApp();
+    const { app, envFilePath, applied, seed } = setupApp();
     const res = await postSetup(app, { openRouterKey: "sk-or-test" });
     expect(res.status).toBe(200);
     expect((await res.json()) as { telegramEnabled?: boolean }).toMatchObject({
       telegramEnabled: false,
     });
     expect(applied[0]?.TELEGRAM_BOT_TOKEN).toBeUndefined();
+    expect(seed("TELEGRAM_BOT_TOKEN")).toBeNull(); // never reached the keychain
     expect(readFileSync(envFilePath, "utf8")).not.toContain(
       "TELEGRAM_BOT_TOKEN",
     );
@@ -2135,6 +2153,10 @@ describe("telegram settings route — set / rotate / clear (#63)", () => {
         tgCalls.push("detach");
       },
     };
+    // Inject the fake secret backend so the rotate route stores the token in
+    // a controllable in-memory store rather than the platform keychain
+    // (#109 §1). `secret.peek(account)` reads back per-account.
+    const secret = fakeSecretBackend();
     const app = buildApp(
       makeEngine(),
       new PaymentRequests(":memory:"),
@@ -2146,9 +2168,10 @@ describe("telegram settings route — set / rotate / clear (#63)", () => {
         verifyKey: async () => true,
         verifyTelegram,
         telegram,
+        secretBackend: secret.backend,
       },
     );
-    return { app, envFilePath, applied, tgCalls };
+    return { app, envFilePath, applied, tgCalls, peek: secret.peek };
   }
   const postTg = (app: ReturnType<typeof buildApp>, body: unknown) =>
     app.request("/api/settings/telegram", {
@@ -2157,8 +2180,8 @@ describe("telegram settings route — set / rotate / clear (#63)", () => {
       body: JSON.stringify(body),
     });
 
-  test("valid token → 200 + @username, persisted + adopted + hot-attached", async () => {
-    const { app, envFilePath, applied, tgCalls } = tgApp();
+  test("valid token → 200 + @username, persisted to keychain + adopted + hot-attached (#109 §1)", async () => {
+    const { app, envFilePath, applied, tgCalls, peek } = tgApp();
     const res = await postTg(app, { token: "123:ABC", principalChatId: "42" });
     expect(res.status).toBe(200);
     expect((await res.json()) as Record<string, unknown>).toMatchObject({
@@ -2166,10 +2189,13 @@ describe("telegram settings route — set / rotate / clear (#63)", () => {
       configured: true,
       username: "test_bot",
     });
-    expect(applied[0]?.TELEGRAM_BOT_TOKEN).toBe("123:ABC");
+    // The token lives in the keychain, not the runtime env / .env (#109 §1).
+    // The chat id (non-secret) still adopts + persists.
+    expect(applied[0]?.TELEGRAM_BOT_TOKEN).toBeUndefined();
     expect(applied[0]?.TELEGRAM_PRINCIPAL_CHAT_ID).toBe(42);
-    expect(readFileSync(envFilePath, "utf8")).toContain(
-      "TELEGRAM_BOT_TOKEN=123:ABC",
+    expect(peek("TELEGRAM_BOT_TOKEN")).toBe("123:ABC");
+    expect(readFileSync(envFilePath, "utf8")).not.toContain(
+      "TELEGRAM_BOT_TOKEN=",
     );
     // #74: the poller is hot-attached live with the new token (no restart).
     expect(tgCalls).toEqual(["attach:123:ABC"]);
@@ -2198,14 +2224,14 @@ describe("telegram settings route — set / rotate / clear (#63)", () => {
   });
 
   test("reconnect with a blank chat id clears any prior principal id (!67 review)", async () => {
-    const { app, envFilePath, applied } = tgApp();
+    const { app, envFilePath, applied, peek } = tgApp();
     // A previous run pinned a principal chat id; now we rotate to a new bot and
     // intentionally leave the chat id blank → TOFU should re-claim, so the old
     // id must not survive.
     writeFileSync(envFilePath, "TELEGRAM_PRINCIPAL_CHAT_ID=999\n");
     const res = await postTg(app, { token: "456:DEF" });
     expect(res.status).toBe(200);
-    expect(applied[0]?.TELEGRAM_BOT_TOKEN).toBe("456:DEF");
+    expect(peek("TELEGRAM_BOT_TOKEN")).toBe("456:DEF");
     expect("TELEGRAM_PRINCIPAL_CHAT_ID" in applied[0]!).toBe(true);
     expect(applied[0]!.TELEGRAM_PRINCIPAL_CHAT_ID).toBeUndefined();
     expect(readFileSync(envFilePath, "utf8")).not.toContain(

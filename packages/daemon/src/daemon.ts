@@ -3,6 +3,7 @@ import {
   createLogger,
   ensureDataDir,
   migrateLegacyDb,
+  getTelegramBotToken,
 } from "@vellum/shared";
 import { createEngine, McpServers, GLOBAL } from "@vellum/engine";
 import { buildApp, webServeOptions, isLoopback } from "@vellum/web";
@@ -84,10 +85,15 @@ export async function startDaemon(): Promise<void> {
 
   // Recurring prompts are scheduled externally via OS cron
   // (docs/runbooks/schedule-with-cron.md).
-  if (env.TELEGRAM_BOT_TOKEN) {
-    await telegram.attach(env.TELEGRAM_BOT_TOKEN);
+  // Resolve the Telegram bot token from env-or-keychain (#109 §1). Same
+  // env-first/keychain-fallback shape as the agent seed (ADR-0007); a leaked
+  // .env that previously held the token would let an attacker post AS the
+  // bot to the principal chat.
+  const telegramToken = await getTelegramBotToken();
+  if (telegramToken) {
+    await telegram.attach(telegramToken);
   } else {
-    log.info("telegram · no TELEGRAM_BOT_TOKEN (web-only daemon)");
+    log.info("telegram · no token (web-only daemon)");
   }
 
   // MCP servers (#46): warm the GLOBAL set once at startup so the connections
@@ -107,9 +113,7 @@ export async function startDaemon(): Promise<void> {
       void engine.mcp.closeAll().finally(() => process.exit(0));
     });
 
-  log.info(
-    "vellum daemon ready · web" + (env.TELEGRAM_BOT_TOKEN ? " + telegram" : ""),
-  );
+  log.info("vellum daemon ready · web" + (telegramToken ? " + telegram" : ""));
 }
 
 if (import.meta.main) {

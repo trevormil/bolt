@@ -16,9 +16,14 @@ export {
   setAgentMnemonic,
   clearAgentMnemonic,
   agentMnemonicSource,
+  getTelegramBotToken,
+  setTelegramBotToken,
+  clearTelegramBotToken,
+  telegramBotTokenSource,
   defaultBackend,
   keychainBackend,
   SECRET_ACCOUNT,
+  TELEGRAM_TOKEN_ACCOUNT,
   type SecretBackend,
 } from "./secrets.ts";
 

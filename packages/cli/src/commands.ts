@@ -39,7 +39,7 @@ const USAGE = `vellum — local-first agent CLI
   vellum faucet <persona>         claim devnet USDC
   vellum ledger <persona>         recent proof-of-action entries
   vellum model <persona> [id]     show / set the persona's model (id, "inherit", or list)
-  vellum keys <status|migrate>    agent seed at rest: status, or migrate .env → OS keychain
+  vellum keys <status|migrate|migrate-telegram>  secrets at rest: status, migrate seed/.env → OS keychain
   vellum help                     this help`;
 
 /**

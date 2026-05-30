@@ -23,12 +23,11 @@ export function attachTelegram(engine: Engine, token: string): Bot {
   const configured = env.TELEGRAM_PRINCIPAL_CHAT_ID ?? null;
   const authorizeChat = (chatId: number): boolean => {
     if (configured !== null) return chatId === configured;
-    const principal = recipients.principal();
-    if (principal === null) {
-      recipients.record(chatId);
-      return true;
-    }
-    return chatId === principal;
+    // Atomic claim-and-check (#109 §2): the test-and-set lives inside one
+    // BEGIN IMMEDIATE transaction so two simultaneous chats can't both
+    // claim the TOFU slot. The losing chat reads the row the winner just
+    // wrote, falls through to the equality check, and is refused.
+    return recipients.claimPrincipal(chatId).isPrincipal;
   };
   const bot = buildBot(token, engine, {
     onSeen: (chatId) => recipients.record(chatId),

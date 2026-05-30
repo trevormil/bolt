@@ -1,13 +1,37 @@
 ---
 id: 109
 title: "Telegram: bot token → OS keychain + TOFU concurrency hardening + bot.test secrets allowlist"
-status: open
+status: in-progress
 priority: medium
 type: security
 source: audit-2026-05-29
 created: 2026-05-29
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/<MR-9>"]
 refs: ["0049-telegram-full-surface.md", "0096-agent-key-at-rest-keychain.md"]
 ---
+
+## 2026-05-30 — MR-9 status
+
+**§1 + §2 shipped** (MR `<MR-9>`); §3 deferred.
+
+- §1 (token → keychain): SecretBackend extended with parallel
+  `getTelegramBotToken`/`setTelegramBotToken`/`clearTelegramBotToken`/
+  `telegramBotTokenSource` (distinct account `TELEGRAM_BOT_TOKEN` under the
+  shared `vellum-agent-signer` service entry). Daemon + standalone TG entry
+  resolve via the new helpers. Web setup + settings routes + CLI setup write
+  to the keychain instead of `.env`. New CLI subcommand
+  `vellum keys migrate-telegram` mirrors the seed migrate. `keys status`
+  now reports both seed + token row.
+- §2 (TOFU race): `Recipients.claimPrincipal(chatId)` does the test-and-set
+  inside one `BEGIN IMMEDIATE` transaction. `authorizeChat` collapsed to
+  one call. Concurrency test in `recipients.test.ts` runs
+  `Promise.all([claimPrincipal(101), claimPrincipal(202)])` on an empty
+  store → exactly one wins.
+- §3 (bot.test secrets allowlist): DEFERRED to a follow-up — pairs with
+  the eval expansion in #0107.
+
+13 new tests (8 token helpers + 2 §2 concurrency + 4 CLI migrate +
+1 status), all 562 pass.
 
 ## Description
 Three related Telegram-surface issues from the audit.

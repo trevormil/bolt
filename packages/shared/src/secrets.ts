@@ -7,6 +7,10 @@ const log = createLogger("secrets");
 // migrate, rotate, and status all address the same item.
 const KEYCHAIN_SERVICE = "vellum-agent-signer";
 export const SECRET_ACCOUNT = "AGENT_SIGNER_MNEMONIC";
+// Telegram bot token (#109 §1). Same service entry so the keychain ACL is one
+// item the user can audit; distinct account name so the seed and the token
+// never alias each other under any backend.
+export const TELEGRAM_TOKEN_ACCOUNT = "TELEGRAM_BOT_TOKEN";
 
 /**
  * An OS-level secret store for the agent's master seed (ADR-0007). The agent
@@ -160,5 +164,51 @@ export async function agentMnemonicSource(
 ): Promise<"env" | "keychain" | "none"> {
   if (env.AGENT_SIGNER_MNEMONIC) return "env";
   const v = await backend.get(SECRET_ACCOUNT).catch(() => null);
+  return v ? "keychain" : "none";
+}
+
+/**
+ * Telegram bot token resolution (#109 §1). Same env-first/keychain-fallback
+ * shape as the agent seed — the goal isn't a human-unlock gate but keeping
+ * the token out of plaintext at rest. A leaked .env that previously included
+ * TELEGRAM_BOT_TOKEN would let an attacker post messages AS the bot to the
+ * principal (social-engineering the human into running /switch or /spend);
+ * pushing the token into the keychain closes that exfil path. Env still
+ * wins so CI / Docker / one-off boot overrides remain frictionless.
+ */
+export async function getTelegramBotToken(
+  backend: SecretBackend = defaultBackend(),
+): Promise<string | undefined> {
+  if (env.TELEGRAM_BOT_TOKEN) return env.TELEGRAM_BOT_TOKEN;
+  const fromStore = await backend.get(TELEGRAM_TOKEN_ACCOUNT).catch((e) => {
+    log.warn(
+      `secret backend ${backend.name} read failed: ${e instanceof Error ? e.message : String(e)}`,
+    );
+    return null;
+  });
+  return fromStore ?? undefined;
+}
+
+/** Store the Telegram bot token in the OS secret store (setup wizard / rotate). */
+export async function setTelegramBotToken(
+  value: string,
+  backend: SecretBackend = defaultBackend(),
+): Promise<void> {
+  await backend.set(TELEGRAM_TOKEN_ACCOUNT, value);
+}
+
+/** Remove the Telegram bot token from the OS secret store (setup clear). */
+export async function clearTelegramBotToken(
+  backend: SecretBackend = defaultBackend(),
+): Promise<void> {
+  await backend.delete(TELEGRAM_TOKEN_ACCOUNT);
+}
+
+/** Where the TG token resolves from — for `keys status`. Never returns the value. */
+export async function telegramBotTokenSource(
+  backend: SecretBackend = defaultBackend(),
+): Promise<"env" | "keychain" | "none"> {
+  if (env.TELEGRAM_BOT_TOKEN) return "env";
+  const v = await backend.get(TELEGRAM_TOKEN_ACCOUNT).catch(() => null);
   return v ? "keychain" : "none";
 }
