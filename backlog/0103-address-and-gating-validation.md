@@ -80,8 +80,15 @@ Joint findings: security #4, #8, #11, money path #10, #11, #12, #17.
   `validators.test.ts` covers round-trip + the typo-squat case. Tests across
   the workspace migrated to a shared `TEST_BB1` helper (real
   bech32-checksummed test addresses).
-- §2 zod `vaultGatingSchema` → **deferred** (next MR, plus §3 multisig safety
-  rails which naturally co-locate with the schema).
-- §3 multisig safety rails → **deferred** with §2.
+- §2 zod `vaultGatingSchema` → **shipped via MR-6**. Lives in
+  `@vellum/tokenization`; `server.ts:parseGating` now delegates to
+  `parseVaultGating`. The `strict()` schema + refinements close the
+  project-standard violation (§6 of global CLAUDE.md).
+- §3 multisig safety rails → **shipped via MR-6**. Three closures:
+  duplicate-signer detection inside the zod schema (silent quorum downgrade
+  closed), `validateGatingTemporal` rejects already-past `unlockAt`/`expiresAt`
+  (with a 60s grace for clock skew), `validateGatingForPersona` rejects
+  agent-as-signer. Wired at the web route AND the agent's `create_vault`
+  tool so an LLM-crafted policy can't bypass via either surface.
 - §4 period anchor canonical boundary → **deferred** (its own scope — needs
   chain-time read).

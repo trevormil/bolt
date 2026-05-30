@@ -1,7 +1,7 @@
 ---
 id: 101
 title: "Payment-request /confirm: untested branches, txHash SSRF, and unrelated-tx replay"
-status: open
+status: closed
 priority: critical
 type: security
 source: audit-2026-05-29

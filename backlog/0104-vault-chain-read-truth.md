@@ -1,7 +1,7 @@
 ---
 id: 104
 title: "Vault details & escrow chain-read truth: surface 'unknown' not '0', subtract pending withdraws"
-status: open
+status: closed
 priority: high
 type: bug
 source: audit-2026-05-29
