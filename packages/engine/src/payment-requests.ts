@@ -18,9 +18,21 @@ export interface PaymentRequest {
   toAddress: string; // the persona's bb1 wallet
   denom: string;
   amount: string; // base µUSDC
-  memo: string;
+  memo: string; // human-readable, shown on the /pay/:id page (description)
   created: number;
 }
+
+/**
+ * The CANONICAL tx-memo that must appear in the chain tx confirming this
+ * request (#101 replay defense). Distinct from the human-readable
+ * PaymentRequest.memo field (which describes WHY funding is needed): this is
+ * the on-chain binding between a tx and a request, asserted in `verifyCredit`.
+ * If Alice's payer signs a tx whose body memo is `vellum funding <Alice-id>`,
+ * Bob's tx that coincidentally credits the same persona address CANNOT be
+ * replayed to mark Alice's request filled.
+ */
+export const paymentRequestTxMemo = (reqId: string): string =>
+  `vellum funding ${reqId}`;
 
 interface Row {
   id: string;

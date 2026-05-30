@@ -10,6 +10,7 @@ export {
   withRetry,
   TxRevertedError,
   BroadcastRejectedError,
+  isTxHash,
   type Coin,
 } from "./client.ts";
 export {

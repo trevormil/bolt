@@ -36,9 +36,13 @@ export function PayPage({ reqId }: { reqId: string }) {
     setPaying(true);
     setError(null);
     try {
+      // The canonical tx-memo BINDS this tx to this request (#101) — the
+      // confirm route asserts memo === paymentRequestTxMemo(reqId), so an
+      // unrelated tx that coincidentally credits the same address can't be
+      // replayed against the request to mark it filled.
       const txHash = await signAndBroadcast(
         [bankSendMsg(wallet!.address, req.toAddress, req.amount, req.denom)],
-        `payment request ${req.id.slice(0, 8)}`,
+        `vellum funding ${req.id}`,
       );
       await api.confirmPaymentRequest(req.id, txHash);
       setDone(true);

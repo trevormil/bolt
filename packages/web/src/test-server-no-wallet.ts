@@ -70,7 +70,7 @@ function makeEngine(): Engine {
     getBalances: async () => [],
     txChain: {
       getBalances: async () => [],
-      signAndBroadcast: async () => "E2ETXHASH",
+      signAndBroadcast: async () => "e2e0babe".repeat(8),
       confirmTx: async () => ({ height: 1, code: 0 }),
     },
     claimFaucet: async () => ({
@@ -141,13 +141,13 @@ function handleLcd(req: Request, url: URL): Response | null {
     });
   if (p === "/lcd/cosmos/tx/v1beta1/txs" && req.method === "POST")
     return lcdJson({
-      tx_response: { code: 0, txhash: "E2EHUMANTX", raw_log: "" },
+      tx_response: { code: 0, txhash: "e2e0babe".repeat(8), raw_log: "" },
     });
   if (p.startsWith("/lcd/cosmos/tx/v1beta1/txs/"))
     return lcdJson({
       tx_response: {
         code: 0,
-        txhash: "E2EHUMANTX",
+        txhash: "e2e0babe".repeat(8),
         height: "1",
         raw_log: "",
       },

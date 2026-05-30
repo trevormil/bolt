@@ -102,7 +102,10 @@ function makeEngine(): Engine {
     getBalances: async () => balance,
     txChain: {
       getBalances: async () => balance,
-      signAndBroadcast: async () => "E2ETXHASH",
+      // 64-char hex (the only shape isTxHash accepts after #101). Slice 0,10
+      // surfaces "e2e0babee2" in the UI receipts; e2e specs match on the
+      // /e2e0babe/i substring rather than the historical "E2ETXHASH".
+      signAndBroadcast: async () => "e2e0babe".repeat(8),
       confirmTx: async () => ({ height: 1, code: 0 }),
     },
     claimFaucet: async () => ({
@@ -207,6 +210,14 @@ const lcdJson = (value: unknown) =>
     status: 200,
     headers: { "content-type": "application/json" },
   });
+
+// 64-char hex tx hashes, unique per call so the ledger UNIQUE(tx_hash) dedup
+// doesn't collide across specs sharing the in-memory test-server (#101).
+let nextHashIdx = 0;
+function nextLcdHash(): string {
+  const tag = `e2e0babe${(nextHashIdx++).toString(16).padStart(8, "0")}`;
+  return tag.repeat(64 / tag.length); // pad up to 64 hex chars
+}
 function handleLcd(req: Request, url: URL): Response | null {
   const p = url.pathname;
   if (p.startsWith("/lcd/cosmos/bank/v1beta1/balances/"))
@@ -219,15 +230,31 @@ function handleLcd(req: Request, url: URL): Response | null {
         sequence: "0",
       },
     });
+  // Per-broadcast 64-hex hash (the only shape isTxHash accepts after #101).
+  // The GET resolves any path-segment hash; the per-call counter prevents the
+  // ledger UNIQUE(tx_hash) dedup from rejecting later specs in the same suite
+  // run that broadcast through the same stub.
   if (p === "/lcd/cosmos/tx/v1beta1/txs" && req.method === "POST")
     return lcdJson({
-      tx_response: { code: 0, txhash: "E2EHUMANTX", raw_log: "" },
+      tx_response: { code: 0, txhash: nextLcdHash(), raw_log: "" },
     });
-  if (p.startsWith("/lcd/cosmos/tx/v1beta1/txs/"))
+  if (p.startsWith("/lcd/cosmos/tx/v1beta1/txs/")) {
+    // Echo whatever hash the caller asked for (the URL's last segment) — keplr
+    // posts then polls the same hash, so confirmation lines up either way.
+    const HEX_HASH = p.split("/").pop() ?? "e2e0babe".repeat(8);
+    // verifyCredit (post-#101) requires both a coin_received event AND the tx
+    // body memo to match `paymentRequestTxMemo(reqId)`. The test has at most
+    // one outstanding payment request at confirmation time; return that
+    // request's canonical memo so /pay e2e walks the full memo-binding path.
+    // Other GET callers (vault-deposit / wallet / vote) don't read the memo —
+    // a leftover binding for them is harmless.
+    const pending = engine.paymentRequests.listForPersona("atlas")[0];
+    const memo = pending ? `vellum funding ${pending.id}` : "";
     return lcdJson({
+      tx: { body: { memo } },
       tx_response: {
         code: 0,
-        txhash: "E2EHUMANTX",
+        txhash: HEX_HASH,
         height: "1",
         raw_log: "",
         // verifyCredit sums coin_received events that name `toAddress` as the
@@ -245,6 +272,7 @@ function handleLcd(req: Request, url: URL): Response | null {
         ],
       },
     });
+  }
   return null;
 }
 

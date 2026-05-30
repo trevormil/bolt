@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
-import { confirmTx, generateWallet, getVotes } from "@vellum/chain";
+import { confirmTx, generateWallet, getVotes, isTxHash } from "@vellum/chain";
 import { verifyOpenRouterKey } from "@vellum/llm";
 import { tracer } from "@vellum/trace";
 import {
@@ -36,6 +36,7 @@ import {
   isApprovedModel,
   McpServers,
   McpServersSchema,
+  paymentRequestTxMemo,
   type Engine,
 } from "@vellum/engine";
 import {
@@ -86,13 +87,19 @@ export function creditedAmount(
 }
 
 // Fetch a committed tx and confirm it credited `toAddress` at least `minMicro`
-// of `denom`.
+// of `denom` AND its body memo equals `expectedMemo` (#101 replay defense).
+// The memo check binds a tx to the request it confirms: without it, a third
+// party's unrelated tx that coincidentally credits the same persona address
+// (Bob → Atlas, $10) could be replayed against Alice's request (also $10) to
+// mark Alice's link consumed while she never actually pays.
 async function verifyCredit(
   hash: string,
   toAddress: string,
   denom: string,
   minMicro: string,
+  expectedMemo: string,
 ): Promise<boolean> {
+  if (!isTxHash(hash)) return false; // defense-in-depth — the route also gates
   const res = await fetch(
     `${env.BITBADGES_LCD}/cosmos/tx/v1beta1/txs/${hash}`,
     {
@@ -101,6 +108,7 @@ async function verifyCredit(
   );
   if (!res.ok) return false;
   const j = (await res.json()) as {
+    tx?: { body?: { memo?: string } };
     tx_response?: {
       events?: {
         type: string;
@@ -108,6 +116,14 @@ async function verifyCredit(
       }[];
     };
   };
+  // The LCD response shape carries the tx body alongside tx_response; some
+  // chain forks nest it under tx_response.tx. Probe both before giving up.
+  const memo =
+    j.tx?.body?.memo ??
+    (j.tx_response as { tx?: { body?: { memo?: string } } } | undefined)?.tx
+      ?.body?.memo ??
+    "";
+  if (memo !== expectedMemo) return false;
   return (
     creditedAmount(j.tx_response?.events ?? [], toAddress, denom) >=
     BigInt(minMicro)
@@ -1162,17 +1178,32 @@ export function buildApp(
     const body = (await c.req.json().catch(() => ({}))) as { txHash?: string };
     const txHash = body.txHash?.trim();
     if (!txHash) return c.json({ error: "txHash is required" }, 400);
+    // Hex+length validation at the HTTP boundary (#101 SSRF lever): an
+    // anonymous remote caller MUST NOT be able to influence the path
+    // concatenated into the LCD URL with control characters, path traversal,
+    // or oversized strings that drive 15s-blocking long-polls through the
+    // daemon's egress. Defense in depth: chain/client.ts:confirmTx also gates.
+    if (!isTxHash(txHash))
+      return c.json({ error: "txHash must be a 64-character hex string" }, 400);
     try {
       await confirmTx(txHash); // throws on revert / not-yet-committed
       // Verify the tx actually credited THIS persona the requested amount —
       // not just that some tx with this hash committed. Without this, any
-      // confirmed hash could be replayed to fabricate a funding entry.
-      const ok = await verifyCredit(txHash, r.toAddress, r.denom, r.amount);
+      // confirmed hash could be replayed to fabricate a funding entry. The
+      // memo binding (#101) further refuses unrelated funder's txs that
+      // coincidentally credit the same persona address.
+      const ok = await verifyCredit(
+        txHash,
+        r.toAddress,
+        r.denom,
+        r.amount,
+        paymentRequestTxMemo(r.id),
+      );
       if (!ok) {
         return c.json(
           {
             error:
-              "tx did not transfer the requested amount of USDC to this persona",
+              "tx did not transfer the requested amount of USDC to this persona, or its memo doesn't bind to this request",
           },
           400,
         );

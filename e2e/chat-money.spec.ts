@@ -45,7 +45,7 @@ test.describe("autonomous money paths (faucet + send)", () => {
       .toBe(true);
 
     // Send USDC to a bb1 address. Seamed txChain.signAndBroadcast →
-    // "E2ETXHASH"; the spend route returns the pending tx. WalletPanel's note
+    // "e2e0babe"; the spend route returns the pending tx. WalletPanel's note
     // line surfaces "Sent <N> USDC (<hash slice>…)" on success.
     // Use the bech32-valid mock human address — the server enforces a real
     // bb1 length+charset regex at the boundary (see isBb1Address) so any
@@ -56,6 +56,6 @@ test.describe("autonomous money paths (faucet + send)", () => {
       .last() // WalletPanel has Fund + Send sections; Send is later in the DOM.
       .fill("1");
     await page.getByRole("button", { name: /Send USDC/ }).click();
-    await expect(page.getByText(/Sent 1 USDC.*E2ETXHASH/)).toBeVisible();
+    await expect(page.getByText(/Sent 1 USDC.*e2e0babe/)).toBeVisible();
   });
 });
