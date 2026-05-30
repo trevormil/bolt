@@ -1,11 +1,13 @@
 ---
 id: 125
 title: "e2e: Autonomous money path via chat — send_usdc + faucet + budget breach"
-status: open
+status: in-progress
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/105"]
 priority: medium
 type: testing
 source: trevor
 created: 2026-05-29
+updated: 2026-05-29
 refs: ["0106-test-coverage-backfill.md", "0051-agent-money-autonomy.md", "0076-agent-eval-suite.md"]
 ---
 
@@ -35,3 +37,18 @@ the deterministic UI path when the LLM does take the action.
 Chat-layer mirror of #0118 (vault withdraw UI). Stub the LLM tool-call
 rather than running real OpenRouter (cost). Use the existing LLM seam
 pattern in the chat test-server setup.
+
+## Scope landed (2026-05-29 / MR !105)
+The initial e2e drives the **WalletPanel** affordances (faucet claim +
+USDC send) which hit the same engine.claimFaucet + txManager.spend
+chokepoints as the chat-driven send_usdc tool. Asserts the faucet
+event lands on the per-persona event feed AND that the send shows
+"Sent N USDC (E2ETXHASH…)" in the wallet note.
+
+What's deferred: a runLoop seam that synthesizes tool calls from
+prompt text would let the spec drive "send 1 USDC to bb1…" through
+the chat surface. The agent-tools layer (send_usdc selection +
+gating) is already exercised by `agent-tools.test.ts` deterministically,
+so the chat-mediated layer would add seam coverage, not engine
+coverage — punted to a follow-up. Budget breach behavior likewise
+applies to LLM cost (#44), not USDC sends; out of scope here.
