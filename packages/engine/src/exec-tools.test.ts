@@ -247,4 +247,30 @@ describe("run_command exec tool (#52)", () => {
       delete process.env.AGENT_SIGNER_MNEMONIC;
     }
   });
+
+  test("#115 §4: redactedEnv allowlist blocks novel env names (e.g. LLM_BEARER) by default", async () => {
+    // Pre-#115 the deny-pattern was MNEMONIC|PRIVKEY|API_KEY|TOKEN|SECRET.
+    // A future env like LLM_BEARER wouldn't match → silent leak. Allowlist
+    // flips the default: anything not explicitly listed is invisible.
+    process.env.LLM_BEARER = "future-secret-bearer";
+    try {
+      const e = eng();
+      grantExec(e);
+      const out = await execTools(e, "p").invoke("run_command", {
+        command: "echo LLM_BEARER=$LLM_BEARER",
+      });
+      expect(out).not.toContain("future-secret-bearer");
+    } finally {
+      delete process.env.LLM_BEARER;
+    }
+  });
+
+  test("#115 §4: redactedEnv allowlist passes safe-by-design vars (PATH, HOME)", async () => {
+    const e = eng();
+    grantExec(e);
+    const out = await execTools(e, "p").invoke("run_command", {
+      command: 'echo PATH_PRESENT=$([ -n "$PATH" ] && echo yes || echo no)',
+    });
+    expect(out).toContain("PATH_PRESENT=yes");
+  });
 });

@@ -421,6 +421,66 @@ describe("TxManager — reconciliation invariant", () => {
   });
 });
 
+describe("TxManager — boot-time recovery + retry cap (#99 §2 + §3)", () => {
+  test("recoverStuckSubmitting marks crashed `submitting` rows failed (#99 §2)", async () => {
+    // Submitting = durable INSERT before broadcast. A crash here leaves the
+    // wallet locked forever (per-persona guard counts it as in-flight).
+    // Boot recovery marks it failed/unreconciled so the guard releases.
+    const tm = mgr(baseChain());
+    // Insert a stuck submitting row directly (simulates the post-crash state).
+    const id = "stuck-id-1";
+    (
+      tm as unknown as {
+        db: { query: (s: string) => { run: (...a: unknown[]) => void } };
+      }
+    ).db
+      .query(
+        `INSERT INTO tx (id, hash, persona_id, kind, to_addr, denom, amount,
+          authority, status, height, error, created, updated, reconciles)
+         VALUES (?, NULL, ?, 'spend', ?, 'ubadge', '1000000', 'agent',
+                 'submitting', NULL, NULL, ?, ?, 0)`,
+      )
+      .run(id, "a", DEST, Date.now() - 10 * 60_000, Date.now() - 10 * 60_000);
+    expect(tm.get(id)?.status).toBe("submitting");
+    expect(tm.pending("a")).toHaveLength(1);
+    const recovered = await tm.recoverStuckSubmitting(5 * 60_000);
+    expect(recovered).toBe(1);
+    expect(tm.get(id)?.status).toBe("failed");
+    expect(tm.get(id)?.error).toMatch(/unreconciled/);
+    // Wallet unblocked — the guard sees no pending rows now.
+    expect(tm.pending("a")).toHaveLength(0);
+    tm.close();
+  });
+
+  test("auto-reconcile retry cap marks a never-confirming tx failed/unreconciled (#99 §3)", async () => {
+    // confirmTx that ALWAYS throws a network/timeout error → confirmPending
+    // bumps the reconciles counter each call. After MAX (25), the row is
+    // declared unreconcilable and the persona unblocks.
+    const tm = mgr(
+      baseChain({
+        signAndBroadcast: async () => "H-RC",
+        confirmTx: async () => {
+          throw new Error("LCD unreachable");
+        },
+      }),
+    );
+    const p = await tm.spend({
+      personaId: "a",
+      to: DEST,
+      amount: "1000000",
+    });
+    expect(p.status).toBe("pending");
+    // Drive 25 more retries — confirmPending each time.
+    for (let i = 0; i < 25; i++) await tm.confirmPending(p.id);
+    const settled = tm.get(p.id);
+    expect(settled?.status).toBe("failed");
+    expect(settled?.error).toMatch(/unreconciled after \d+ retries/);
+    // Per-persona guard released.
+    expect(tm.pending("a")).toHaveLength(0);
+    tm.close();
+  });
+});
+
 describe("TxManager — capability chokepoint (#37)", () => {
   test("a denied spend never touches the chain (gate fires before broadcast)", async () => {
     let broadcasts = 0;

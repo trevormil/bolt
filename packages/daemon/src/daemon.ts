@@ -25,8 +25,34 @@ export async function startDaemon(): Promise<void> {
   ensureDataDir();
   if (migrateLegacyDb(env.VELLUM_DB_PATH))
     log.info("migrated legacy ./vellum.db → " + env.VELLUM_DB_PATH);
+  // .env perms boot check (#115 §3). The file holds the OpenRouter key and
+  // (post-ADR-0007) at worst the Telegram bot token + a tertiary
+  // VELLUM_API_TOKEN. upsertEnvFile chmods to 600 on every write, but a
+  // pre-existing .env copied with a default 644 umask never gets touched
+  // until someone calls the rotate route. Auto-tighten + log a warning at
+  // boot so the perms are honest from the first start.
+  try {
+    const { statSync, chmodSync } = await import("node:fs");
+    const envPath = `${process.cwd()}/.env`;
+    const st = statSync(envPath);
+    const mode = st.mode & 0o777;
+    if (mode & 0o077) {
+      log.warn(
+        `.env perms ${mode.toString(8)} are world/group-readable — auto-tightening to 600`,
+      );
+      chmodSync(envPath, 0o600);
+    }
+  } catch {
+    // No .env to check (fresh install before /api/setup runs) — fine.
+  }
 
   const engine = createEngine();
+  // Boot-time recovery (#99 §2): mark crashed `submitting` rows so the
+  // per-persona durable guard releases — otherwise a process death between
+  // the durable INSERT and the hash recording locks the wallet forever.
+  await engine.txManager
+    .recoverStuckSubmitting()
+    .catch((e) => log.warn(`recoverStuckSubmitting failed: ${e}`));
   // Reconcile leftover PENDING txs against the chain before serving (§13.5).
   await engine.txManager
     .reconcile()
