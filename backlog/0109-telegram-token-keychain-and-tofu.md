@@ -6,13 +6,13 @@ priority: medium
 type: security
 source: audit-2026-05-29
 created: 2026-05-29
-prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/<MR-9>"]
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/114"]
 refs: ["0049-telegram-full-surface.md", "0096-agent-key-at-rest-keychain.md"]
 ---
 
 ## 2026-05-30 — MR-9 status
 
-**§1 + §2 shipped** (MR `<MR-9>`); §3 deferred.
+**§1 + §2 shipped** (MR `114`); §3 deferred.
 
 - §1 (token → keychain): SecretBackend extended with parallel
   `getTelegramBotToken`/`setTelegramBotToken`/`clearTelegramBotToken`/
