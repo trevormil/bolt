@@ -42,8 +42,11 @@ test.describe("settings WRITE flows", () => {
       .first()
       .fill("9999999999:ABCDEF-test-e2e-token");
     // The save button label depends on whether Telegram is already configured
-    // (Save when unset, Replace when set). Accept either.
-    await section.getByRole("button", { name: /^(Save|Replace)$/ }).click();
+    // ("Connect" when unset / null state, "Replace" when set). Accept either —
+    // locally a dev .env often has TELEGRAM_BOT_TOKEN; CI runners don't.
+    await section
+      .getByRole("button", { name: /^(Connect|Replace)$/ })
+      .click();
 
     // verifyTelegram is seamed to ok:true / username e2e_bot → "connected as
     // @e2e_bot" appears in the section's status line.
