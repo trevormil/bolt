@@ -3,6 +3,7 @@ import {
   createLogger,
   ensureDataDir,
   migrateLegacyDb,
+  getTelegramBotToken,
 } from "@vellum/shared";
 import { createEngine } from "@vellum/engine";
 import { attachTelegram } from "./attach.ts";
@@ -23,9 +24,10 @@ const log = createLogger("telegram");
 // is set, wired to the shared engine; otherwise boots clean without creds.
 // The unified daemon (#31) calls attachTelegram() against its own engine.
 if (import.meta.main) {
-  if (!env.TELEGRAM_BOT_TOKEN) {
+  const token = await getTelegramBotToken();
+  if (!token) {
     log.info(
-      "ready · no TELEGRAM_BOT_TOKEN set (add it to .env to run the bot)",
+      "ready · no Telegram bot token (set via `vellum init` or migrate plaintext via `vellum keys migrate-telegram`)",
     );
   } else {
     ensureDataDir();
@@ -35,6 +37,6 @@ if (import.meta.main) {
     await engine.txManager
       .reconcile()
       .catch((e) => log.warn(`reconcile failed: ${e}`));
-    attachTelegram(engine, env.TELEGRAM_BOT_TOKEN);
+    attachTelegram(engine, token);
   }
 }

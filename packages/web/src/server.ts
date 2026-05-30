@@ -14,6 +14,9 @@ import {
   verifyTelegramToken,
   getAgentMnemonic,
   setAgentMnemonic,
+  getTelegramBotToken,
+  setTelegramBotToken,
+  clearTelegramBotToken,
   defaultBackend,
   type SecretBackend,
 } from "@vellum/shared";
@@ -396,7 +399,9 @@ export function buildApp(
       hasWallet: !!(await getAgentMnemonic(secretBackend)),
       personaCount: engine.store.listPersonas().length,
       daemonExposed: !isLoopback(env.WEB_HOST),
-      telegramConfigured: !!env.TELEGRAM_BOT_TOKEN,
+      // Resolve via the env-or-keychain shim (#109 §1) so a token stored in
+      // the OS keychain still surfaces as configured.
+      telegramConfigured: !!(await getTelegramBotToken(secretBackend)),
     }),
   );
 
@@ -494,8 +499,9 @@ export function buildApp(
           400,
         );
       tgUsername = tg.username;
-      updates.TELEGRAM_BOT_TOKEN = tgToken;
-      runtime.TELEGRAM_BOT_TOKEN = tgToken;
+      // Principal chat id is non-secret routing metadata — still persisted to
+      // .env. The bot token itself goes to the OS keychain (#109 §1) below,
+      // never plaintext .env, mirroring the agent-seed pattern from ADR-0007.
       if (tgChat) {
         updates.TELEGRAM_PRINCIPAL_CHAT_ID = tgChat;
         runtime.TELEGRAM_PRINCIPAL_CHAT_ID = Number(tgChat);
@@ -503,8 +509,10 @@ export function buildApp(
     }
 
     // Store the master seed in the OS keychain (after all validation, so a bad
-    // Telegram token above leaves no persisted state). Then the non-seed secrets.
+    // Telegram token above leaves no persisted state). Then the non-seed
+    // secrets — the Telegram bot token also goes to the keychain (#109 §1).
     await setAgentMnemonic(mnemonic, secretBackend);
+    if (tgToken) await setTelegramBotToken(tgToken, secretBackend);
     upsertEnvFile(setupEnvFilePath, updates); // persist for next boot
     applyRuntimeEnv(runtime); // live daemon adopts it now (no restart)
     engine.wallets.setMnemonic(mnemonic);
@@ -573,6 +581,12 @@ export function buildApp(
       // Empty token → disable Telegram + stop the poller. Clear the principal
       // chat id too (!67 review): a stale id left behind would re-pin the NEXT
       // bot to the old chat instead of letting TOFU /start re-claim ownership.
+      // The bot token clears from the OS keychain (#109 §1) where setup stores
+      // it; the .env line is also scrubbed in case it lingers from a
+      // pre-keychain install.
+      await clearTelegramBotToken(secretBackend).catch((e) =>
+        log.warn(`telegram clear failed: ${e}`),
+      );
       upsertEnvFile(setupEnvFilePath, {
         TELEGRAM_BOT_TOKEN: "",
         TELEGRAM_PRINCIPAL_CHAT_ID: "",
@@ -597,8 +611,10 @@ export function buildApp(
         },
         400,
       );
-    const updates: Record<string, string> = { TELEGRAM_BOT_TOKEN: token };
-    const runtime: Partial<typeof env> = { TELEGRAM_BOT_TOKEN: token };
+    // Token → keychain (#109 §1); principal chat id (non-secret) stays in .env.
+    await setTelegramBotToken(token, secretBackend);
+    const updates: Record<string, string> = {};
+    const runtime: Partial<typeof env> = {};
     if (chat) {
       updates.TELEGRAM_PRINCIPAL_CHAT_ID = chat;
       runtime.TELEGRAM_PRINCIPAL_CHAT_ID = Number(chat);

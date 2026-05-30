@@ -3,9 +3,12 @@ import {
   env,
   agentMnemonicSource,
   setAgentMnemonic,
+  telegramBotTokenSource,
+  setTelegramBotToken,
   defaultBackend,
   removeEnvKeys,
   SECRET_ACCOUNT,
+  TELEGRAM_TOKEN_ACCOUNT,
   type SecretBackend,
 } from "@vellum/shared";
 
@@ -20,6 +23,9 @@ export interface KeysDeps {
   // The seed currently in the environment (the loaded .env value). Injectable so
   // migrate is testable without the import-time env snapshot.
   envSeed?: string;
+  // The Telegram bot token in the environment (#109 §1) — same shape as
+  // envSeed, separately injectable.
+  envTelegramToken?: string;
 }
 
 /**
@@ -59,7 +65,46 @@ export async function migrateSeedToKeychain(opts: {
   };
 }
 
-/** Dispatch `vellum keys <status|migrate>`. Returns text to print. */
+/**
+ * Move the Telegram bot token from plaintext .env into the OS keychain and
+ * scrub the .env line (#109 §1). Same shape as migrateSeedToKeychain — the
+ * token is also a credential the agent always needs ambient access to (no
+ * human unlock), so the goal is removing the plaintext-at-rest exposure, not
+ * gating with a passphrase. Idempotent + safe to re-run.
+ */
+export async function migrateTelegramToKeychain(opts: {
+  token: string | undefined;
+  envPath: string;
+  backend: SecretBackend;
+}): Promise<{ migrated: boolean; scrubbed: string[]; message: string }> {
+  if (!opts.token) {
+    const src = await telegramBotTokenSource(opts.backend);
+    if (src === "keychain")
+      return {
+        migrated: false,
+        scrubbed: [],
+        message: `Telegram bot token already in ${opts.backend.name}; nothing in env to migrate.`,
+      };
+    return {
+      migrated: false,
+      scrubbed: [],
+      message:
+        "No Telegram bot token found in the environment to migrate — set TELEGRAM_BOT_TOKEN in your .env first (or skip this if you don't use Telegram).",
+    };
+  }
+  await setTelegramBotToken(opts.token, opts.backend);
+  const scrubbed = removeEnvKeys(opts.envPath, [TELEGRAM_TOKEN_ACCOUNT]);
+  const scrubNote = scrubbed.length
+    ? `removed ${TELEGRAM_TOKEN_ACCOUNT} from ${opts.envPath}`
+    : `${opts.envPath} had no ${TELEGRAM_TOKEN_ACCOUNT} line to remove`;
+  return {
+    migrated: true,
+    scrubbed,
+    message: `Stored the Telegram bot token in ${opts.backend.name} and ${scrubNote}. Restart the daemon for it to take effect.`,
+  };
+}
+
+/** Dispatch `vellum keys <status|migrate|migrate-telegram>`. Returns text to print. */
 export async function runKeysCommand(
   argv: string[],
   deps: KeysDeps = {},
@@ -70,21 +115,33 @@ export async function runKeysCommand(
 
   switch (sub) {
     case "status": {
-      const src = await agentMnemonicSource(backend);
-      const where =
-        src === "env"
+      const seedSrc = await agentMnemonicSource(backend);
+      const seedWhere =
+        seedSrc === "env"
           ? `plaintext env (.env) — run \`vellum keys migrate\` to move it into ${backend.name}`
-          : src === "keychain"
+          : seedSrc === "keychain"
             ? `OS secret store (${backend.name})`
             : "not configured";
-      return `agent signer seed: ${where}\nsecret backend:    ${backend.name}`;
+      const tgSrc = await telegramBotTokenSource(backend);
+      const tgWhere =
+        tgSrc === "env"
+          ? `plaintext env (.env) — run \`vellum keys migrate-telegram\` to move it into ${backend.name}`
+          : tgSrc === "keychain"
+            ? `OS secret store (${backend.name})`
+            : "not configured";
+      return `agent signer seed: ${seedWhere}\ntelegram bot token: ${tgWhere}\nsecret backend:    ${backend.name}`;
     }
     case "migrate": {
       const seed = deps.envSeed ?? env.AGENT_SIGNER_MNEMONIC;
       const r = await migrateSeedToKeychain({ seed, envPath, backend });
       return r.message;
     }
+    case "migrate-telegram": {
+      const token = deps.envTelegramToken ?? env.TELEGRAM_BOT_TOKEN;
+      const r = await migrateTelegramToKeychain({ token, envPath, backend });
+      return r.message;
+    }
     default:
-      return "usage: vellum keys <status|migrate>";
+      return "usage: vellum keys <status|migrate|migrate-telegram>";
   }
 }

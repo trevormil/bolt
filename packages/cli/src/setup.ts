@@ -10,6 +10,7 @@ import {
   upsertEnvFile,
   verifyTelegramToken,
   setAgentMnemonic,
+  setTelegramBotToken,
   defaultBackend,
   type SecretBackend,
 } from "@vellum/shared";
@@ -81,6 +82,11 @@ export async function runSetup(
   // Telegram is OPTIONAL (#49) — only persisted when a token was provided, and
   // only after a getMe health-check (#74 review): persisting an unvalidated
   // token would report "enabled" but fail to attach at the next boot.
+  // The token itself goes to the OS keychain (#109 §1), not plaintext .env —
+  // same shape as the agent seed; only the (non-secret) principal chat id
+  // persists to .env. Token write happens AFTER all validation below to keep
+  // failure paths from leaving partial state.
+  let tgTokenToStore: string | undefined;
   if (answers.telegramBotToken?.trim()) {
     const token = answers.telegramBotToken.trim();
     const verify = deps.verifyTelegram ?? verifyTelegramToken;
@@ -89,7 +95,7 @@ export async function runSetup(
       throw new Error(
         "that Telegram bot token didn't validate — create one with @BotFather and retry",
       );
-    updates.TELEGRAM_BOT_TOKEN = token;
+    tgTokenToStore = token;
   }
   if (answers.telegramPrincipalChatId?.trim()) {
     // Validate before writing .env (mirrors the web setup route): a non-integer
@@ -101,8 +107,10 @@ export async function runSetup(
   }
   // Store the master seed in the OS keychain — never plaintext .env (ADR-0007).
   // After all validation above, so a bad Telegram token leaves no persisted state.
+  // The Telegram bot token (if any) writes to the same backend (#109 §1).
   const secretBackend = deps.secretBackend ?? defaultBackend();
   await setAgentMnemonic(answers.mnemonic, secretBackend);
+  if (tgTokenToStore) await setTelegramBotToken(tgTokenToStore, secretBackend);
   const wroteKeys = Object.keys(updates).length
     ? upsertEnvFile(deps.envPath, updates)
     : [];

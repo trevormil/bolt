@@ -3,23 +3,35 @@ import { mkdtempSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { env, type SecretBackend } from "@vellum/shared";
-import { migrateSeedToKeychain, runKeysCommand } from "./keys.ts";
+import {
+  migrateSeedToKeychain,
+  migrateTelegramToKeychain,
+  runKeysCommand,
+} from "./keys.ts";
 
+// Multi-account fake so seed + Telegram token (#109 §1) live independently.
 function fakeBackend(initial: string | null = null) {
-  let store = initial;
+  const store = new Map<string, string>();
+  if (initial !== null) store.set("AGENT_SIGNER_MNEMONIC", initial);
+  let lastSet: string | null = initial;
   const backend: SecretBackend = {
     name: "fake-store",
-    async get() {
-      return store;
+    async get(account) {
+      return store.get(account) ?? null;
     },
-    async set(_account, value) {
-      store = value;
+    async set(account, value) {
+      store.set(account, value);
+      lastSet = value;
     },
-    async delete() {
-      store = null;
+    async delete(account) {
+      store.delete(account);
     },
   };
-  return { backend, peek: () => store };
+  function peek(account?: string): string | null {
+    if (account) return store.get(account) ?? null;
+    return lastSet;
+  }
+  return { backend, peek };
 }
 
 function tmpEnv(contents: string): string {
@@ -28,11 +40,13 @@ function tmpEnv(contents: string): string {
   return p;
 }
 
-// agentMnemonicSource reads the env singleton; clear it so these tests reflect
-// the backend, not the ambient dev .env.
+// agentMnemonicSource / telegramBotTokenSource read the env singleton; clear
+// it so these tests reflect the backend, not the ambient dev .env.
 const saved = env.AGENT_SIGNER_MNEMONIC;
+const savedTg = env.TELEGRAM_BOT_TOKEN;
 afterEach(() => {
   env.AGENT_SIGNER_MNEMONIC = saved;
+  env.TELEGRAM_BOT_TOKEN = savedTg;
 });
 
 describe("migrateSeedToKeychain (#96 / ADR-0007)", () => {
@@ -114,5 +128,91 @@ describe("runKeysCommand (#96)", () => {
     });
     expect(peek()).toBe("x y z");
     expect(out).toMatch(/Stored the master seed/);
+  });
+});
+
+describe("migrateTelegramToKeychain (#109 §1)", () => {
+  test("moves the token into the backend and scrubs the .env line", async () => {
+    env.TELEGRAM_BOT_TOKEN = undefined;
+    const { backend, peek } = fakeBackend(null);
+    const envPath = tmpEnv(
+      `OPENROUTER_API_KEY=sk-test\nTELEGRAM_BOT_TOKEN=123:ABC\nTELEGRAM_PRINCIPAL_CHAT_ID=42\n`,
+    );
+    const r = await migrateTelegramToKeychain({
+      token: "123:ABC",
+      envPath,
+      backend,
+    });
+    expect(r.migrated).toBe(true);
+    expect(r.scrubbed).toContain("TELEGRAM_BOT_TOKEN");
+    expect(peek("TELEGRAM_BOT_TOKEN")).toBe("123:ABC");
+    const after = readFileSync(envPath, "utf8");
+    expect(after).not.toContain("TELEGRAM_BOT_TOKEN");
+    // Non-secret routing metadata is preserved — only the token is scrubbed.
+    expect(after).toContain("TELEGRAM_PRINCIPAL_CHAT_ID=42");
+    expect(after).toContain("OPENROUTER_API_KEY=sk-test");
+  });
+
+  test("no-op when env has no token but the keychain already holds one", async () => {
+    env.TELEGRAM_BOT_TOKEN = undefined;
+    const store = new Map<string, string>([
+      ["TELEGRAM_BOT_TOKEN", "already in keychain"],
+    ]);
+    const backend: SecretBackend = {
+      name: "fake-store",
+      async get(account) {
+        return store.get(account) ?? null;
+      },
+      async set(account, value) {
+        store.set(account, value);
+      },
+      async delete(account) {
+        store.delete(account);
+      },
+    };
+    const r = await migrateTelegramToKeychain({
+      token: undefined,
+      envPath: tmpEnv(`OPENROUTER_API_KEY=sk-test\n`),
+      backend,
+    });
+    expect(r.migrated).toBe(false);
+    expect(r.message).toMatch(/already in/i);
+  });
+
+  test("reports nothing-to-do when neither env nor keychain has a token", async () => {
+    env.TELEGRAM_BOT_TOKEN = undefined;
+    const { backend } = fakeBackend(null);
+    const r = await migrateTelegramToKeychain({
+      token: undefined,
+      envPath: tmpEnv(""),
+      backend,
+    });
+    expect(r.migrated).toBe(false);
+    expect(r.message).toMatch(/No Telegram bot token found/i);
+  });
+
+  test("dispatch via `migrate-telegram` uses the injected envTelegramToken and stores it", async () => {
+    env.TELEGRAM_BOT_TOKEN = undefined;
+    const { backend, peek } = fakeBackend(null);
+    const out = await runKeysCommand(["migrate-telegram"], {
+      backend,
+      envPath: tmpEnv(`TELEGRAM_BOT_TOKEN=999:XYZ\n`),
+      envTelegramToken: "999:XYZ",
+    });
+    expect(peek("TELEGRAM_BOT_TOKEN")).toBe("999:XYZ");
+    expect(out).toMatch(/Stored the Telegram bot token/);
+  });
+
+  test("status includes the telegram-token row alongside the seed row", async () => {
+    env.AGENT_SIGNER_MNEMONIC = undefined;
+    env.TELEGRAM_BOT_TOKEN = undefined;
+    const { backend } = fakeBackend(null);
+    const out = await runKeysCommand(["status"], {
+      backend,
+      envPath: tmpEnv(""),
+    });
+    expect(out).toMatch(/agent signer seed/);
+    expect(out).toMatch(/telegram bot token/);
+    expect(out).toMatch(/not configured/);
   });
 });

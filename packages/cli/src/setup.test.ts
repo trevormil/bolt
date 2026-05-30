@@ -8,21 +8,31 @@ import type { SecretBackend } from "@vellum/shared";
 import { runSetup } from "./setup.ts";
 
 // In-memory secret store so the test never touches the real macOS keychain.
+// Multi-account so the seed and the Telegram bot token (#109 §1) coexist;
+// no-arg peek() returns the last value written for backward compatibility
+// with the pre-#109 seed-only callers.
 function fakeBackend(initial: string | null = null) {
-  let store = initial;
+  const store = new Map<string, string>();
+  if (initial !== null) store.set("AGENT_SIGNER_MNEMONIC", initial);
+  let lastSet: string | null = initial;
   const backend: SecretBackend = {
     name: "fake-store",
-    async get() {
-      return store;
+    async get(account) {
+      return store.get(account) ?? null;
     },
-    async set(_account, value) {
-      store = value;
+    async set(account, value) {
+      store.set(account, value);
+      lastSet = value;
     },
-    async delete() {
-      store = null;
+    async delete(account) {
+      store.delete(account);
     },
   };
-  return { backend, peek: () => store };
+  function peek(account?: string): string | null {
+    if (account) return store.get(account) ?? null;
+    return lastSet;
+  }
+  return { backend, peek };
 }
 
 // Isolate the data dir to a temp home so the test never touches ~/.vellum.
@@ -112,13 +122,14 @@ describe("runSetup (#19 install wizard core)", () => {
     expect(second.personaId).toBe(first.personaId);
   });
 
-  test("Telegram is optional: writes the token + chat id only when provided (#49)", async () => {
+  test("Telegram is optional: token → keychain, chat id → .env, only when provided (#49 + #109 §1)", async () => {
     const { mnemonic } = await generateWallet();
     const make = (opts: Parameters<typeof createEngine>[0]) =>
       createEngine({ ...opts, dbPath: ":memory:", embedder: null });
 
-    // Provided → persisted to .env so the daemon attaches the bot on next boot.
+    // Provided → token in keychain (#109 §1), chat id (non-secret) in .env.
     const withTg = join(mkdtempSync(join(tmpdir(), "vellum-setup-")), ".env");
+    const { backend, peek } = fakeBackend();
     await runSetup(
       {
         mnemonic,
@@ -128,15 +139,16 @@ describe("runSetup (#19 install wizard core)", () => {
       },
       {
         envPath: withTg,
-        secretBackend: fakeBackend().backend,
+        secretBackend: backend,
         createEngine: make,
         verifyTelegram: async () => ({ ok: true, username: "test_bot" }),
       },
     );
     const env1 = readFileSync(withTg, "utf8");
-    expect(env1).toContain("TELEGRAM_BOT_TOKEN=123456:ABC-token");
+    expect(env1).not.toContain("TELEGRAM_BOT_TOKEN=");
     expect(env1).toContain("TELEGRAM_PRINCIPAL_CHAT_ID=42");
     expect(env1).not.toContain("AGENT_SIGNER_MNEMONIC");
+    expect(peek("TELEGRAM_BOT_TOKEN")).toBe("123456:ABC-token");
 
     // Absent → no .env at all (skippable; no accidental empty token).
     const without = join(mkdtempSync(join(tmpdir(), "vellum-setup-")), ".env");
