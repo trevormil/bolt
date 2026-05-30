@@ -1,12 +1,26 @@
+<div align="center">
+  <img src="docs/assets/bolt.png" alt="Bolt" width="128" height="128" />
+
 # Bolt
+
+***The agent with a wallet.***
+
+[![runtime](https://img.shields.io/badge/runtime-bun-fbf0df?logo=bun&logoColor=000)](https://bun.sh)
+[![lang](https://img.shields.io/badge/lang-typescript-3178c6?logo=typescript&logoColor=fff)](https://www.typescriptlang.org)
+[![tests](https://img.shields.io/badge/tests-562%20unit%20%2B%2015%20e2e-d4af37)](#stack)
+[![macOS](https://img.shields.io/badge/macOS-first%20class-000?logo=apple&logoColor=fff)](#install)
+[![chain](https://img.shields.io/badge/chain-BitBadges-b87333)](https://bitbadges.io)
+[![license](https://img.shields.io/badge/license-MIT-6f6a5c)](./LICENSE)
+
+[Live landing ↗](https://bolt.trevormil.com) · [Install](#install) · [Architecture](./ARCHITECTURE.md) · [ADRs](./docs/decisions/) · [Demo](./docs/demo.md) · [Audit](./backlog/0099-tx-state-machine-hardening.md)
+
+</div>
+
+---
 
 A payment-first personal AI agent. Local-first. Compartmentalized by persona. Money is a first-class primitive — every agent wallet has hard caps, every spend goes through a single capability chokepoint, every action lands in an on-chain proof-of-action ledger.
 
 > Built from scratch to rival OpenClaw — the Vellum hiring-partner brief. **TypeScript / Bun monorepo, no fork.** What's interesting under the hood: a `TxManager.spend` chokepoint that gates every outgoing tx; multisig-gated vaults that compile to on-chain BitBadges approvals; per-persona memory walls enforced in SQL; an OS-keychain-backed signer (ADR-0007); an eval suite that runs in CI.
-
-[Install in <1 min](#install) · [Architecture](./ARCHITECTURE.md) · [ADRs](./docs/decisions/) · [Demo](./docs/demo.md) · [Audit](./backlog/0099-tx-state-machine-hardening.md)
-
----
 
 ## What it does
 
@@ -25,9 +39,12 @@ A payment-first personal AI agent. Local-first. Compartmentalized by persona. Mo
 
 ## Install
 
-Sub-minute install per the PRD. Requires [`bun`](https://bun.sh):
+Sub-minute install per the PRD. macOS is first-class; Linux works (env-var seed instead of keychain). Requires [`bun`](https://bun.sh):
 
 ```bash
+# 1 · install bun (skip if you already have it)
+curl -fsSL https://bun.sh/install | bash
+git clone https://github.com/trevormil/bolt && cd bolt
 bun run setup
 ```
 
