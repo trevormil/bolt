@@ -827,6 +827,23 @@ describe("cross-site + DNS-rebind guard (review fix)", () => {
     const res = await app.request("/api/personas");
     expect(res.status).toBe(200);
   });
+
+  test("#115 §1 cluster: foreign IP host (1.2.3.4, not just named hosts) → 403", async () => {
+    // Audit asked for non-loopback-IP coverage alongside the named-host case.
+    const res = await app.request("http://1.2.3.4/api/personas", {
+      method: "GET",
+      headers: { host: "1.2.3.4" },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  test("#115 §2: OPTIONS preflight from a hostile Origin → 403", async () => {
+    const res = await app.request("/api/personas", {
+      method: "OPTIONS",
+      headers: { origin: "https://evil.example" },
+    });
+    expect(res.status).toBe(403);
+  });
 });
 
 describe("approved-models allowlist (#43 review fix)", () => {

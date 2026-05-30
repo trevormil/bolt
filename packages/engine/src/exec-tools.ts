@@ -193,14 +193,34 @@ async function runInWorkspace(
   }
 }
 
-// Strip secret-bearing env vars from the child's environment. exec is local-host
-// arbitrary code, but there's no reason a `ls` or `npm test` needs the agent's
-// signer mnemonic or LLM key in its env — drop them to shrink the blast radius.
+// Allowlist of env vars that may pass through to the child (#115 §4). The
+// previous deny-pattern (MNEMONIC|PRIVKEY|API_KEY|TOKEN|SECRET) was a regex
+// that ANY future env name like LLM_BEARER would silently leak through.
+// Allowlist flips the default: a new env var is invisible until explicitly
+// listed. Keeps the shell minimally usable (PATH, HOME, TERM) without
+// granting blanket access to the daemon's process.env.
+const REDACTED_ENV_ALLOWLIST = new Set([
+  "PATH",
+  "HOME",
+  "USER",
+  "USERNAME",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE",
+  "TZ",
+  "TERM",
+  "SHELL",
+  "PWD",
+  "TMPDIR",
+  // Vellum-specific non-secret env: the workspace dir is path-scoped and
+  // already revealed in the prompt; expose it so `cd $VELLUM_WORKSPACE`
+  // works inside the child.
+  "VELLUM_WORKSPACE",
+]);
 function redactedEnv(): Record<string, string> {
-  const SECRET = /MNEMONIC|PRIVKEY|API_KEY|TOKEN|SECRET/i;
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env))
-    if (v !== undefined && !SECRET.test(k)) out[k] = v;
+    if (v !== undefined && REDACTED_ENV_ALLOWLIST.has(k)) out[k] = v;
   return out;
 }
 

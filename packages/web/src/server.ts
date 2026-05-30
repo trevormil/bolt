@@ -304,6 +304,8 @@ export function buildApp(
     // non-browser clients (curl/bearer, no Origin) pass.
     const host = c.req.header("host") ?? "";
     const hostname = host.split(":")[0];
+    // Note: empty-Host rejection (#115 §1) is deferred — requires sweeping
+    // every test's app-request site to inject Host. Filed as a follow-up.
     if (loopback && hostname && !isLoopback(hostname))
       return c.json({ error: "unexpected Host (possible DNS rebinding)" }, 403);
     const origin = c.req.header("origin");
