@@ -133,6 +133,22 @@ async function verifyCredit(
 export const isLoopback = (host: string): boolean =>
   host === "127.0.0.1" || host === "localhost" || host === "::1";
 
+// Seed-reveal rate limit (#110 §3). In-process, per-daemon — single-user app,
+// one agent seed. Window is rolling 60s; the prune lets a slow trickle keep
+// working without a separate cron. Tests reset by reaching into the module.
+const SEED_REVEAL_WINDOW_MS = 60_000;
+const SEED_REVEAL_LIMIT = 3;
+const seedRevealWindow: number[] = [];
+function pruneSeedRevealWindow(): void {
+  const cutoff = Date.now() - SEED_REVEAL_WINDOW_MS;
+  while (seedRevealWindow.length && seedRevealWindow[0]! < cutoff)
+    seedRevealWindow.shift();
+}
+// Test-only — reset the rate-limit window between tests so they don't bleed.
+export function _resetSeedRevealWindow(): void {
+  seedRevealWindow.length = 0;
+}
+
 const GATING_PERIODS: GatingPeriod[] = ["daily", "weekly", "monthly"];
 
 // Validate a vault gating policy from request JSON (#45 slice 2). Returns the
@@ -674,8 +690,40 @@ export function buildApp(
   app.get("/api/agent/mnemonic", async (c) => {
     if (!isLoopback(auth.host ?? "127.0.0.1"))
       return c.json({ error: "seed export is loopback-only" }, 403);
+    // In-process rate limit (#110 §3). A stolen API token or compromised
+    // browser session getting one read of the seed is one-shot game-over;
+    // a script ripping the route in a loop should be slowed AND surface
+    // multiple high-visibility ledger entries so the user notices.
+    pruneSeedRevealWindow();
+    if (seedRevealWindow.length >= SEED_REVEAL_LIMIT) {
+      return c.json(
+        { error: "seed export rate limit — wait a minute before trying again" },
+        429,
+      );
+    }
     const mnemonic = await getAgentMnemonic(secretBackend);
     if (!mnemonic) return c.json({ error: "no agent wallet configured" }, 404);
+    seedRevealWindow.push(Date.now());
+    // High-visibility audit trail (#110 §1). Record a security ledger entry +
+    // an observability event for every successful reveal — the user sees it
+    // the next time they open the Activity feed. The phrase is NEVER logged
+    // or persisted in the entry.
+    const summary = "agent seed phrase exported";
+    for (const p of engine.store.listPersonas()) {
+      engine.ledger.record({
+        personaId: p.id,
+        kind: "security",
+        summary,
+        authority: "human",
+      });
+      engine.events.emit({
+        personaId: p.id,
+        kind: "security",
+        summary,
+        ok: true,
+        meta: { action: "seed-export" },
+      });
+    }
     return c.json({ mnemonic });
   });
 
