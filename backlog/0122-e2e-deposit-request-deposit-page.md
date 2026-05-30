@@ -1,11 +1,13 @@
 ---
 id: 122
 title: "e2e: Deposit request — /deposit/:id public fund page"
-status: open
+status: in-progress
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/101"]
 priority: high
 type: testing
 source: audit-2026-05-29
 created: 2026-05-29
+updated: 2026-05-29
 refs: ["0106-test-coverage-backfill.md", "0067-agent-request-tools.md"]
 ---
 
