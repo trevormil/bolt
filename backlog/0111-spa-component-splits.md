@@ -1,7 +1,7 @@
 ---
 id: 111
 title: "SPA component structure: split Vaults.tsx (827 lines), Settings.tsx (590), Chat.tsx markdown decls"
-status: open
+status: icebox
 priority: medium
 type: refactor
 source: audit-2026-05-29
@@ -53,3 +53,11 @@ load on every future change.
 ## Notes
 Architecture #8 + #9, maintainability #14 + #15. Pure mechanical refactor;
 zero behavior change.
+
+
+## Status (2026-05-30) — iceboxed
+Audit-cut for the hiring-partner submission frame. Pure organizational
+refactor / cleanliness work with **no behavior change**; reviewer reads
+the code linearly, not the file tree. Real wins for the codebase
+long-term, but the submission frame says ship #99–#104 (real demo-path
+bugs) and defer this. Revisit post-submission.

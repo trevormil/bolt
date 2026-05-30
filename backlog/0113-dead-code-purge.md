@@ -1,7 +1,7 @@
 ---
 id: 113
 title: "Dead-code purge: env vars, exports, deps, and interface-for-single-impl across packages"
-status: open
+status: icebox
 priority: low
 type: refactor
 source: audit-2026-05-29
@@ -59,3 +59,11 @@ because each is one-line and they're all the same pattern.
 ## Notes
 Maintainability findings #4, #5, #7, #9, #10, #11, #12; architecture #15, #16,
 #17. All trivial deletions individually; bundling keeps the cleanup focused.
+
+
+## Status (2026-05-30) — iceboxed
+Audit-cut for the hiring-partner submission frame. Pure organizational
+refactor / cleanliness work with **no behavior change**; reviewer reads
+the code linearly, not the file tree. Real wins for the codebase
+long-term, but the submission frame says ship #99–#104 (real demo-path
+bugs) and defer this. Revisit post-submission.

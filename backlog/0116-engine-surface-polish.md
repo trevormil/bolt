@@ -1,7 +1,7 @@
 ---
 id: 116
 title: "Engine surface polish: re-export hygiene, EngineOptions split, settings registry watchlist"
-status: open
+status: icebox
 priority: low
 type: refactor
 source: audit-2026-05-29
@@ -59,3 +59,11 @@ becomes more honest about what's production vs test.
 Architecture findings #3, #4, #6, maintainability #24. The engine refactor is
 low-risk but touches every consumer — schedule when no other engine work is
 in flight.
+
+
+## Status (2026-05-30) — iceboxed
+Audit-cut for the hiring-partner submission frame. Pure organizational
+refactor / cleanliness work with **no behavior change**; reviewer reads
+the code linearly, not the file tree. Real wins for the codebase
+long-term, but the submission frame says ship #99–#104 (real demo-path
+bugs) and defer this. Revisit post-submission.

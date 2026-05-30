@@ -1,7 +1,7 @@
 ---
 id: 119
 title: "e2e: Vault manager drain + revoke (human-signed manager actions)"
-status: in-progress
+status: closed
 prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/98"]
 priority: high
 type: testing

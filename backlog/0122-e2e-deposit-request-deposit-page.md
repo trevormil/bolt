@@ -1,7 +1,7 @@
 ---
 id: 122
 title: "e2e: Deposit request — /deposit/:id public fund page"
-status: in-progress
+status: closed
 prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/101"]
 priority: high
 type: testing

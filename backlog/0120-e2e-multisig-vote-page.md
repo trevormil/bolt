@@ -1,7 +1,7 @@
 ---
 id: 120
 title: "e2e: Multisig vote sign-off — /vote/:collectionId/:approvalId"
-status: in-progress
+status: closed
 prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/99"]
 priority: high
 type: testing

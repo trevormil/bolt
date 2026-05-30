@@ -1,7 +1,7 @@
 ---
 id: 105
 title: "Split server.ts (1472 lines) + untangle auth middleware + remove dead /api/personas/:id/ledger route"
-status: open
+status: icebox
 priority: high
 type: refactor
 source: audit-2026-05-29
@@ -68,3 +68,11 @@ exports `register(app, deps)`.
 ## Notes
 Joint findings: architecture #1 + #12, maintainability #1 + #6. Largest
 quality-of-life refactor in the audit — every future route change benefits.
+
+
+## Status (2026-05-30) — iceboxed
+Audit-cut for the hiring-partner submission frame. Pure organizational
+refactor / cleanliness work with **no behavior change**; reviewer reads
+the code linearly, not the file tree. Real wins for the codebase
+long-term, but the submission frame says ship #99–#104 (real demo-path
+bugs) and defer this. Revisit post-submission.

@@ -1,7 +1,7 @@
 ---
 id: 125
 title: "e2e: Autonomous money path via chat — send_usdc + faucet + budget breach"
-status: in-progress
+status: closed
 prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/105"]
 priority: medium
 type: testing
