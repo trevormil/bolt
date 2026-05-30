@@ -63,3 +63,13 @@ didn't, plus failure modes that freeze a persona's wallet until manual DB edit.
 Surfaced jointly by the adversarial-money-path review (finding #1, #13, #14) and
 the security review. None has a regression test today — see #106 for the
 coverage backfill ticket.
+
+## Status (2026-05-30) — partial via MR-1
+- §1 substring classifier → **shipped**. `BroadcastRejectedError` typed class
+  in `@vellum/chain` thrown ONLY when `tx_response.code !== 0 && txhash`.
+  TxManager now checks `instanceof BroadcastRejectedError` instead of regex.
+  Regression: `"a network error whose message contains 'rejected' leaves the
+  row SUBMITTING — not failed (#99)"` in `packages/tx/src/tx.test.ts`.
+- §2 `recoverStuckSubmitting()` boot pass → **deferred** (next MR — requires
+  a chain query helper + integration into engine boot).
+- §3 auto-reconcile retry cap → **deferred** (next MR).

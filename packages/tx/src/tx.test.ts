@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { unlinkSync } from "node:fs";
-import { generateWallet, TxRevertedError, type Coin } from "@vellum/chain";
+import {
+  BroadcastRejectedError,
+  generateWallet,
+  TxRevertedError,
+  type Coin,
+} from "@vellum/chain";
 import { Ledger } from "@vellum/ledger";
 import { PersonaWallets } from "@vellum/wallet";
 import { TxManager, type TxChain } from "./index.ts";
@@ -269,11 +274,15 @@ describe("TxManager — reconciliation invariant", () => {
     tm.close();
   });
 
-  test("a broadcast (CheckTx) rejection surfaces and leaves no pending row", async () => {
+  test("a typed CheckTx rejection (BroadcastRejectedError) fails the row and clears pending", async () => {
     const tm = mgr(
       baseChain({
         signAndBroadcast: async () => {
-          throw new Error("broadcast rejected (code 5): insufficient fee");
+          throw new BroadcastRejectedError(
+            "broadcast rejected (code 5): insufficient fee",
+            5,
+            "HASH-RJ",
+          );
         },
       }),
     );
@@ -281,6 +290,54 @@ describe("TxManager — reconciliation invariant", () => {
       tm.spend({ personaId: "a", to: DEST, amount: "1000000" }),
     ).rejects.toThrow("rejected");
     expect(tm.pending()).toHaveLength(0);
+    tm.close();
+  });
+
+  test("a direct submit({kind:'vault_op'}) WITHOUT capability is rejected at the chokepoint (#100)", async () => {
+    // The promise of #37 is that EVERY money-moving submission is gated at
+    // submit(). Before the fix, kind 'vault_op' relied on the upstream
+    // VaultService gate — any future tool/route/MCP server constructing a
+    // vault_op directly would bypass the check. The chokepoint now refuses
+    // vault_op unless the caller declares a capability.
+    const tm = mgr(baseChain());
+    await expect(
+      tm.submit({
+        personaId: "a",
+        kind: "vault_op",
+        msgs: [{ typeUrl: "/tokenization.MsgCreateCollection", value: {} }],
+        to: "bb1backing",
+        amount: "1000000",
+      }),
+    ).rejects.toThrow(/vault_op submission must declare a capability/);
+    // No row, no broadcast — denial fires BEFORE the per-persona mutex is
+    // acquired, so subsequent submissions are unaffected.
+    expect(tm.pending()).toHaveLength(0);
+    tm.close();
+  });
+
+  test("a network error whose message contains 'rejected' leaves the row SUBMITTING — not failed (#99)", async () => {
+    // A TLS intermediary or browser-extension wrapper can surface error
+    // messages that include the substring "rejected" (e.g. "connection rejected
+    // by peer"). The OLD classifier did `/rejected/.test(message)` and
+    // misclassified this as a definitive CheckTx revert, marking the row
+    // failed AND releasing the per-persona guard — while the tx may actually
+    // have committed on-chain. The fix is to classify by type, not by
+    // substring: only a typed BroadcastRejectedError is definitive.
+    const tm = mgr(
+      baseChain({
+        signAndBroadcast: async () => {
+          throw new Error("connection rejected by peer");
+        },
+      }),
+    );
+    await expect(
+      tm.spend({ personaId: "a", to: DEST, amount: "1000000" }),
+    ).rejects.toThrow("connection rejected by peer");
+    // The row stays SUBMITTING so reconcile can drive recovery, and the
+    // per-persona durable guard keeps the wallet locked until the ambiguity
+    // resolves (intentional — never auto-rebroadcast an in-flight intent).
+    expect(tm.pending()).toHaveLength(1);
+    expect(tm.pending()[0]!.status).toBe("submitting");
     tm.close();
   });
 
@@ -418,7 +475,12 @@ describe("TxManager — capability chokepoint (#37)", () => {
     tm.close();
   });
 
-  test("a non-spend submit (vault_op) is NOT gated here (gated upstream)", async () => {
+  test("a vault_op submit gates at the chokepoint when capability declared (#100)", async () => {
+    // Post-#100 model: vault_op MUST declare a capability at the chokepoint.
+    // The upstream VaultService gate is now defense-in-depth, not the only
+    // gate — a direct submit({kind:'vault_op'}) without capability throws
+    // (covered by the separate "must declare a capability" test); WITH a
+    // capability, the chokepoint authorizes here once.
     let authorizeCalls = 0;
     const tm = new TxManager({
       wallets,
@@ -435,8 +497,13 @@ describe("TxManager — capability chokepoint (#37)", () => {
       msgs: [{ typeUrl: "/tokenization.MsgTransferTokens", value: {} }],
       to: "bb1backing",
       amount: "1000000",
+      capability: {
+        name: "vault.withdraw",
+        target: "777",
+        summary: "withdraw 1 USDC from vault 777",
+      },
     });
-    expect(authorizeCalls).toBe(0); // vault_op gating is upstream in VaultService
+    expect(authorizeCalls).toBe(1); // chokepoint runs the gate exactly once
     expect(p.status).toBe("pending");
     tm.close();
   });

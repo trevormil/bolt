@@ -13,6 +13,7 @@ import {
 } from "@cosmjs/crypto";
 import { toHex } from "@cosmjs/encoding";
 import { env, createLogger } from "@vellum/shared";
+import { BroadcastRejectedError } from "./client.ts";
 
 // Unified BitBadges signing via the SDK (the tested path Meridian uses) — ONE
 // identity + ONE signer for bank sends, vaults, and payment requests. BitBadges
@@ -147,9 +148,16 @@ export async function signAndBroadcast(
     throw new Error(
       `broadcast returned no hash: ${JSON.stringify(json).slice(0, 200)}`,
     );
-  // code != 0 here = a CheckTx (pre-inclusion) rejection — fail fast.
+  // code != 0 here = a CheckTx (pre-inclusion) rejection — fail fast with a
+  // TYPED error so TxManager classifies by instanceof rather than by message
+  // substring. A network/TLS error like "connection rejected by peer" must NOT
+  // be classified as definitive (#99): the tx may actually have committed.
   if (tr.code && tr.code !== 0) {
-    throw new Error(`broadcast rejected (code ${tr.code}): ${tr.raw_log}`);
+    throw new BroadcastRejectedError(
+      `broadcast rejected (code ${tr.code}): ${tr.raw_log}`,
+      tr.code,
+      tr.txhash,
+    );
   }
   log.info(
     `broadcast ${msgs.map((m) => m.typeUrl.split(".").pop()).join(",")} · ${tr.txhash.slice(0, 10)}`,

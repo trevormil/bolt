@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LlmAuthError, type Meter } from "@vellum/llm";
 import type { RunLoop } from "@vellum/orchestrator";
+import { BroadcastRejectedError } from "@vellum/chain";
 import type { TxChain } from "@vellum/tx";
 import { env, type SecretBackend } from "@vellum/shared";
 import { createEngine, PaymentRequests, DepositRequests } from "@vellum/engine";
@@ -2040,8 +2041,15 @@ describe("edge/failure hardening (#85)", () => {
       txChain: {
         ...fakeTxChain,
         signAndBroadcast: async () => {
-          throw new Error(
-            "rejected: amount exceeds the approval's per-day limit",
+          // Post-#99: TxManager classifies CheckTx rejection by TYPE, not by
+          // substring on the message. A typed BroadcastRejectedError → row
+          // marked failed → TxRejectedError surfaces → route returns 422.
+          // (A plain Error("...rejected...") leaves the row submitting now,
+          // since it could be a network/TLS error masquerading as a rejection.)
+          throw new BroadcastRejectedError(
+            "broadcast rejected (code 7): amount exceeds the approval's per-day limit",
+            7,
+            "HASH-CHK",
           );
         },
       },

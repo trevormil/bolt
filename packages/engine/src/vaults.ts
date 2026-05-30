@@ -351,6 +351,11 @@ export class VaultService {
       to: v.backingAddress,
       amount,
       memo: "vellum vault withdraw",
+      capability: {
+        name: "vault.withdraw",
+        target: collectionId,
+        summary: `withdraw ${amount} from vault ${collectionId}`,
+      },
     });
   }
 
@@ -415,6 +420,11 @@ export class VaultService {
       to,
       amount,
       memo: "vellum vault pay",
+      capability: {
+        name: "vault.withdraw",
+        target: collectionId,
+        summary: `pay ${amount} from vault ${collectionId} to ${to}`,
+      },
     });
   }
 
