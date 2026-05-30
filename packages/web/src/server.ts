@@ -289,6 +289,24 @@ export function buildApp(
     c.header("Content-Security-Policy", "frame-ancestors 'none'");
   });
 
+  // Beacon feedback proxy. /v1/* is forwarded to https://beacon.trevormil.com
+  // so the embedded widget (packages/web/index.html) submits to the same
+  // origin it loaded from. Without this proxy the widget would hit
+  // beacon.trevormil.com directly, which (a) requires the local resolver to
+  // know that subdomain, (b) is blocked by adblockers that match on "beacon",
+  // and (c) trips CORS preflight. Origin is preserved; Host is rewritten so
+  // beacon's ingress routes the request to its service.
+  app.all("/v1/*", async (c) => {
+    const url = new URL(c.req.url);
+    const upstream = `https://beacon.trevormil.com${url.pathname}${url.search}`;
+    const headers = new Headers(c.req.raw.headers);
+    headers.set("host", "beacon.trevormil.com");
+    const method = c.req.method;
+    const body =
+      method === "GET" || method === "HEAD" ? undefined : c.req.raw.body;
+    return fetch(upstream, { method, headers, body, redirect: "manual" });
+  });
+
   // Auth boundary: protect every state-changing/private route. Public routes
   // (health, config, share-link pay endpoints) pass through. With a token set,
   // protected routes require `Authorization: Bearer <token>`. With NO token,

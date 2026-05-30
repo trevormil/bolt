@@ -13,7 +13,13 @@ export default defineConfig({
     // needs explicit polyfills.
     nodePolyfills({ globals: { Buffer: true, global: true, process: true } }),
   ],
-  server: { port: 5173, proxy: { "/api": "http://localhost:8787" } },
+  // Dev: SPA on :5173 proxies /api and /v1 to the Hono server on :8787.
+  // /v1 is the Beacon feedback proxy (server.ts) — running it through the
+  // Hono layer keeps dev parity with the prod build.
+  server: {
+    port: 5173,
+    proxy: { "/api": "http://localhost:8787", "/v1": "http://localhost:8787" },
+  },
   build: {
     outDir: "dist",
     emptyOutDir: true,

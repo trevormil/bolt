@@ -22,5 +22,19 @@
   <body class="vellum-ui">
     <div id="root"></div>
     <script type="module" src="/src/app/main.tsx"></script>
+
+    <!-- Self-hosted feedback widget. Same-origin everywhere: /widget.js loads
+         from the SPA, submissions POST to /v1/feedback which the Hono server
+         (see packages/web/src/server.ts) reverse-proxies to beacon. Mirrors
+         the production landing's setup — no "beacon" hostname or URL substring
+         exposed client-side, no CORS preflight. -->
+    <script
+      src="/widget.js"
+      data-project="pub_Fs6whQdb9dheT8tXwi6cEMaqTkF0UV59"
+      data-endpoint=""
+      data-primary="#d4af37"
+      data-title="Spotted something? Tell us."
+      defer
+    ></script>
   </body>
 </html>

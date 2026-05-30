@@ -161,5 +161,18 @@
     <footer>
       <img class="mark" src="bolt.png" alt="" /> Bolt — the agent with a wallet · local-first, yours
     </footer>
+
+    <!-- Self-hosted feedback widget. Same-origin: /widget.js loads from
+         bolt.trevormil.com; submissions POST to bolt.trevormil.com/v1/feedback
+         which nginx proxies to beacon. No "beacon" hostname or path on the
+         client side → adblockers + stale-DNS clients both stay happy. -->
+    <script
+      src="/widget.js"
+      data-project="pub_Fs6whQdb9dheT8tXwi6cEMaqTkF0UV59"
+      data-endpoint="https://bolt.trevormil.com"
+      data-primary="#d4af37"
+      data-title="Spotted something? Tell us."
+      defer
+    ></script>
   </body>
 </html>
