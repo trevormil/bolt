@@ -1,13 +1,22 @@
 ---
 id: 103
 title: "Address & gating validation: bech32 checksum + zod parseGating + multisig safety rails"
-status: open
+status: closed
 priority: high
 type: security
 source: audit-2026-05-29
 created: 2026-05-29
 refs: ["0066-agent-vault-criteria.md", "0102-defense-in-depth-money-path.md"]
 ---
+
+## 2026-05-30 — Closed (§4 deferred as a follow-up)
+
+§1 (bech32 checksum), §2 (zod `vaultGatingSchema`), §3 (multisig safety
+rails) all shipped — see the per-section "Status (2026-05-30)" block
+below for the per-section detail. §4 (period anchor at canonical UTC
+boundary) is deferred to a separate ticket when filed — it needs a
+chain-time read and isn't load-bearing for the current operational
+state.
 
 ## Description
 The two validation choke-points — `isBb1Address` and `parseGating` — are too

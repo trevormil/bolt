@@ -1,13 +1,30 @@
 ---
 id: 99
 title: "TX state-machine hardening: kill substring 'rejected' classifier + submitting-row recovery + stuck-pending caps"
-status: open
+status: closed
 priority: critical
 type: bug
 source: audit-2026-05-29
 created: 2026-05-29
 refs: ["0085-hardening-onboarding.md", "0081-vault-withdrawal-stuck-pending.md"]
 ---
+
+## 2026-05-30 — Closed
+
+All three sub-defects landed across the post-#106 hardening stack:
+
+- §1 (kill substring "rejected" classifier) — MR-2 of the original
+  audit-response stack: `TxRejectedError`/`TxRevertedError` type
+  hierarchy now classifies definitively-failed vs. provisional
+  by error class, not substring matching.
+- §2 (submitting-row recovery) — MR-7 (!112):
+  `TxManager.recoverStuckSubmitting()` runs at daemon boot, marks any
+  row stuck in `submitting` as `failed/unreconciled` so the
+  per-persona durable guard releases. Regression test in
+  `packages/tx/src/tx.test.ts` (MR-8 / !113).
+- §3 (stuck-pending retry cap) — MR-7 (!112): 25-retry cap on the
+  reconcile loop; row flips to `failed` with "unreconciled after 25
+  retries" instead of looping forever. Regression test landed in MR-8.
 
 ## Description
 Three related TxManager defects surfaced in the post-merge audit. Together they
