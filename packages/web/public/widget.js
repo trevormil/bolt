@@ -1,13 +1,6 @@
 (()=>{var L={primary:"#2b8fdb",primaryFg:"#ffffff",position:"bottom-right",title:"Send feedback",placeholder:"What's broken, missing, or could be better?",successMessage:"Thanks — we'll take a look."};function P(){let G=document.currentScript;if(G&&G.dataset.project)return G;let q=document.querySelectorAll("script[data-project]");return q[q.length-1]??null}function U(G){let q=G.dataset,J={};if(q.primary)J.primary=q.primary;if(q.primaryFg)J.primaryFg=q.primaryFg;if(q.position==="bottom-right"||q.position==="bottom-left")J.position=q.position;if(q.title)J.title=q.title;if(q.placeholder)J.placeholder=q.placeholder;if(q.success)J.successMessage=q.success;return J}async function k(G,q){try{let J=await fetch(`${G}/v1/projects/${q}/config`,{method:"GET",credentials:"omit"});if(!J.ok)return{};return(await J.json()).theme??{}}catch{return{}}}function S(){return`
-    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-      <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-        <path d="M5.5 8a8 8 0 0 1 13 0" opacity="0.55"/>
-        <path d="M8 10.2a4.5 4.5 0 0 1 8 0" opacity="0.85"/>
-        <circle cx="12" cy="6.5" r="1.2" fill="currentColor" stroke="none"/>
-      </g>
-      <g fill="currentColor">
-        <path d="M11.3 9.5h1.4l1.1 11.5h-3.6z"/>
-      </g>
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
     </svg>`}function x(G,q){let J=G.attachShadow({mode:"closed"}),R=document.createElement("style");R.textContent=`
     :host, .root {
       --beacon-primary: ${q.theme.primary};
