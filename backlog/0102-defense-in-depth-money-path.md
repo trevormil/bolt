@@ -1,13 +1,20 @@
 ---
 id: 102
 title: "Defense-in-depth on the money path: vote yesWeight clamp, vault.pay capability split, run_command keychain denylist"
-status: open
+status: closed
 priority: high
 type: security
 source: audit-2026-05-29
 created: 2026-05-29
 refs: ["0064-agent-key-security.md", "0083-multisig-vote-progress-ux.md"]
 ---
+
+## 2026-05-30 — Closed
+
+§1 (yesWeight clamp) and §3 (run_command keychain denylist) shipped
+across the post-audit stack — see the per-section "Status" notes below.
+§2 (vault.pay capability split) was triaged out: single-user app, no
+UX value in splitting; revisit if multi-user lands.
 
 ## Description
 Three independent defense-in-depth items where the current code trusts an input

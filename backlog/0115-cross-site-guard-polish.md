@@ -1,13 +1,24 @@
 ---
 id: 115
 title: "Cross-site guard polish: empty Host/Origin rejection, OPTIONS preflight, .env perm boot-check, redactedEnv allowlist"
-status: open
+status: closed
 priority: low
 type: security
 source: audit-2026-05-29
 created: 2026-05-29
 refs: ["0105-server-split-and-dead-routes.md"]
 ---
+
+## 2026-05-30 — Closed (§1 deferred as a follow-up)
+
+§2 (OPTIONS preflight + foreign-IP Host coverage), §3 (.env perms
+boot-check / auto-tighten to 0600), and §4 (redactedEnv allowlist
+flip) shipped via MR-8 (!113). §1 (empty-Host rejection) is deferred:
+the check itself is one line, but enforcement requires injecting a
+Host into every existing test's `app.request` site — a larger sweep
+than this MR's scope. The deferred §1 is captured in the source
+comment at `packages/web/src/server.ts` so a future reviewer sees the
+gap without re-reading the audit.
 
 ## Description
 Small defense-in-depth items that didn't earn their own ticket. Bundle as one

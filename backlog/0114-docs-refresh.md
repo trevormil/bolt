@@ -1,12 +1,11 @@
 ---
 id: 114
 title: "Documentation refresh: README + CLAUDE.md + runbook branding + ADR alignment"
-status: in-progress
+status: closed
 priority: low
 type: docs
 source: audit-2026-05-29
 created: 2026-05-29
-prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/115"]
 refs: []
 ---
 

@@ -1,13 +1,28 @@
 ---
 id: 100
 title: "Vault create bypasses TxManager mutex + orphans on local-write failure; vault_op ungated at chokepoint"
-status: open
+status: closed
 priority: critical
 type: bug
 source: audit-2026-05-29
 created: 2026-05-29
 refs: ["0099-tx-state-machine-hardening.md", "0066-agent-vault-criteria.md"]
 ---
+
+## 2026-05-30 — Closed via MR-7 (!112)
+
+`VaultService.create` no longer calls `createVaultFn` directly. It now
+builds a `MsgUniversalUpdateCollection` via `buildVaultMsg`, calls
+`txManager.submit(...kind: "vault_op")`, and awaits settlement via the
+new `awaitSettled(id)` helper. The per-persona durable mutex covers
+vault create the same way it covers `spend`; a process death between
+the durable INSERT and the broadcast is recovered at boot by
+`recoverStuckSubmitting()` (#99 §2). The agent's `create_vault` tool
+runs the same gauntlet through the same chokepoint.
+
+Backstop: 562/562 unit + 15/15 e2e specs pass; `vault.create` flow has
+fresh tests in `agent-tools.test.ts` / `create-vault-gating.test.ts`
+that exercise the through-chokepoint path.
 
 ## Description
 `vault.create` is the only money-touching path that does NOT route through

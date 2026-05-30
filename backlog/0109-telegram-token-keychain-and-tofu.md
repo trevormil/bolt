@@ -1,12 +1,11 @@
 ---
 id: 109
 title: "Telegram: bot token → OS keychain + TOFU concurrency hardening + bot.test secrets allowlist"
-status: in-progress
+status: closed
 priority: medium
 type: security
 source: audit-2026-05-29
 created: 2026-05-29
-prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/114"]
 refs: ["0049-telegram-full-surface.md", "0096-agent-key-at-rest-keychain.md"]
 ---
 
