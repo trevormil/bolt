@@ -21,7 +21,7 @@ A payment-first personal AI agent. Local-first. Compartmentalized by persona. Mo
 - **Vaults are real on-chain collections.** Each vault is a 1:1 USDC-backed BitBadges collection. Multisig sign-off is a **one-time unlock**, not per-transaction consent ([ADR-0005](./docs/decisions/0005-multisig-unlock-model.md)). Vote tallies read directly from chain ABCI via a self-contained protobuf codec (fuzz-tested, 500 cases round-trip).
 - **The seed never sits on disk.** macOS Keychain via the `security` CLI; env-first resolver keeps CI green; `vellum keys migrate` walks an existing `.env` seed into the keychain ([ADR-0007](./docs/decisions/0007-agent-key-storage.md)).
 - **Eval suite gates CI.** Security battery (seed-exfil refusal, prompt-injection resistance, cross-persona isolation), multisig vault create, budget-bounded turns. Deterministic oracles primary; LLM-judge fallback for open-ended refusals.
-- **502 unit + 7 Playwright e2e + manual evals — all green.** Plus a property/fuzz layer on the money-safety primitives (`isPositiveMicroAmount` vs a BigInt-canonical oracle, ~2,000 inputs).
+- **562 unit + 15 Playwright e2e + manual evals — all green.** Plus a property/fuzz layer on the money-safety primitives (`isPositiveMicroAmount` vs a BigInt-canonical oracle, ~2,000 inputs).
 
 ## Install
 
@@ -50,8 +50,8 @@ Then chat with it in the web app, the terminal (`vellum`), or your Telegram bot.
 | [`docs/decisions/`](./docs/decisions/) | 7 ADRs — the load-bearing decisions |
 | [`docs/runbooks/`](./docs/runbooks/) | Install, MCP, Telegram, key rotation, Meridian devnet |
 | [`docs/demo.md`](./docs/demo.md) | E2E live demo against the Meridian devnet |
-| [`backlog/`](./backlog/) | 115 tickets (92 closed, 18 open audit items, 5 iceboxed) |
-| [`packages/`](./packages/) | 21 workspace packages — engine, web, telegram, cli, daemon + 16 libs ([map](./docs/packages.md)) |
+| [`backlog/`](./backlog/) | 125 tickets (103 closed, 10 open + 1 in-progress, 10 iceboxed) |
+| [`packages/`](./packages/) | 22 workspace packages — engine, web, telegram, cli, daemon + 17 libs ([map](./docs/packages.md)) |
 | [`research/`](./research/) | The competitive scan + chosen differentiators |
 | [`scripts/demo.ts`](./scripts/demo.ts) | Live devnet demo (real engine + chain, no mocks) |
 
@@ -59,7 +59,7 @@ Then chat with it in the web app, the terminal (`vellum`), or your Telegram bot.
 
 TypeScript on **Bun** · React + Tailwind (Vite, code-split PWA) · **Hono** server + SQLite (WAL) · **BitBadges** L1 (Cosmos SDK) · **OpenRouter** (LLM routing, per-persona model override) · **Playwright** e2e · **zod** validation · **Langfuse** observability (optional) · prettier + tsc strict mode
 
-CI: format + typecheck + 502 unit tests + 7 Playwright e2e specs blocking on every push. Manual `evals` stage (real-LLM, budget-gated).
+CI: format + typecheck + 562 unit tests + 15 Playwright e2e specs blocking on every push. Manual `evals` stage (real-LLM, budget-gated).
 
 ## Submission notes (for the reviewer)
 

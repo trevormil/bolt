@@ -3,6 +3,7 @@ id: 3
 title: Vault revamp — configurable gating, escrow tracking, manager admin, sign-off
 status: accepted
 date: 2026-05-27
+last-verified: 2026-05-29
 ---
 
 ## Context

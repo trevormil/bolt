@@ -1,15 +1,20 @@
 # CLAUDE.md — vellum-project
 
 A personal assistant built from scratch to rival OpenClaw (Vellum hiring-partner
-project). See [`README.md`](./README.md) for the spec.
+project). User-facing brand is **Bolt**; `vellum-*` package names + `VELLUM_*`
+env vars + `~/.vellum/` data dir are stable infra identifiers — don't churn
+them. See [`README.md`](./README.md) for the product spec.
 
-**Status:** design done + **plan-audited** — [`ARCHITECTURE.md`](./ARCHITECTURE.md)
-is the E2E reference (see §13 for the audit-hardening invariants + the ~10-ticket
-**MVP slice**), backlog seeded (`backlog/0001–0025`), audit findings in
-[`research/audit/`](./research/audit/) (start at `00-summary.md`). **Ready to
-build.** Order: 0001 scaffold → **0002 signer→devnet (CRITICAL, validate a real tx
-day 1)** → the MVP slice. The reconciliation invariant (**0023**) is non-negotiable
-before vault/payment tickets are trustworthy. Pick up via `/ticket list`.
+**Status:** post-MVP, post-audit hardening. The MVP slice + all six audit
+sub-trees (`backlog/0099–0115`) have shipped or are in flight as stacked MRs.
+The 22-package monorepo runs three surfaces (CLI / Web / Telegram) over one
+engine; 562 unit + 15 Playwright e2e specs + real-LLM eval gate are green.
+[`ARCHITECTURE.md`](./ARCHITECTURE.md) remains the E2E reference; the
+audit-hardening invariants are §13. Current work: tightening
+correctness/security via the audit follow-ups — pick up via `/ticket list`
+(`status:open priority:high|critical` first), and prefer **stacked MRs** so
+review throughput stays the bottleneck rather than per-MR overhead. Final
+merge to `main` is always human-only.
 
 ## How we work here (the approach moving forward)
 
