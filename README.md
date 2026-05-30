@@ -51,7 +51,7 @@ Then chat with it in the web app, the terminal (`vellum`), or your Telegram bot.
 | [`docs/runbooks/`](./docs/runbooks/) | Install, MCP, Telegram, key rotation, Meridian devnet |
 | [`docs/demo.md`](./docs/demo.md) | E2E live demo against the Meridian devnet |
 | [`backlog/`](./backlog/) | 115 tickets (92 closed, 18 open audit items, 5 iceboxed) |
-| [`packages/`](./packages/) | 22 workspace packages — engine, web, telegram, cli, daemon + 17 libs |
+| [`packages/`](./packages/) | 21 workspace packages — engine, web, telegram, cli, daemon + 16 libs ([map](./docs/packages.md)) |
 | [`research/`](./research/) | The competitive scan + chosen differentiators |
 | [`scripts/demo.ts`](./scripts/demo.ts) | Live devnet demo (real engine + chain, no mocks) |
 

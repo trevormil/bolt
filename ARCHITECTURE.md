@@ -6,8 +6,8 @@ scattered direction notes in [`research/`](./research/) as the single E2E refere
 **Bolt** is a payment-first, compartmentalized, trust-first personal assistant —
 **BitBadges-native**, messaged via **Telegram**, managed via a **companion web app**.
 
-> What's shipped today: 22 workspace packages (engine + web + telegram + cli +
-> daemon + 17 libs), 502 unit tests + 7 Playwright e2e + a real-LLM eval gate,
+> What's shipped today: 21 workspace packages ([map](./docs/packages.md): engine +
+> web + telegram + cli + daemon + 16 libs), 502 unit tests + 7 Playwright e2e + a real-LLM eval gate,
 > all green in CI. The runtime, payment layer, vault gating compiler, multisig
 > sign-off model, OS-keychain signer, unified observability feed, and end-to-end
 > Keplr-signed flows are live. The 18 open backlog tickets
@@ -328,12 +328,23 @@ Skip:Go, voice, channels beyond Telegram, a skill marketplace.
 
 ## 11. Observability, evals & retrieval (cross-cutting)
 
-### Observability — Langfuse
+### Observability — Langfuse + the unified Activity feed
 Trace the full path — orchestrator → persona → LLM call → tool call → chain op —
 as Langfuse traces/spans with token/cost attribution. Reuse the AgentForge W1–3
-Langfuse key + endpoint (env, never committed). **Two complementary layers:**
-Langfuse = dev/ops observability; the on-chain proof-of-action ledger (§5.6) =
-user-facing trust. Wire it from the runtime skeleton so traces exist from day one.
+Langfuse key + endpoint (env, never committed). Wire it from the runtime skeleton
+so traces exist from day one.
+
+**Three telemetry layers, three jobs** (don't conflate them):
+- `@vellum/trace` — **Langfuse**, dev/ops observability (off-box, env-gated).
+- `@vellum/observability` — a local, per-persona **product event store** (#42): the
+  complete operational record (chat, fs, capability, tool, error, latency, cost).
+- `@vellum/ledger` — the on-chain **proof-of-action** settlement record (§5.6):
+  authority + tx hash, user-facing trust.
+
+The web app's **Activity feed** unifies the event store (the spine) with the
+ledger's settlement rows into one timeline via `mergeObservability` (#95): a
+settlement row (one carrying a `txHash`) is always kept; a ledger row an event
+already represents is dropped so the feed isn't redundant.
 
 ### Evals — golden sets + CI
 - **Golden task sets** per use case, with success criteria — deterministic checks
