@@ -23,11 +23,11 @@
     <div id="root"></div>
     <script type="module" src="/src/app/main.tsx"></script>
 
-    <!-- Beacon feedback widget. Bottom-right bubble; submissions route to the
-         "bolt" project on beacon.trevormil.com and are processed into harness
-         backlog tickets by a 15-min launchd poller. -->
+    <!-- Self-hosted feedback widget. Vendored under public/widget.js (NOT
+         loaded from a CDN under a "beacon" path) so uBlock / AdGuard / Brave
+         Shields don't block by URL-substring match. -->
     <script
-      src="https://cdn.jsdelivr.net/npm/@beacon/widget/dist/beacon.js"
+      src="/widget.js"
       data-project="pub_Fs6whQdb9dheT8tXwi6cEMaqTkF0UV59"
       data-endpoint="https://beacon.trevormil.com"
       data-primary="#d4af37"
