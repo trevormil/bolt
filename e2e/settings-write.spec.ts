@@ -44,9 +44,7 @@ test.describe("settings WRITE flows", () => {
     // The save button label depends on whether Telegram is already configured
     // ("Connect" when unset / null state, "Replace" when set). Accept either —
     // locally a dev .env often has TELEGRAM_BOT_TOKEN; CI runners don't.
-    await section
-      .getByRole("button", { name: /^(Connect|Replace)$/ })
-      .click();
+    await section.getByRole("button", { name: /^(Connect|Replace)$/ }).click();
 
     // verifyTelegram is seamed to ok:true / username e2e_bot → "connected as
     // @e2e_bot" appears in the section's status line.
