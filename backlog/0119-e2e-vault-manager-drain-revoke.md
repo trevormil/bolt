@@ -1,11 +1,13 @@
 ---
 id: 119
 title: "e2e: Vault manager drain + revoke (human-signed manager actions)"
-status: open
+status: in-progress
+prs: ["https://labs.gauntletai.com/trevormiller/vellum-project/-/merge_requests/98"]
 priority: high
 type: testing
 source: trevor
 created: 2026-05-29
+updated: 2026-05-29
 refs: ["0082-clarify-drain-vs-revoke-wording.md", "0106-test-coverage-backfill.md"]
 ---
 
