@@ -42,23 +42,22 @@ const balance = [{ denom: DENOM, amount: "5000000" }]; // $5 of mock USDC
 const REPLY =
   "Here is a **markdown** reply with a [link](https://example.com) and `inline code`.\n\n- bullet one\n- bullet two";
 
-// Fake create-vault tx whose events parse to a VaultRef (mirrors server.test).
-// Both txHash and collectionId must be unique per call so multiple specs in one
-// suite run don't collide on the vaults PK or the ledger.tx_hash UNIQUE index.
-// createVault returns a fresh txHash and records the mapping; fetchTx returns
-// the matching collectionId envelope.
-let nextVaultIdx = 0;
-const vaultSeamCollection: Record<string, string> = {};
-function nextVaultTxHash(): string {
-  const idx = nextVaultIdx++;
-  const txHash = `VAULTCREATE${idx + 1}`;
-  vaultSeamCollection[txHash] = String(777 + idx);
-  return txHash;
+// Per-call counters for the chain seams (#100 §1). vault.create now goes
+// through txChain.signAndBroadcast, so both that hash AND the fetchTx
+// collectionId need to be unique per call to avoid ledger UNIQUE / vaults PK
+// collisions across specs sharing the in-memory test-server. Distinct prefix
+// from the LCD POST counter (e2e0babe) so the agent-signed and human-signed
+// paths can't collide on the SAME hash across specs.
+let nextHashIdx = 0;
+function nextTxChainHash(): string {
+  const tag = `a9e470b8${(nextHashIdx++).toString(16).padStart(8, "0")}`;
+  return tag.repeat(64 / tag.length);
 }
-function fakeCreateTxEventsFor(txHash: string): {
+let nextVaultCollectionIdx = 0;
+function nextVaultCreateEvents(): {
   events: { type: string; attributes: { key: string; value: string }[] }[];
 } {
-  const collectionId = vaultSeamCollection[txHash] ?? "777";
+  const collectionId = String(777 + nextVaultCollectionIdx++);
   return {
     events: [
       {
@@ -102,10 +101,12 @@ function makeEngine(): Engine {
     getBalances: async () => balance,
     txChain: {
       getBalances: async () => balance,
-      // 64-char hex (the only shape isTxHash accepts after #101). Slice 0,10
-      // surfaces "e2e0babee2" in the UI receipts; e2e specs match on the
-      // /e2e0babe/i substring rather than the historical "E2ETXHASH".
-      signAndBroadcast: async () => "e2e0babe".repeat(8),
+      // 64-char hex (the only shape isTxHash accepts after #101). Per-call
+      // unique so the ledger UNIQUE(tx_hash) dedup doesn't collide when
+      // multiple specs broadcast through the same in-memory test-server.
+      // Slice 0,10 surfaces "e2e0babee2" in the UI receipts; e2e specs match
+      // on the /e2e0babe/i substring rather than the historical "E2ETXHASH".
+      signAndBroadcast: async () => nextTxChainHash(),
       confirmTx: async () => ({ height: 1, code: 0 }),
     },
     claimFaucet: async () => ({
@@ -113,13 +114,15 @@ function makeEngine(): Engine {
       amount: "10000000",
       denom: DENOM,
     }),
-    // Seam vault creation offline (mirrors server.test). The human manager comes
-    // from the connected (mocked) Keplr wallet; defaultManager is the fallback.
+    // Seam vault chain reads. The createVault seam was removed in #100 §1 —
+    // vault.create now routes through txChain.signAndBroadcast, so the
+    // chain seam above handles both spends and vault creates. fetchTx
+    // returns fresh collection-id events per call so consecutive vault
+    // creates don't collide on the vaults table's PRIMARY KEY.
     vault: {
       defaultManager: "bb1human",
-      createVault: async () => ({ txHash: nextVaultTxHash() }),
       confirmTx: async () => ({ height: 9, code: 0 }),
-      fetchTx: async (txHash: string) => fakeCreateTxEventsFor(txHash),
+      fetchTx: async () => nextVaultCreateEvents(),
       fetchTokenBalance: async () => "2000000",
     },
   });
@@ -213,9 +216,9 @@ const lcdJson = (value: unknown) =>
 
 // 64-char hex tx hashes, unique per call so the ledger UNIQUE(tx_hash) dedup
 // doesn't collide across specs sharing the in-memory test-server (#101).
-let nextHashIdx = 0;
+let nextLcdHashIdx = 0;
 function nextLcdHash(): string {
-  const tag = `e2e0babe${(nextHashIdx++).toString(16).padStart(8, "0")}`;
+  const tag = `e2e0babe${(nextLcdHashIdx++).toString(16).padStart(8, "0")}`;
   return tag.repeat(64 / tag.length); // pad up to 64 hex chars
 }
 function handleLcd(req: Request, url: URL): Response | null {

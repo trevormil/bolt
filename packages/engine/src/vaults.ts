@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { bankSendMsg, confirmTx as chainConfirmTx } from "@vellum/chain";
 import {
-  createVault as tokCreateVault,
+  buildVaultMsg,
   vaultRefFromTx,
   vaultTransferMsg,
   type VaultGating,
@@ -40,7 +40,10 @@ export interface VaultServiceDeps {
   wallets: PersonaWallets;
   ledger: Ledger;
   txManager: TxManager;
-  createVault?: typeof tokCreateVault;
+  // (Was `createVault?: typeof tokCreateVault` — removed in #100 §1. The vault
+  // create now routes through `txManager.submit({kind:"vault_op"})` so the
+  // per-persona durable guard covers the in-flight create. The msg is built
+  // via `buildVaultMsg` and broadcast through the seamed `txChain` instead.)
   confirmTx?: typeof chainConfirmTx;
   // Fetch a confirmed tx's LCD response (for parsing the new vault's ids).
   fetchTx?: (hash: string) => Promise<{
@@ -132,7 +135,6 @@ export class VaultService {
   private wallets: PersonaWallets;
   private ledger: Ledger;
   private txManager: TxManager;
-  private createVaultFn: typeof tokCreateVault;
   private confirmTx: typeof chainConfirmTx;
   private fetchTx: NonNullable<VaultServiceDeps["fetchTx"]>;
   private defaultManager: string | undefined;
@@ -144,7 +146,6 @@ export class VaultService {
     this.wallets = deps.wallets;
     this.ledger = deps.ledger;
     this.txManager = deps.txManager;
-    this.createVaultFn = deps.createVault ?? tokCreateVault;
     this.confirmTx = deps.confirmTx ?? chainConfirmTx;
     this.fetchTokenBalance = deps.fetchTokenBalance ?? defaultFetchTokenBalance;
     this.fetchTx = deps.fetchTx ?? defaultFetchTx;
@@ -176,6 +177,10 @@ export class VaultService {
     personaId: string,
     req: CreateVaultRequest,
   ): Promise<VaultRecord> {
+    // Upstream capability gate, BEFORE wallet derivation — so a denied call
+    // surfaces a clean CapabilityDeniedError instead of "no wallet for
+    // persona". The chokepoint inside submit() ALSO gates (defense in depth),
+    // so a future code path that bypasses this still gets caught (#100 §3).
     await this.authorize?.(personaId, {
       capability: "vault.create",
       summary: `create vault ${req.symbol}`,
@@ -187,7 +192,12 @@ export class VaultService {
       );
     }
     const agent: Signer = await this.wallets.signerFor(personaId);
-    const { txHash } = await this.createVaultFn(agent, {
+    // #100 §1: route through the TxManager chokepoint. The submit() durable
+    // guard now covers the in-flight create — a second tx (send_usdc,
+    // withdraw) from this persona during the ~20s confirm window is held by
+    // the per-persona mutex instead of racing the create. The msg is built
+    // here (pure) and the broadcast happens inside submit's lifecycle.
+    const msg = buildVaultMsg(agent.address, {
       name: req.name,
       symbol: req.symbol,
       description: req.description ?? req.name,
@@ -196,7 +206,33 @@ export class VaultService {
       dailyWithdrawLimit: req.dailyWithdrawLimit,
       gating: req.gating,
     });
-    await this.confirmTx(txHash); // setup action — await confirmation
+    const pending = await this.txManager.submit({
+      personaId,
+      kind: "vault_op",
+      msgs: [msg],
+      to: manager,
+      amount: "0", // vault create moves no µUSDC; ledger summary only
+      memo: "vellum vault create",
+      capability: {
+        name: "vault.create",
+        summary: `create vault ${req.symbol}`,
+      },
+    });
+    // Await terminal — the create is a setup action; callers expect the row
+    // to exist when this returns. The local INSERT happens only on confirmed,
+    // so a parse failure or an unconfirmed broadcast doesn't orphan a vault
+    // row pointing at nothing.
+    const settled = await this.txManager.awaitSettled(pending.id);
+    if (settled.status !== "confirmed" || !settled.hash) {
+      throw new Error(
+        `vault create did not confirm: ${settled.error ?? settled.status}`,
+      );
+    }
+    const txHash = settled.hash;
+    // Parse the collection-id from the confirmed tx's events. If this throws
+    // the vault row is NOT inserted — the on-chain create still happened
+    // (the manager is on chain) but the dashboard won't list it; #100 §2
+    // orphan recovery is the follow-on.
     const ref = vaultRefFromTx(await this.fetchTx(txHash));
     const created = Date.now();
     this.db
@@ -215,12 +251,15 @@ export class VaultService {
         manager,
         created,
       );
+    // The chokepoint already wrote a vault_op ledger entry from chain-
+    // confirmed state. Add a second, vault-specific entry that pins the
+    // collectionId + manager for richer audit + UI display.
     this.ledger.record({
       personaId,
       kind: "vault_op",
       summary: `created vault ${req.symbol} (manager ${manager})`,
       authority: "agent",
-      txHash,
+      txHash: `${txHash}#vault-create`, // distinct key from the chokepoint entry
       meta: { collectionId: ref.collectionId, manager },
     });
     log.info(

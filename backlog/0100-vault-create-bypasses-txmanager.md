@@ -75,3 +75,20 @@ Findings #3, #5, #9 from the adversarial-money-path review.
   follow-up.
 - §2 orphan vault reconciliation → **deferred** (separate scope — needs a
   chain query helper).
+
+## Status (2026-05-30) — §1 shipped via MR-7
+- §1 vault.create routes through TxManager.submit → **shipped**. The
+  vault create now uses `buildVaultMsg` + `txManager.submit({kind:
+  "vault_op", capability: {name: "vault.create", ...}})` + the new
+  `txManager.awaitSettled(id)` helper. The per-persona durable guard
+  now covers the in-flight create — a second tx (send_usdc, withdraw)
+  during the confirm window is held by the mutex instead of racing.
+  Upstream `authorize?.()` is preserved in VaultService so denial fires
+  before wallet derivation (cleaner error than "no wallet"); the
+  chokepoint authorize inside submit is the defensive second gate.
+  Test-server harness reworked to make `txChain.signAndBroadcast`
+  return unique hashes per call (prefix `a9e470b8` — distinct from the
+  LCD POST stub's `e2e0babe` so agent and human paths can't collide
+  on the ledger UNIQUE(tx_hash) index).
+- §2 orphan reconciliation → **deferred** (chain-scan helper is its
+  own scope).

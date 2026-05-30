@@ -73,3 +73,15 @@ coverage backfill ticket.
 - §2 `recoverStuckSubmitting()` boot pass → **deferred** (next MR — requires
   a chain query helper + integration into engine boot).
 - §3 auto-reconcile retry cap → **deferred** (next MR).
+
+## Status (2026-05-30) — §2 + §3 shipped via MR-7
+- §2 `recoverStuckSubmitting()` boot pass → **shipped**. Pragmatic version
+  (chain-scan deferred): rows in `submitting` status older than 5 minutes
+  get marked `failed` with an `unreconciled` note so the per-persona
+  durable guard releases. Operator can investigate via the stored error
+  + hash. Not exposed in the SPA — boot-time only.
+- §3 auto-reconcile retry cap → **shipped**. New `reconciles` column on
+  the tx table (migrated in place), bumped each time `confirmPending`
+  sees an unconfirmed result, capped at 25 (≈ 6 min at 15s sweeps).
+  After the cap, the row is marked `failed: unreconciled` so the wallet
+  unblocks on an LCD-reorg / fork edge case.

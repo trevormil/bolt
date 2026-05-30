@@ -104,7 +104,6 @@ function makeEngine(over: Parameters<typeof createEngine>[0] = {}) {
     }),
     vault: {
       defaultManager: HUMAN,
-      createVault: async () => ({ txHash: "VAULTCREATE1" }),
       confirmTx: async () => ({ height: 9, code: 0 }),
       fetchTx: async () => fakeCreateTxEvents,
       // Per-vault escrow = the agent's holding of the collection's tokens.
@@ -460,7 +459,6 @@ describe("web API", () => {
       makeEngine({
         vault: {
           defaultManager: undefined,
-          createVault: async () => ({ txHash: "VAULTCREATE1" }),
           confirmTx: async () => ({ height: 9, code: 0 }),
           fetchTx: async () => fakeCreateTxEvents,
           fetchTokenBalance: async () => "0",
@@ -2271,18 +2269,24 @@ describe("edge/failure hardening (#85)", () => {
     const a = appWith({
       txChain: {
         ...fakeTxChain,
-        signAndBroadcast: async () => {
-          // Post-#99: TxManager classifies CheckTx rejection by TYPE, not by
-          // substring on the message. A typed BroadcastRejectedError → row
-          // marked failed → TxRejectedError surfaces → route returns 422.
-          // (A plain Error("...rejected...") leaves the row submitting now,
-          // since it could be a network/TLS error masquerading as a rejection.)
-          throw new BroadcastRejectedError(
-            "broadcast rejected (code 7): amount exceeds the approval's per-day limit",
-            7,
-            "HASH-CHK",
-          );
-        },
+        // Reject only AFTER the vault create succeeds (post-#100 §1: vault.create
+        // now broadcasts through the same chain seam, so a blanket reject would
+        // break the create that this test does NOT want to fail on).
+        signAndBroadcast: (() => {
+          let calls = 0;
+          return async () => {
+            calls++;
+            if (calls === 1) return "VAULTCREATE";
+            // Post-#99: TxManager classifies CheckTx rejection by TYPE, not
+            // by substring on the message. A typed BroadcastRejectedError
+            // → row marked failed → TxRejectedError surfaces → 422.
+            throw new BroadcastRejectedError(
+              "broadcast rejected (code 7): amount exceeds the approval's per-day limit",
+              7,
+              "HASH-CHK",
+            );
+          };
+        })(),
       },
     });
     await send(a, "/api/personas", { name: "Atlas" });

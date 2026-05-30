@@ -47,7 +47,6 @@ function eng(chain: TxChain): Engine {
     txChain: chain,
     vault: {
       defaultManager: "bb1zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zql3w7",
-      createVault: async () => ({ txHash: "VAULTCREATE1" }),
       confirmTx: async () => ({ height: 9, code: 0 }),
       fetchTx: async () => ({ events: [] }),
       fetchTokenBalance: async () => "0",

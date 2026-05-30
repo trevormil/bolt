@@ -80,7 +80,6 @@ function makeEngine(): Engine {
     }),
     vault: {
       defaultManager: "bb1human",
-      createVault: async () => ({ txHash: "VAULTCREATE1" }),
       confirmTx: async () => ({ height: 9, code: 0 }),
       fetchTx: async () => ({
         events: [
