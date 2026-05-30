@@ -14,11 +14,11 @@ const DENOM = "ibc/TESTUSDC";
 const FUNDED: Coin[] = [{ denom: DENOM, amount: "10000000" }]; // 10 USDC
 
 // Valid bb1 recipients — the spend() chokepoint now structurally validates the
-// address (#65 review), so lifecycle tests use well-formed addresses.
-const DEST = "bb1" + "d".repeat(39);
-const TO1 = "bb1" + "a".repeat(39);
-const TO2 = "bb1" + "b".repeat(39);
-const TO3 = "bb1" + "c".repeat(39);
+// address (#65 review), so lifecycle tests use well-formed bech32-checksummed
+// addresses (#103). Constants live in `test-bb1.ts` so any test in the
+// workspace can reuse the same valid addresses without re-deriving.
+import { TEST_BB1 } from "./test-bb1.ts";
+const { DEST, TO1, TO2, TO3 } = TEST_BB1;
 
 function deferred<T>() {
   let resolve!: (v: T) => void;

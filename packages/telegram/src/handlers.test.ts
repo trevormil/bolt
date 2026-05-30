@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createEngine } from "@vellum/engine";
-import type { TxChain } from "@vellum/tx";
+import { TEST_BB1, type TxChain } from "@vellum/tx";
 import { env } from "@vellum/shared";
 import {
   onBalance,
@@ -20,9 +20,9 @@ import { Sessions } from "./sessions.ts";
 const TEST_MNEMONIC =
   "test test test test test test test test test test test junk";
 
-// A structurally-valid bb1 recipient — the spend chokepoint now does a full bb1
-// check (#65), so /spend tests use a well-formed address.
-const VALID = `bb1${"q".repeat(39)}`;
+// A bech32-checksummed bb1 recipient — the spend chokepoint validates the full
+// checksum (#65 + #103), so /spend tests use a real address.
+const VALID = TEST_BB1.DEST;
 
 // Fully offline tx chain: funded in USDC, deterministic spend hash, confirms.
 // Lets /spend exercise the real TxManager chokepoint without a live chain.
@@ -108,7 +108,7 @@ describe("telegram handlers (engine-wired)", () => {
   test("/spend over the balance replies with the reason — never a silent no-op (#89)", async () => {
     const engine = engineWithFakes();
     const { c, replies } = ctx();
-    const dest = "bb1" + "q".repeat(39);
+    const dest = TEST_BB1.DEST;
     // The tx chain reports 10 USDC; spending 20 → insufficient → TxRejectedError.
     // Before #89 this threw past the handler → grammY swallowed it → no reply.
     await onSpend(c, engine, new Sessions(), `${dest} 20`);

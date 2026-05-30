@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { generateWallet } from "@vellum/chain";
+import { TEST_BB1 } from "@vellum/tx";
 import {
   createEngine,
   vaultTools,
@@ -190,7 +191,7 @@ describe("balance read/awareness tools (#88)", () => {
     );
     e.paymentRequests.create({
       personaId: "p",
-      toAddress: "bb1" + "q".repeat(39),
+      toAddress: TEST_BB1.DEST,
       denom: "ibc/TESTUSDC",
       amount: "5000000",
       memo: "rent",

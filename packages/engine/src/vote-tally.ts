@@ -20,6 +20,20 @@ export interface VoteTally {
   }[];
 }
 
+// Parse + clamp yesWeight at the consumer boundary (#102). The chain *should*
+// keep yesWeight in [0, 100] (it's a percent), but this is the agent's QUORUM
+// decision — we don't trust the raw return value absolutely. The previous
+// `Number(v.yesWeight) || 0` accepted "1e3" → 1000, letting a single weight-1
+// voter contribute 1 * 1000/100 = 10 to yesWeight and clear any threshold ≤ 10.
+// We reject non-canonical strings (anything that isn't an integer percent
+// 0..100) and floor what survives to integer percent.
+function parseYesWeight(raw: unknown): number {
+  if (typeof raw !== "string") return 0;
+  if (!/^(100|[0-9]{1,2})$/.test(raw)) return 0;
+  const n = Number(raw);
+  return Math.max(0, Math.min(100, Math.floor(n)));
+}
+
 export function voteTally(
   multisig: {
     signers: { address: string; weight?: number }[];
@@ -28,7 +42,7 @@ export function voteTally(
   votes: VoteProof[],
 ): VoteTally {
   const byVoter = new Map(
-    votes.map((v) => [v.voter, Number(v.yesWeight) || 0]),
+    votes.map((v) => [v.voter, parseYesWeight(v.yesWeight)]),
   );
   const signers = multisig.signers.map((s) => {
     const weight = s.weight ?? 1;
@@ -38,19 +52,24 @@ export function voteTally(
     return { address: s.address, weight, vote };
   });
   const totalWeight = signers.reduce((n, s) => n + s.weight, 0);
-  const yesWeight = signers.reduce(
+  // Integer microweight comparison avoids the 3 × 0.33 = 0.9900…1 boundary
+  // (#102.1): each signer's yes contribution is (weight * pct_micro) where
+  // pct_micro is integer 0..100. We compare 100×yesWeight to 100×threshold so
+  // the math stays in integer space.
+  const yesWeightMicro = signers.reduce(
     (n, s) =>
       n +
-      (byVoter.has(s.address) ? s.weight * (byVoter.get(s.address)! / 100) : 0),
+      (byVoter.has(s.address) ? s.weight * (byVoter.get(s.address) ?? 0) : 0),
     0,
   );
+  const yesWeight = yesWeightMicro / 100;
   return {
     threshold: multisig.threshold,
     totalWeight,
     yesWeight,
     signedCount: signers.filter((s) => s.vote === "yes").length,
     totalSigners: signers.length,
-    quorumMet: yesWeight >= multisig.threshold,
+    quorumMet: yesWeightMicro >= multisig.threshold * 100,
     signers,
   };
 }

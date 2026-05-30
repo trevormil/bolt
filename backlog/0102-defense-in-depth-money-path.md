@@ -59,3 +59,14 @@ it shouldn't have to.
 ## Notes
 Joint findings from security (#1, #15), money path (#8, #15), and the agent
 key-security ADR residual (#64).
+
+## Status (2026-05-30) — partial via MR-2
+- §1 yesWeight clamp + regex → **shipped**. `voteTally` parses yesWeight via
+  `parseYesWeight` which requires `/^(100|[0-9]{1,2})$/` (rejects "1e3", "1000",
+  "Infinity", signed/decimal/hex, whitespace, etc.) and floors to integer
+  percent in [0, 100]. Quorum comparison is now in INTEGER microweight space
+  (× 100) so the 3 × 0.33 = 0.99 boundary fuzz can't push quorumMet true.
+  Property test in `vote-tally.test.ts` covers an adversarial corpus.
+- §2 vault.pay capability split → **cut for submission** (audit triage).
+  Single-user app, no UX value in splitting; revisit if multi-user lands.
+- §3 run_command keychain denylist → **deferred to MR-5**.

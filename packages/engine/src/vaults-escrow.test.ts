@@ -39,7 +39,7 @@ async function eng(
     mnemonic: m,
     runLoop: async () => ({ text: "", meters: [] }),
     vault: {
-      defaultManager: "bb1human000000000000000000000000000000000",
+      defaultManager: "bb1zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zql3w7",
       createVault: async () => ({ txHash: "VAULTCREATE1" }),
       confirmTx: async () => ({ height: 9, code: 0 }),
       fetchTx: async () => fakeCreateTxEvents,

@@ -53,4 +53,53 @@ describe("voteTally (#83)", () => {
     expect(t.quorumMet).toBe(true);
     expect(t.signedCount).toBe(1);
   });
+
+  test("adversarial yesWeight values can NEVER push quorumMet beyond intended (#102.1)", () => {
+    // Before the fix, `Number("1e3") || 0` returned 1000 — a single weight-1
+    // voter contributed 1 * 1000/100 = 10 to yesWeight and cleared ANY
+    // threshold ≤ 10. The chain should keep yesWeight in [0,100] but this is
+    // the consumer's quorum decision; we must clamp + reject non-canonical
+    // strings regardless of what the chain returned.
+    const adversarial = [
+      "1e3", // scientific → would be 1000
+      "1e1000", // huge scientific
+      "1000", // out-of-range integer
+      "Infinity",
+      "NaN",
+      "+50", // signed
+      "50.5", // decimal
+      "0x32", // hex 50
+      " 100", // leading space
+      "100 ", // trailing space
+      "", // empty
+    ];
+    for (const yw of adversarial) {
+      const t = voteTally(ms, [vp("bb1a", yw), vp("bb1b", yw)]);
+      // Each adversarial value falls back to 0 → no yes-weight contribution →
+      // quorum never met.
+      expect({ yw, yesWeight: t.yesWeight, quorumMet: t.quorumMet }).toEqual({
+        yw,
+        yesWeight: 0,
+        quorumMet: false,
+      });
+    }
+    // 100 alone is canonical → behaves normally.
+    expect(
+      voteTally(ms, [vp("bb1a", "100"), vp("bb1b", "100")]).quorumMet,
+    ).toBe(true);
+  });
+
+  test("integer microweight comparison avoids the 3 × 0.33 boundary fuzz (#102.1)", () => {
+    // 33% from three signers should NOT round to threshold 1 via float drift.
+    // 3 × 0.33 = 0.99 (microweight 99), not 1. quorumMet must be FALSE.
+    const t = voteTally(
+      {
+        signers: [{ address: "a" }, { address: "b" }, { address: "c" }],
+        threshold: 1,
+      },
+      [vp("a", "33"), vp("b", "33"), vp("c", "33")],
+    );
+    expect(t.quorumMet).toBe(false);
+    expect(t.yesWeight).toBeLessThan(1);
+  });
 });

@@ -1,14 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createEngine } from "@vellum/engine";
-import type { TxChain } from "@vellum/tx";
+import { TEST_BB1, type TxChain } from "@vellum/tx";
 import { env } from "@vellum/shared";
 import { buildBot, BOT_COMMANDS } from "./bot.ts";
 
 const TEST_MNEMONIC =
   "test test test test test test test test test test test junk";
 
-// A structurally-valid bb1 recipient — /spend now does a full bb1 check (#65).
-const VALID = `bb1${"q".repeat(39)}`;
+// A bech32-checksummed bb1 recipient — /spend validates the full checksum
+// (#65 + #103).
+const VALID = TEST_BB1.DEST;
 
 // Offline tx chain so /spend's pre-check + (if allowed) broadcast never hit the
 // network. Funded so the only thing that can stop a spend is the capability gate.

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { fromBech32, toBech32 } from "@cosmjs/encoding";
 import { isPositiveMicroAmount, isBb1Address } from "./tx.ts";
 
 // Property/fuzz hardening for the money-safety validators (#90). These guard
@@ -77,25 +78,57 @@ describe("isPositiveMicroAmount — property/fuzz (money safety)", () => {
   });
 });
 
-describe("isBb1Address — boundary cases", () => {
-  const body38 = "a".repeat(38); // the minimum body length the regex allows
-  test("accepts a well-formed bb1 address at/above the min length", () => {
-    expect(isBb1Address("bb1" + body38)).toBe(true);
-    expect(isBb1Address("bb1" + "a".repeat(60))).toBe(true);
+describe("isBb1Address — bech32-checksummed (#103)", () => {
+  // Real bech32 bb1 addresses with valid checksums. Derived once from real
+  // wallet generation during devnet smoke; the checksum is preserved here so
+  // the tests don't pull in @cosmjs/crypto at unit-test time.
+  const VALID_BB1 = [
+    "bb1gsvdpdxec8hsu57lhxg5xem7refr233zlva7x9",
+    "bb15428vq2uzwhm3taey9sr9x5vm6tk78ew6favjg",
+  ];
+
+  test("accepts real bech32-checksummed addresses", () => {
+    for (const a of VALID_BB1) {
+      expect(isBb1Address(a)).toBe(true);
+    }
   });
-  test("rejects malformed addresses", () => {
+
+  test("rejects a regex-passing-but-checksum-invalid string (the typo-squat case)", () => {
+    // Mutate the last char of a valid address to break the checksum. The
+    // OLD regex-only check would accept this; the new check rejects.
+    const a = VALID_BB1[0]!;
+    const broken = a.slice(0, -1) + (a.slice(-1) === "9" ? "8" : "9");
+    expect(broken).toMatch(/^bb1[0-9a-z]{38,}$/); // still regex-valid
+    expect(isBb1Address(broken)).toBe(false); // bech32 rejects
+  });
+
+  test("rejects malformed addresses (structural)", () => {
     for (const bad of [
       "bb1" + "a".repeat(37), // one char too short
       "bb1", // empty body
-      "BB1" + body38, // wrong-case prefix
-      "cosmos1" + body38, // wrong prefix
+      "BB1" + "a".repeat(38), // wrong-case prefix
+      "cosmos1" + "a".repeat(38), // wrong prefix
       "bb1" + "A".repeat(38), // uppercase body (bech32 is lowercase)
       "bb1" + "a".repeat(37) + "!", // illegal char
-      " bb1" + body38, // leading space
-      "bb1" + body38 + " ", // trailing space
+      " " + VALID_BB1[0]!, // leading space
+      VALID_BB1[0]! + " ", // trailing space
       "",
+      "bb1" + "a".repeat(120), // overlong (> 90 chars total)
     ]) {
       expect({ bad, ok: isBb1Address(bad) }).toEqual({ bad, ok: false });
+    }
+  });
+
+  test("a fresh-derived 20-byte payload via cosmjs round-trips through the validator", () => {
+    // toBech32(prefix, bytes) produces a checksummed string; isBb1Address must
+    // accept the round-trip for any 20-byte payload (the cosmos address size).
+    for (let i = 0; i < 50; i++) {
+      const data = new Uint8Array(20);
+      for (let j = 0; j < 20; j++) data[j] = Math.floor(Math.random() * 256);
+      const addr = toBech32("bb", data);
+      expect(isBb1Address(addr)).toBe(true);
+      // Sanity: cosmjs accepts what we accept.
+      expect(fromBech32(addr).prefix).toBe("bb");
     }
   });
 });
