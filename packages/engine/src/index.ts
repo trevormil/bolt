@@ -21,7 +21,11 @@ export {
   isPositiveMicroAmount,
   TxRejectedError,
 } from "@vellum/tx";
-export { PaymentRequests, type PaymentRequest } from "./payment-requests.ts";
+export {
+  PaymentRequests,
+  paymentRequestTxMemo,
+  type PaymentRequest,
+} from "./payment-requests.ts";
 export { DepositRequests, type DepositRequest } from "./deposit-requests.ts";
 export {
   Conversations,

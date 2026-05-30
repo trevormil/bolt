@@ -1098,6 +1098,190 @@ describe("payment requests (0014)", () => {
     ).toBe(400);
   });
 
+  // Branch coverage for /api/payment-requests/:reqId/confirm (#101). The route
+  // is public + unauthenticated + money-moving — every failure branch must
+  // surface a clean 4xx, never a 500, and a malformed hash must NEVER reach
+  // the LCD. Each test stubs `fetch` to control verifyCredit + confirmTx
+  // outcomes deterministically.
+  describe("/api/payment-requests/:reqId/confirm — branch coverage (#101)", () => {
+    const HEX64 = "f".repeat(64);
+    const realFetch = globalThis.fetch;
+    let fetchStub:
+      | ((url: string, opts?: RequestInit) => Promise<Response>)
+      | null = null;
+    beforeEach(() => {
+      globalThis.fetch = ((url: string, opts?: RequestInit) =>
+        fetchStub
+          ? fetchStub(url, opts)
+          : realFetch(url, opts)) as unknown as typeof fetch;
+    });
+    afterEach(() => {
+      globalThis.fetch = realFetch;
+      fetchStub = null;
+    });
+
+    async function mintReq(): Promise<{ id: string; toAddress: string }> {
+      const r = (await (
+        await post("/api/personas/atlas/payment-requests", { amountUsdc: 5 })
+      ).json()) as { id: string; toAddress: string };
+      return r;
+    }
+
+    test("non-hex txHash → 400 BEFORE any LCD call (SSRF lever closed)", async () => {
+      await post("/api/personas", { name: "Atlas" });
+      const req = await mintReq();
+      let lcdHits = 0;
+      fetchStub = async () => {
+        lcdHits++;
+        return new Response("{}", { status: 200 });
+      };
+      const evil = "../../etc/passwd";
+      const res = await post(`/api/payment-requests/${req.id}/confirm`, {
+        txHash: evil,
+      });
+      expect(res.status).toBe(400);
+      expect(((await res.json()) as { error: string }).error).toMatch(/hex/i);
+      expect(lcdHits).toBe(0); // never touched the LCD
+    });
+
+    test("confirmTx throws (chain reverts the tx) → 400", async () => {
+      await post("/api/personas", { name: "Atlas" });
+      const req = await mintReq();
+      // confirmTx returns the LCD's tx_response — a definitive nonzero `code`
+      // throws TxRevertedError immediately (no polling).
+      fetchStub = async () =>
+        new Response(
+          JSON.stringify({
+            tx_response: { code: 5, txhash: HEX64, raw_log: "out of gas" },
+          }),
+          { status: 200 },
+        );
+      const res = await post(`/api/payment-requests/${req.id}/confirm`, {
+        txHash: HEX64,
+      });
+      expect(res.status).toBe(400);
+      expect(((await res.json()) as { error: string }).error).toMatch(
+        /reverted|not confirmed/i,
+      );
+    });
+
+    test("verifyCredit rejects a tx whose memo doesn't bind to the request → 400 (replay defense)", async () => {
+      await post("/api/personas", { name: "Atlas" });
+      const req = await mintReq();
+      // confirmTx → success (code 0). verifyCredit → memo doesn't match.
+      fetchStub = async () =>
+        new Response(
+          JSON.stringify({
+            tx: { body: { memo: "vellum funding some-OTHER-request-id" } },
+            tx_response: {
+              code: 0,
+              txhash: HEX64,
+              height: "1",
+              events: [
+                {
+                  type: "coin_received",
+                  attributes: [
+                    { key: "receiver", value: req.toAddress },
+                    { key: "amount", value: `5000000${env.VELLUM_DENOM}` },
+                  ],
+                },
+              ],
+            },
+          }),
+          { status: 200 },
+        );
+      const res = await post(`/api/payment-requests/${req.id}/confirm`, {
+        txHash: HEX64,
+      });
+      expect(res.status).toBe(400);
+      expect(((await res.json()) as { error: string }).error).toMatch(
+        /memo|did not transfer/i,
+      );
+      // The request stays open — Bob's tx can't consume Alice's link.
+      expect(
+        (await app.request(`/api/payment-requests/${req.id}`)).status,
+      ).toBe(200);
+    });
+
+    test("happy path → 200, ledger funding entry written, request deleted", async () => {
+      await post("/api/personas", { name: "Atlas" });
+      const req = await mintReq();
+      fetchStub = async () =>
+        new Response(
+          JSON.stringify({
+            tx: { body: { memo: `vellum funding ${req.id}` } },
+            tx_response: {
+              code: 0,
+              txhash: HEX64,
+              height: "1",
+              events: [
+                {
+                  type: "coin_received",
+                  attributes: [
+                    { key: "receiver", value: req.toAddress },
+                    { key: "amount", value: `5000000${env.VELLUM_DENOM}` },
+                  ],
+                },
+              ],
+            },
+          }),
+          { status: 200 },
+        );
+      const res = await post(`/api/payment-requests/${req.id}/confirm`, {
+        txHash: HEX64,
+      });
+      expect(res.status).toBe(200);
+      // Request is consumed.
+      expect(
+        (await app.request(`/api/payment-requests/${req.id}`)).status,
+      ).toBe(404);
+    });
+
+    test("dedup: a tx already recorded as funding → 409, request stays open", async () => {
+      await post("/api/personas", { name: "Atlas" });
+      const reqA = await mintReq();
+      const reqB = await mintReq();
+      const okFetch = (memoOf: string) => async () =>
+        new Response(
+          JSON.stringify({
+            tx: { body: { memo: `vellum funding ${memoOf}` } },
+            tx_response: {
+              code: 0,
+              txhash: HEX64,
+              height: "1",
+              events: [
+                {
+                  type: "coin_received",
+                  attributes: [
+                    { key: "receiver", value: reqA.toAddress },
+                    { key: "amount", value: `5000000${env.VELLUM_DENOM}` },
+                  ],
+                },
+              ],
+            },
+          }),
+          { status: 200 },
+        );
+      // Consume req A — succeeds.
+      fetchStub = okFetch(reqA.id);
+      const firstRes = await post(`/api/payment-requests/${reqA.id}/confirm`, {
+        txHash: HEX64,
+      });
+      expect(firstRes.status).toBe(200);
+      // Now try to consume req B with the SAME txHash + a memo matching B.
+      // recordOnchain sees the dedup → returns {created:false} → 409.
+      fetchStub = okFetch(reqB.id);
+      const secondRes = await post(`/api/payment-requests/${reqB.id}/confirm`, {
+        txHash: HEX64,
+      });
+      expect(secondRes.status).toBe(409);
+      // Request B stays open.
+      expect(
+        (await app.request(`/api/payment-requests/${reqB.id}`)).status,
+      ).toBe(200);
+    });
+  });
+
   test("creditedAmount sums only matching receiver + denom", () => {
     const DENOM = "ibc/USDC";
     const events = [

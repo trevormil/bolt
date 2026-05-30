@@ -58,7 +58,7 @@ test.describe("multisig vote sign-off (/vote/:collectionId)", () => {
     await expect(approveBtn).toBeVisible();
     await approveBtn.click();
 
-    // signAndBroadcast → /lcd stub returns txhash E2EHUMANTX → setDone(true)
+    // signAndBroadcast → /lcd stub returns txhash e2e0babeX → setDone(true)
     // → "Signed" confirmation card renders.
     await expect(page.getByText("Signed", { exact: true })).toBeVisible();
     await expect(page.getByText(/Your vote was cast for vVOTE/)).toBeVisible();

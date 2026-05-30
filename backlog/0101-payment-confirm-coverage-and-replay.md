@@ -58,3 +58,19 @@ route.
 ## Notes
 Security findings #3, #7 + test review #1. All three should be in one MR — the
 SSRF and replay fixes need the test scaffolding the coverage backfill creates.
+
+## Status (2026-05-30) — shipped via MR-3
+- §1 SSRF via txHash → **shipped**. `@vellum/chain` exports `isTxHash`
+  (`/^[0-9A-Fa-f]{64}$/`); the route gates at the HTTP boundary AND
+  `confirmTx` re-validates. Test-server harness emits 64-hex hashes per call
+  (was display-only `E2EHUMANTX`) so the chain client + route validators see
+  conformant inputs in e2e; the dependent e2e specs + LCD GET stub updated.
+- §2 unrelated-tx replay → **shipped**. Payment requests now bind to a
+  canonical tx-memo `vellum funding <reqId>` via exported
+  `paymentRequestTxMemo(reqId)`. `verifyCredit` asserts `tx.body.memo` equals
+  that string before accepting the tx; the PayPage signs with the canonical
+  memo. Test asserts an unrelated funder's tx doesn't consume the request.
+- §3 route coverage → **shipped**. Five new tests covering the route's
+  branches (non-hex hash → 400 before LCD; confirmTx reverts → 400;
+  verifyCredit memo mismatch → 400 + request stays open; happy path → 200 +
+  request consumed; dedup with same txHash → 409 + second request stays open).

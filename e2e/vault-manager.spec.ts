@@ -38,9 +38,7 @@ test.describe("vault manager (human-signed drain + revoke)", () => {
     // Wording locked by #82 — "Withdrew all to you" is the operator-friendly
     // phrasing that distinguishes drain (returns USDC) from revoke (claws
     // approval).
-    await expect(
-      page.getByText(/Withdrew all to you.*E2EHUMANT/),
-    ).toBeVisible();
+    await expect(page.getByText(/Withdrew all to you.*e2e0babe/)).toBeVisible();
   });
 
   test("revoke — manager freezes agent access, escrowed USDC stays under them", async ({
@@ -68,6 +66,6 @@ test.describe("vault manager (human-signed drain + revoke)", () => {
     await expect(revokeBtn).toBeEnabled();
     await revokeBtn.click();
 
-    await expect(page.getByText(/Froze agent access.*E2EHUMANT/)).toBeVisible();
+    await expect(page.getByText(/Froze agent access.*e2e0babe/)).toBeVisible();
   });
 });

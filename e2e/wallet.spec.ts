@@ -19,8 +19,8 @@ test.describe("wallet (human Keplr send)", () => {
     await page.getByPlaceholder("Amount (USDC)").first().fill("2");
     await page.getByRole("button", { name: "From my wallet" }).click();
 
-    // The stubbed broadcast returns txhash E2EHUMANTX → the panel renders the
+    // The stubbed broadcast returns txhash e2e0babeX → the panel renders the
     // receipt with the (sliced) hash.
-    await expect(page.getByText(/Sent 2 USDC.*E2EHUMANT/)).toBeVisible();
+    await expect(page.getByText(/Sent 2 USDC.*e2e0babe/)).toBeVisible();
   });
 });

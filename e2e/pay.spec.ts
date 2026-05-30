@@ -37,7 +37,7 @@ test.describe("payment request — public /pay/:id page", () => {
     await expect(payBtn).toBeVisible();
     await payBtn.click();
 
-    // signAndBroadcast → /lcd POST stub → txhash E2EHUMANTX →
+    // signAndBroadcast → /lcd POST stub → txhash e2e0babeX →
     // confirmPaymentRequest → setDone(true) → "Paid" confirmation card.
     await expect(page.getByText("Paid", { exact: true })).toBeVisible();
     await expect(page.getByText(/5\.00 USDC sent to Atlas/)).toBeVisible();

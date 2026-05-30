@@ -18,7 +18,11 @@ describe("confirmTx timeout bounding", () => {
 
     const { confirmTx } = await import("./client.ts");
     const start = Date.now();
-    await expect(confirmTx("DEADBEEF", 300)).rejects.toThrow(/not committed/);
+    // 64-char hex — confirmTx's hash validator (added #101) rejects non-hex
+    // strings BEFORE the LCD call, so this timeout-bounding test must use a
+    // structurally-valid hash to actually reach the fetch path.
+    const HASH = "deadbeef".repeat(8);
+    await expect(confirmTx(HASH, 300)).rejects.toThrow(/not committed/);
     // Should be bounded, not hang indefinitely.
     expect(Date.now() - start).toBeLessThan(4000);
   });

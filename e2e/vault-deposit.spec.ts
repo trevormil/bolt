@@ -3,7 +3,7 @@ import { mockKeplr } from "./support/keplr.ts";
 
 // In-app vault deposit (#117). Mirror of wallet.spec.ts — human signs a tx via
 // the mocked Keplr → broadcast hits the same-origin LCD stub at /lcd/cosmos/tx
-// → the vault row surfaces "Escrow funded (E2EHUMANT…)". This is the
+// → the vault row surfaces "Escrow funded (e2e0babe…)". This is the
 // authenticated affordance (per-vault "Fund" button); the public /deposit/:id
 // page is covered separately by #122.
 test.describe("vault deposit (in-app)", () => {
@@ -36,8 +36,8 @@ test.describe("vault deposit (in-app)", () => {
     await vaultRow.getByPlaceholder("USDC", { exact: true }).fill("2");
     await vaultRow.getByRole("button", { name: "Fund", exact: true }).click();
 
-    // signAndBroadcast → LCD stub returns txhash "E2EHUMANTX"; the row's note
-    // slices to "E2EHUMANT…" (10-char prefix + ellipsis).
-    await expect(page.getByText(/Escrow funded.*E2EHUMANT/)).toBeVisible();
+    // signAndBroadcast → LCD stub returns txhash "e2e0babeX"; the row's note
+    // slices to "e2e0babe…" (10-char prefix + ellipsis).
+    await expect(page.getByText(/Escrow funded.*e2e0babe/)).toBeVisible();
   });
 });

@@ -209,6 +209,15 @@ export async function claimFaucet(
 }
 
 /**
+ * A cosmos SDK tx hash — exactly 64 hex chars (256-bit SHA-256). The validator
+ * is exported because it gates every public route that takes a hash from an
+ * untrusted body before that hash is concatenated into an LCD URL (#101 SSRF
+ * lever). Defense-in-depth: confirmTx and verifyCredit also check internally.
+ */
+export const isTxHash = (h: unknown): h is string =>
+  typeof h === "string" && /^[0-9A-Fa-f]{64}$/.test(h);
+
+/**
  * Confirm a tx by polling the LCD until it is committed (or timeout).
  * Returns the confirmed height — the seed of the chain-state reconciliation
  * invariant (ticket 0023): truth comes from the chain, not the broadcast return.
@@ -217,6 +226,15 @@ export async function confirmTx(
   hash: string,
   timeoutMs = 20_000,
 ): Promise<{ height: number; code: number }> {
+  // Validate the hash at the chain-client boundary (#101) — a malformed hash
+  // must never become part of an LCD URL. Caller-side validators may not have
+  // fired (e.g. an internal code path constructing a hash from a non-LCD
+  // source), so we re-check here.
+  if (!isTxHash(hash)) {
+    throw new Error(
+      `invalid tx hash (expected 64-char hex): ${typeof hash}/${String(hash).slice(0, 16)}`,
+    );
+  }
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     // Bound each request so a stalled LCD connection can't blow past timeoutMs.

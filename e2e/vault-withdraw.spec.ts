@@ -6,7 +6,7 @@ import { mockKeplr } from "./support/keplr.ts";
 // with status "pending"; the SPA polls /api/personas/:id/tx/:txId until the
 // TxManager reconciler flips it to "confirmed". The note line is the only
 // surface that exposes the transition. The seam's txChain.signAndBroadcast +
-// confirmTx (test-server.ts) return E2ETXHASH + code 0 so the loop terminates
+// confirmTx (test-server.ts) return e2e0babe + code 0 so the loop terminates
 // deterministically.
 test.describe("vault withdraw (agent in-cap, pending → confirmed UI)", () => {
   test("create vault → click Withdraw → note moves from submitted to confirmed", async ({
@@ -40,7 +40,7 @@ test.describe("vault withdraw (agent in-cap, pending → confirmed UI)", () => {
     // seamed confirmTx; the SPA poll surfaces the final note. Asserting on the
     // terminal "confirmed" message proves the pending → confirmed pipeline ran.
     await expect(
-      page.getByText(/Withdrawal confirmed.*E2ETXHASH/),
+      page.getByText(/Withdrawal confirmed.*e2e0babe/),
     ).toBeVisible();
   });
 });
