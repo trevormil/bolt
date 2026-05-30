@@ -19,6 +19,14 @@ export {
   type VaultRef,
 } from "./vault.ts";
 
+export {
+  vaultGatingSchema,
+  parseVaultGating,
+  validateGatingTemporal,
+  validateGatingForPersona,
+  type VaultGatingInput,
+} from "./gating-schema.ts";
+
 if (import.meta.main) {
   const { createLogger } = await import("@vellum/shared");
   createLogger("tokenization").info(

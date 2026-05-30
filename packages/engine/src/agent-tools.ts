@@ -2,7 +2,12 @@ import { CapabilityDeniedError } from "@vellum/capabilities";
 import type { ToolInvoker, ToolSpec } from "@vellum/agent";
 import { getApprovalTracker } from "@vellum/chain";
 import { isBb1Address, TxRejectedError } from "@vellum/tx";
-import type { VaultGating } from "@vellum/tokenization";
+import {
+  parseVaultGating,
+  validateGatingTemporal,
+  validateGatingForPersona,
+  type VaultGating,
+} from "@vellum/tokenization";
 import { env } from "@vellum/shared";
 import type { Engine } from "./engine.ts";
 
@@ -235,10 +240,25 @@ export function vaultTools(
         }
 
         const hasGating = !!(gating.amount || gating.time || gating.multisig);
+        const gatingOrUndef = hasGating ? gating : undefined;
+        // Safety rails (#103 §3) — same gauntlet the web route runs:
+        // duplicate signers, agent-as-signer, past-window. An LLM-crafted
+        // policy must not bypass them just because it arrives via the tool.
+        // Structural (dup signer) check via the canonical schema.
+        const parsed = parseVaultGating(gatingOrUndef);
+        if (parsed && typeof parsed === "object" && "error" in parsed)
+          return `Invalid gating: ${parsed.error}`;
+        const temporal = validateGatingTemporal(gatingOrUndef, Date.now());
+        if (!temporal.ok) return `Invalid gating: ${temporal.error}`;
+        const agentAddress = engine.wallets.addressFor(personaId);
+        if (agentAddress) {
+          const persona = validateGatingForPersona(gatingOrUndef, agentAddress);
+          if (!persona.ok) return `Invalid gating: ${persona.error}`;
+        }
         const v = await engine.vaults.create(personaId, {
           name: String(args.name),
           symbol: String(args.symbol),
-          gating: hasGating ? gating : undefined,
+          gating: gatingOrUndef,
         });
         emitVaultTool("create_vault", true);
         return `Created vault ${v.symbol} (collection ${v.collectionId})${describeGating(gating)}; the human is the manager. Fund it from your wallet to start.`;

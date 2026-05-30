@@ -172,7 +172,9 @@
       "dependencies": {
         "@vellum/chain": "workspace:*",
         "@vellum/shared": "workspace:*",
+        "@vellum/tx": "workspace:*",
         "bitbadges": "0.41.0",
+        "zod": "3.23.8",
       },
     },
     "packages/trace": {

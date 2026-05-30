@@ -43,6 +43,9 @@ import {
   VAULT_WITHDRAW_PROPOSAL_ID,
   type VaultGating,
   type GatingPeriod,
+  parseVaultGating,
+  validateGatingTemporal,
+  validateGatingForPersona,
 } from "@vellum/tokenization";
 import {
   isBb1Address,
@@ -149,87 +152,19 @@ export function _resetSeedRevealWindow(): void {
   seedRevealWindow.length = 0;
 }
 
-const GATING_PERIODS: GatingPeriod[] = ["daily", "weekly", "monthly"];
-
-// Validate a vault gating policy from request JSON (#45 slice 2). Returns the
-// parsed policy, `undefined` (no gating), or "invalid". Pure — exported for tests.
+// Validate a vault gating policy from request JSON (#45 slice 2 + #103 §2).
+// Delegates to the zod `vaultGatingSchema` in @vellum/tokenization (project
+// standard per §6). Preserves the legacy return shape — parsed policy /
+// undefined / "invalid" — for callers that don't need the structured error.
+// Pure — exported for tests.
+//
+// Temporal + persona-context safety rails (#103 §3) live in
+// `validateGatingTemporal` / `validateGatingForPersona` in @vellum/tokenization
+// and are applied at the route, where `now` and the agent address are known.
 export function parseGating(raw: unknown): VaultGating | undefined | "invalid" {
-  if (raw == null) return undefined;
-  if (typeof raw !== "object") return "invalid";
-  const g = raw as { amount?: unknown; time?: unknown; multisig?: unknown };
-  const out: VaultGating = {};
-  if (g.amount != null) {
-    const a = g.amount as { limitUsd?: unknown; period?: unknown };
-    if (
-      typeof a.limitUsd !== "number" ||
-      !(a.limitUsd > 0) ||
-      typeof a.period !== "string" ||
-      !GATING_PERIODS.includes(a.period as GatingPeriod)
-    )
-      return "invalid";
-    out.amount = { limitUsd: a.limitUsd, period: a.period as GatingPeriod };
-  }
-  if (g.time != null) {
-    const t = g.time as { unlockAt?: unknown; expiresAt?: unknown };
-    const time: { unlockAt?: number; expiresAt?: number } = {};
-    if (t.unlockAt != null) {
-      if (typeof t.unlockAt !== "number" || t.unlockAt < 0) return "invalid";
-      time.unlockAt = t.unlockAt;
-    }
-    if (t.expiresAt != null) {
-      if (typeof t.expiresAt !== "number" || t.expiresAt < 0) return "invalid";
-      time.expiresAt = t.expiresAt;
-    }
-    // A window that ends at/before it starts can never be withdrawn from.
-    if (
-      time.unlockAt != null &&
-      time.expiresAt != null &&
-      time.expiresAt <= time.unlockAt
-    )
-      return "invalid";
-    // An empty time:{} is a no-op (not a policy) — see !43.
-    if (time.unlockAt != null || time.expiresAt != null) out.time = time;
-  }
-  if (g.multisig != null) {
-    const ms = g.multisig as {
-      signers?: unknown;
-      threshold?: unknown;
-      challengeDelayMs?: unknown;
-    };
-    if (!Array.isArray(ms.signers) || ms.signers.length === 0) return "invalid";
-    const signers: { address: string; weight?: number }[] = [];
-    for (const s of ms.signers) {
-      const so = s as { address?: unknown; weight?: unknown };
-      if (typeof so.address !== "string" || !isBb1Address(so.address))
-        return "invalid";
-      if (
-        so.weight != null &&
-        (typeof so.weight !== "number" || so.weight <= 0)
-      )
-        return "invalid";
-      signers.push({
-        address: so.address,
-        weight: so.weight as number | undefined,
-      });
-    }
-    if (typeof ms.threshold !== "number" || ms.threshold <= 0) return "invalid";
-    // The threshold must be reachable: it can't exceed the total signer weight,
-    // or the vault's withdrawal quorum could never be met (a vault you can never
-    // withdraw from). !44 MEDIUM.
-    const totalWeight = signers.reduce((n, s) => n + (s.weight ?? 1), 0);
-    if (ms.threshold > totalWeight) return "invalid";
-    if (
-      ms.challengeDelayMs != null &&
-      (typeof ms.challengeDelayMs !== "number" || ms.challengeDelayMs < 0)
-    )
-      return "invalid";
-    out.multisig = {
-      signers,
-      threshold: ms.threshold,
-      challengeDelayMs: ms.challengeDelayMs as number | undefined,
-    };
-  }
-  return out.amount || out.time || out.multisig ? out : undefined;
+  const out = parseVaultGating(raw);
+  if (out && typeof out === "object" && "error" in out) return "invalid";
+  return out;
 }
 
 // Routes safe to serve without auth: liveness, public chain config, and the
@@ -1087,9 +1022,23 @@ export function buildApp(
     if (!body.name?.trim() || !body.symbol?.trim()) {
       return c.json({ error: "name and symbol are required" }, 400);
     }
-    const gating = parseGating(body.gating);
-    if (gating === "invalid")
-      return c.json({ error: "invalid gating policy" }, 400);
+    // Structural validation (#103 §2): zod schema returns the parsed gating,
+    // undefined, or a structured error with the offending path/message.
+    const parsed = parseVaultGating(body.gating);
+    if (parsed && typeof parsed === "object" && "error" in parsed)
+      return c.json({ error: `gating: ${parsed.error}` }, 400);
+    const gating = parsed;
+    // Temporal safety rail (#103 §3): reject already-expired windows.
+    const temporal = validateGatingTemporal(gating, Date.now());
+    if (!temporal.ok)
+      return c.json({ error: `gating: ${temporal.error}` }, 400);
+    // Persona-context safety rail (#103 §3): reject agent-as-signer.
+    const agentAddress = engine.wallets.addressFor(id);
+    if (agentAddress) {
+      const persona = validateGatingForPersona(gating, agentAddress);
+      if (!persona.ok)
+        return c.json({ error: `gating: ${persona.error}` }, 400);
+    }
     const managerAddress = body.managerAddress?.trim();
     if (managerAddress && !isBb1Address(managerAddress))
       return c.json(
