@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: bolt-landing
+  namespace: bolt-landing
+spec:
+  selector:
+    app: bolt-landing
+  ports:
+    - port: 80
+      targetPort: 80
+      name: http
