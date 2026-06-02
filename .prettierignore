@@ -6,3 +6,7 @@ backlog/
 docs/
 *.md
 index.html
+
+# Vendored Beacon feedback widget (minified embed bundle, served as-is)
+packages/web/landing/widget.js
+packages/web/public/widget.js
