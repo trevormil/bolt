@@ -1,11 +1,12 @@
 ---
 id: 112
 title: "Property/fuzz coverage expansion: parseGating + mergeObservability + ftsMatch sanitizer"
-status: in-progress
+status: closed
 priority: medium
 type: testing
 source: audit-2026-05-29
 created: 2026-05-29
+closed: 2026-06-04
 refs: ["0103-address-and-gating-validation.md"]
 ---
 
@@ -52,3 +53,13 @@ validator + chain codec now use.
 ## Notes
 Test review findings #6, #14. Tracks the high-leverage parts of the
 "deterministic suite hardening" workstream not yet covered.
+
+## 2026-06-04 — Closed (MR !123)
+All three fuzz files landed:
+- `packages/tokenization/src/gating-schema.fuzz.test.ts` — 2000 randomized
+  shapes through an independent classification oracle.
+- `packages/persona/src/store.fuzz.test.ts` — adversarial FTS5 queries +
+  2000 randomly-stitched noise strings; no throws, no cross-persona leaks.
+- `packages/observability/src/merge.fuzz.test.ts` — 1000 random
+  event+ledger scenarios + boundary tests pinning the 10s dedup window.
+No production bugs surfaced.

@@ -1,11 +1,12 @@
 ---
 id: 106
 title: "Test coverage backfill: signed-flow error branches, public SPA pages, signoff route, settings writes, onboarding e2e"
-status: in-progress
+status: closed
 priority: high
 type: testing
 source: audit-2026-05-29
 created: 2026-05-29
+closed: 2026-06-04
 refs: ["0090-ci-eval-test-gating-initiative.md", "0098-signed-flow-e2e-keplr.md"]
 ---
 
@@ -85,3 +86,16 @@ into #0120's e2e walk.
 Adjacent new e2e coverage filed separately: #0117 (in-app vault deposit),
 #0118 (vault withdraw UI), #0119 (manager drain + revoke), #0125 (chat
 money path).
+
+## 2026-06-04 — Closed (MR !124)
+§1 `signAndBroadcast` throws — minimal refactor (extract `assertRegistered`,
+`parseBroadcastResponse`, `fetchImpl`-seamed `confirmTx`) + 11 unit tests
+covering all five branches landed in `keplr-broadcast.test.ts`.
+
+§5 cluster — extended chat budget/LlmAuth tests with conversation-append +
+chat_out-meta assertions, added IPv6 + empty-Host auth matrix tests
+(empty-Host pins current short-circuit behavior with a pointer to
+server.ts:328 for when the deferred rejection lands), swapped
+`setTimeout(50)` for a local `waitFor` helper.
+
+§2, §3, §4 already split into the #0117–#0125 e2e tickets.
