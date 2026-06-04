@@ -286,15 +286,23 @@ export function managerRevokeMsg(input: {
 
 // ── sign + broadcast (mirrors @vellum/chain/sdk.ts, with the Keplr adapter) ──
 
-interface AccountInfo {
+// The five throw branches below (unregistered wallet, broadcast no-hash,
+// broadcast rejected, confirm timeout, on-chain revert) are each surfaced to
+// the UI verbatim, so test coverage on each is non-negotiable (#106 §1). The
+// helpers are exported + take an optional `fetchImpl` seam so unit tests
+// drive them with synthetic LCD responses — `signAndBroadcast` itself can
+// only run with a real Keplr adapter, which the e2e Keplr-mock exercises.
+
+export interface AccountInfo {
   accountNumber: number;
   sequence: number;
 }
-async function fetchAccount(
+export async function fetchAccount(
   lcd: string,
   address: string,
+  fetchImpl: typeof fetch = fetch,
 ): Promise<AccountInfo | null> {
-  const res = await fetch(`${lcd}/cosmos/auth/v1beta1/accounts/${address}`);
+  const res = await fetchImpl(`${lcd}/cosmos/auth/v1beta1/accounts/${address}`);
   if (!res.ok) return null;
   const json = (await res.json()) as {
     account?: { account_number?: string; sequence?: string };
@@ -305,6 +313,36 @@ async function fetchAccount(
     accountNumber: Number(acct.account_number),
     sequence: Number(acct.sequence ?? 0),
   };
+}
+
+/** Throws the "unregistered" UI message when the LCD has no account for the
+ *  signer — split out so the message is unit-testable without Keplr. */
+export function assertRegistered(
+  address: string,
+  account: AccountInfo | null,
+): asserts account is AccountInfo {
+  if (!account) {
+    throw new Error(
+      `your wallet ${address.slice(0, 12)}… is unregistered on-chain — fund it (any coin) first`,
+    );
+  }
+}
+
+export interface BroadcastResponseJson {
+  tx_response?: { code?: number; txhash?: string; raw_log?: string };
+}
+/** Pure parse of the LCD POST /txs response: returns the hash on success, or
+ *  throws the no-hash / rejected-(code N) UI messages. Split out so the two
+ *  throws are unit-testable without the chain SDK. */
+export function parseBroadcastResponse(json: BroadcastResponseJson): string {
+  const tr = json.tx_response;
+  if (!tr?.txhash)
+    throw new Error(
+      `broadcast returned no hash: ${JSON.stringify(json).slice(0, 200)}`,
+    );
+  if (tr.code && tr.code !== 0)
+    throw new Error(`broadcast rejected (code ${tr.code}): ${tr.raw_log}`);
+  return tr.txhash;
 }
 
 /** Sign `msgs` with the connected Keplr wallet and broadcast to the LCD; resolves
@@ -325,11 +363,7 @@ export async function signAndBroadcast(
   const address = adapter.address;
   const publicKey = await adapter.getPublicKey();
   const account = await fetchAccount(cfg.lcd, address);
-  if (!account) {
-    throw new Error(
-      `your wallet ${address.slice(0, 12)}… is unregistered on-chain — fund it (any coin) first`,
-    );
-  }
+  assertRegistered(address, account);
   const txContext = {
     testnet: false,
     sender: { address, ...account, publicKey },
@@ -353,28 +387,29 @@ export async function signAndBroadcast(
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  const json = (await res.json()) as {
-    tx_response?: { code?: number; txhash?: string; raw_log?: string };
-  };
-  const tr = json.tx_response;
-  if (!tr?.txhash)
-    throw new Error(
-      `broadcast returned no hash: ${JSON.stringify(json).slice(0, 200)}`,
-    );
-  if (tr.code && tr.code !== 0)
-    throw new Error(`broadcast rejected (code ${tr.code}): ${tr.raw_log}`);
-  await confirmTx(cfg.lcd, tr.txhash);
-  return tr.txhash;
+  const txhash = parseBroadcastResponse(
+    (await res.json()) as BroadcastResponseJson,
+  );
+  await confirmTx(cfg.lcd, txhash);
+  return txhash;
 }
 
-async function confirmTx(
+export interface ConfirmTxOpts {
+  timeoutMs?: number;
+  pollMs?: number;
+  fetchImpl?: typeof fetch;
+}
+export async function confirmTx(
   lcd: string,
   hash: string,
-  timeoutMs = 20_000,
+  opts: ConfirmTxOpts = {},
 ): Promise<void> {
+  const timeoutMs = opts.timeoutMs ?? 20_000;
+  const pollMs = opts.pollMs ?? 400;
+  const fetchImpl = opts.fetchImpl ?? fetch;
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    const r = await fetch(`${lcd}/cosmos/tx/v1beta1/txs/${hash}`).catch(
+    const r = await fetchImpl(`${lcd}/cosmos/tx/v1beta1/txs/${hash}`).catch(
       () => null,
     );
     if (r?.ok) {
@@ -388,7 +423,7 @@ async function confirmTx(
         return;
       }
     }
-    await new Promise((res) => setTimeout(res, 400));
+    await new Promise((res) => setTimeout(res, pollMs));
   }
   throw new Error(
     `tx ${hash.slice(0, 10)}… not committed within ${timeoutMs / 1000}s`,
