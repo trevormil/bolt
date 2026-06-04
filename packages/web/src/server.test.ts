@@ -148,6 +148,21 @@ const post = (path: string, body: unknown) =>
     body: JSON.stringify(body),
   });
 
+// Polls until `fn()` is truthy (or times out). Replaces ad-hoc setTimeout sleeps
+// in async-side-effect tests so a slow runner doesn't false-fail (#106 §5).
+async function waitFor(
+  fn: () => boolean | Promise<boolean>,
+  timeoutMs = 2000,
+  pollMs = 5,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await fn()) return;
+    await new Promise((r) => setTimeout(r, pollMs));
+  }
+  throw new Error("waitFor timed out");
+}
+
 describe("web API", () => {
   test("health", async () => {
     expect(await (await app.request("/api/health")).json()).toEqual({
@@ -311,16 +326,17 @@ describe("web API", () => {
     expect(pending.status).toBe("pending");
     expect(pending.hash).toBe("SPENDHASH");
 
-    // Confirmation is async → the ledger spend entry appears shortly after.
-    await new Promise((r) => setTimeout(r, 50));
-    const led = (await (
-      await app.request("/api/personas/atlas/ledger")
-    ).json()) as {
-      entries: { kind: string; txHash: string | null }[];
-    };
-    expect(
-      led.entries.some((e) => e.kind === "spend" && e.txHash === "SPENDHASH"),
-    ).toBe(true);
+    // Confirmation is async → poll the ledger until the spend entry lands,
+    // rather than sleeping a fixed 50ms (#106 §5 — matches the tx.test.ts
+    // waitFor pattern; resilient on a slow CI runner).
+    await waitFor(async () => {
+      const led = (await (
+        await app.request("/api/personas/atlas/ledger")
+      ).json()) as { entries: { kind: string; txHash: string | null }[] };
+      return led.entries.some(
+        (e) => e.kind === "spend" && e.txHash === "SPENDHASH",
+      );
+    });
   });
 
   test("unified observability feed merges events + ledger, keeps settlement, dedups dupes (#95)", async () => {
@@ -544,9 +560,19 @@ describe("web API", () => {
     const body = (await res.json()) as {
       budgetExceeded?: boolean;
       costUsd: number;
+      reply: string;
     };
     expect(body.budgetExceeded).toBe(true);
     expect(body.costUsd).toBe(0); // the model was NOT called
+
+    // Side-effect coverage (#106 §5): the budget-block reply must be persisted
+    // to the conversation, not only returned in the HTTP response — otherwise
+    // a refresh/resume loses it and the user re-sends the same message thinking
+    // nothing happened.
+    const msgs = engine.conversations.messages("atlas", "c1");
+    expect(msgs.map((m) => m.role)).toEqual(["user", "agent"]);
+    expect(msgs[1]!.text).toBe(body.reply);
+    expect(msgs[1]!.text).toMatch(/budget.*reached/i);
   });
 
   test("faucet has no free-form cap — claims even at a high balance", async () => {
@@ -858,6 +884,27 @@ describe("cross-site + DNS-rebind guard (review fix)", () => {
       headers: { origin: "https://evil.example" },
     });
     expect(res.status).toBe(403);
+  });
+
+  test("#106 §5: IPv6 loopback Host (::1) passes the rebind guard", async () => {
+    // isLoopback treats "::1" as loopback, so a bare IPv6 loopback host must
+    // NOT 403 — a localhost-bound daemon reachable over IPv6 has to work.
+    const res = await app.request("/api/personas", {
+      headers: { host: "::1" },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  test("#106 §5: empty Host header short-circuits the rebind guard (documents current behavior)", async () => {
+    // Server.ts:328 explicitly defers empty-Host rejection (#115 §1) — the
+    // guard reads `if (loopback && hostname && !isLoopback(hostname))`, so
+    // an empty hostname falls through and the request proceeds. This test
+    // PINS that behavior so any refactor of the guard surfaces the change
+    // (good or bad) loudly. If/when the rejection lands, flip the assertion.
+    const res = await app.request("/api/personas", {
+      headers: { host: "" },
+    });
+    expect(res.status).toBe(200);
   });
 });
 
@@ -2346,11 +2393,18 @@ describe("edge/failure hardening (#85)", () => {
   });
 
   test("an invalid OpenRouter key surfaces a clean in-chat message, not a 500", async () => {
-    const a = appWith({
+    const localEngine = makeEngine({
       runLoop: async () => {
         throw new LlmAuthError(401);
       },
     });
+    const a = buildApp(
+      localEngine,
+      new PaymentRequests(":memory:"),
+      new DepositRequests(":memory:"),
+      undefined,
+      { secretBackend: fakeSecretBackend().backend },
+    );
     await send(a, "/api/personas", { name: "Atlas" });
     const res = await send(a, "/api/chat", {
       conversationId: "c1",
@@ -2359,8 +2413,19 @@ describe("edge/failure hardening (#85)", () => {
     });
     // Caught in chat() → a clean 200 reply pointing at Settings (mirrors budget).
     expect(res.status).toBe(200);
-    expect(((await res.json()) as { reply: string }).reply).toMatch(
-      /OpenRouter.*(invalid|expired)/i,
-    );
+    const body = (await res.json()) as { reply: string };
+    expect(body.reply).toMatch(/OpenRouter.*(invalid|expired)/i);
+
+    // Side-effect coverage (#106 §5): both the conversation append AND the
+    // chat_out event meta must record the failure — otherwise the timeline
+    // shows a chat_in with nothing following, and a refresh loses the reply.
+    const msgs = localEngine.conversations.messages("atlas", "c1");
+    expect(msgs.map((m) => m.role)).toEqual(["user", "agent"]);
+    expect(msgs[1]!.text).toBe(body.reply);
+    const evs = localEngine.events.recent("atlas", 20);
+    const chatOut = evs.find((e) => e.kind === "chat_out");
+    expect(chatOut).toBeDefined();
+    expect(chatOut!.ok).toBe(false);
+    expect((chatOut!.meta as { error?: string }).error).toBe("llm_auth");
   });
 });
