@@ -1,8 +1,8 @@
 ---
 id: 127
 title: "Sign-page plain-English decode: /pay payment-request fund page"
-status: open
-priority: medium
+status: icebox
+priority: low
 type: feature
 source: post-audit
 created: 2026-06-04

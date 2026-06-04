@@ -6,6 +6,23 @@ import { useWallet } from "./wallet-context.tsx";
 
 type Signoff = Awaited<ReturnType<typeof api.vaultSignoff>>;
 
+// Plain-English helpers for the "what powers does this unlock authorize" block
+// (#126). All defensive against missing fields — the vault might pre-date a
+// given gating shape.
+const shortAddr = (a: string) =>
+  a.length > 14 ? `${a.slice(0, 8)}…${a.slice(-4)}` : a;
+const fmtDate = (ms: number) =>
+  new Date(ms).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+const PERIOD_LABEL: Record<"daily" | "weekly" | "monthly", string> = {
+  daily: "per day",
+  weekly: "per week",
+  monthly: "per month",
+};
+
 // Public multisig sign-off page (#45 slice 3, model ADR-0005). A third-party
 // signer opens the vault's /vote/:collectionId link, connects their own Keplr
 // wallet, and casts a MsgCastVote toward the unlock quorum. Each cast is, in
@@ -109,6 +126,58 @@ export function VotePage({ collectionId }: { collectionId: string }) {
               vault going forward, within its limits. It is not approval of a
               single payment.
             </p>
+
+            {/* Plain-English scope (#126) — the powers this unlock authorizes,
+                so the signer knows what they're handing over. */}
+            <div className="mt-4 space-y-1.5 rounded-lg border border-border bg-base/40 p-3 text-xs">
+              <div className="font-mono uppercase tracking-[0.18em] text-soft">
+                What you're authorizing
+              </div>
+              <div className="text-fg">
+                <span className="text-soft">Agent:</span>{" "}
+                <span>{info.personaName}</span>{" "}
+                <span className="font-mono text-soft">
+                  ({shortAddr(info.agentAddress)})
+                </span>
+              </div>
+              <div className="text-fg">
+                <span className="text-soft">Withdrawal limit:</span>{" "}
+                {info.gating.amount ? (
+                  <span>
+                    up to ${info.gating.amount.limitUsd.toFixed(2)} USDC{" "}
+                    {PERIOD_LABEL[info.gating.amount.period]}
+                  </span>
+                ) : (
+                  <span className="text-warn">
+                    none configured (agent can withdraw any amount)
+                  </span>
+                )}
+              </div>
+              {info.gating.time && (
+                <div className="text-fg">
+                  <span className="text-soft">Window:</span>{" "}
+                  {info.gating.time.unlockAt != null && (
+                    <span>from {fmtDate(info.gating.time.unlockAt)}</span>
+                  )}
+                  {info.gating.time.unlockAt != null &&
+                    info.gating.time.expiresAt != null &&
+                    " "}
+                  {info.gating.time.expiresAt != null && (
+                    <span>until {fmtDate(info.gating.time.expiresAt)}</span>
+                  )}
+                </div>
+              )}
+              <div className="text-fg">
+                <span className="text-soft">Manager kill-switch:</span>{" "}
+                <span className="font-mono">
+                  {shortAddr(info.managerAddress)}
+                </span>{" "}
+                <span className="text-soft">
+                  — can drain or revoke at any time
+                </span>
+              </div>
+            </div>
+
             <div className="mt-3 text-xs text-soft">
               Requires {info.threshold} of {info.signers.length} signer
               approvals · collection {info.collectionId}

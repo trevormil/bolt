@@ -1,11 +1,12 @@
 ---
 id: 126
 title: "Sign-page plain-English decode: /vote multisig withdrawal sign-off"
-status: open
+status: closed
 priority: high
 type: feature
 source: post-audit
 created: 2026-06-04
+closed: 2026-06-04
 refs: ["0045-vault-revamp.md", "0068-multisig-vault-signoff.md", "0120-e2e-multisig-vote-page.md"]
 ---
 

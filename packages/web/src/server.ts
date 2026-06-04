@@ -1028,6 +1028,13 @@ export function buildApp(
       tallyError = true;
       log.warn(`signoff tally read failed for ${v.collectionId}: ${e}`);
     }
+    // Scope context for the plain-English decode (#126): a signer needs to see
+    // WHAT POWERS they're authorizing the agent to have, not just "approve
+    // unlock". Persona name + agent address resolve who operates the vault;
+    // the gating echo + manager address let the page render the per-period cap
+    // + time window + manager kill-switch.
+    const persona = engine.store.getPersona(v.personaId);
+    const agentAddress = engine.wallets.addressFor(v.personaId) ?? "";
     return c.json({
       collectionId: v.collectionId,
       name: v.name,
@@ -1038,6 +1045,10 @@ export function buildApp(
       signers: v.gating.multisig.signers,
       tally, // null when unread
       tallyError,
+      personaName: persona?.name ?? v.personaId,
+      agentAddress,
+      managerAddress: v.managerAddress,
+      gating: v.gating, // amount + time so the page can render the scope of the unlock
     });
   });
 

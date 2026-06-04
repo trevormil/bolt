@@ -1,11 +1,12 @@
 ---
 id: 128
 title: "Sign-page plain-English decode: /deposit vault funding page"
-status: open
+status: closed
 priority: medium
 type: feature
 source: post-audit
 created: 2026-06-04
+closed: 2026-06-04
 refs: ["0062-shareable-vault-deposit-page.md", "0122-e2e-deposit-request-deposit-page.md", "0126-sign-page-decode-vote.md"]
 ---
 

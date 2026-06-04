@@ -106,6 +106,16 @@ export function DepositPage({ reqId }: { reqId: string }) {
               collection {req.collectionId}
             </div>
 
+            {/* Plain-English consequence (#128) — the audit-flagged
+                "tokens go to the agent" is in source comments but was
+                never rendered to the funder. Surfacing it visibly. */}
+            <p className="mt-3 text-xs text-soft">
+              Your USDC funds the vault's escrow; the vault tokens go to{" "}
+              <span className="text-fg">{personaName}</span>'s agent so it can
+              withdraw within the vault's rules. As funder, you don't hold a
+              claim on the vault directly.
+            </p>
+
             {error && <p className="mt-4 text-sm text-danger">{error}</p>}
 
             <div className="mt-6">
