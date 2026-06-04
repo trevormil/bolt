@@ -1,7 +1,7 @@
 ---
 id: 112
 title: "Property/fuzz coverage expansion: parseGating + mergeObservability + ftsMatch sanitizer"
-status: open
+status: in-progress
 priority: medium
 type: testing
 source: audit-2026-05-29
