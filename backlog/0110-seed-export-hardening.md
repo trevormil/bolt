@@ -1,11 +1,12 @@
 ---
 id: 110
 title: "Seed export route hardening: visible ledger event + recent-reauth + rate limit"
-status: open
+status: closed
 priority: medium
 type: security
 source: audit-2026-05-29
 created: 2026-05-29
+closed: 2026-06-04
 refs: ["0096-agent-key-at-rest-keychain.md"]
 ---
 
@@ -57,3 +58,9 @@ contribute to the "no single secret-token leak is one-shot game-over" posture.
 
 Tests in `packages/web/src/server.test.ts`: ledger+event emission, no phrase
 leakage in event meta, and the 4th-reveal 429.
+
+## 2026-06-04 — Closed
+§1 + §3 live in production; §2 stays deferred per the submission-scope
+rationale above (single-user loopback-only — step-up adds friction without a
+matching threat model). If the app moves to multi-user / network-bound, file a
+fresh ticket for step-up reauth rather than re-opening this one.
