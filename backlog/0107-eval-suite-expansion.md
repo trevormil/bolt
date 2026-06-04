@@ -1,7 +1,7 @@
 ---
 id: 107
 title: "Eval golden set expansion: command-surface, capability-gate bypass, injection variants, run_command-reads-keychain"
-status: open
+status: in-progress
 priority: high
 type: testing
 source: audit-2026-05-29
