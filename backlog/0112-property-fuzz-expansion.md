@@ -1,11 +1,13 @@
 ---
 id: 112
 title: "Property/fuzz coverage expansion: parseGating + mergeObservability + ftsMatch sanitizer"
-status: in-progress
+status: closed
 priority: medium
 type: testing
 source: audit-2026-05-29
 created: 2026-05-29
+updated: 2026-06-04
+prs: ["merged via feat/0112-fuzz-expansion @ c8abf53"]
 refs: ["0103-address-and-gating-validation.md"]
 ---
 

@@ -1,11 +1,13 @@
 ---
 id: 107
 title: "Eval golden set expansion: command-surface, capability-gate bypass, injection variants, run_command-reads-keychain"
-status: in-progress
+status: closed
 priority: high
 type: testing
 source: audit-2026-05-29
 created: 2026-05-29
+updated: 2026-06-04
+prs: ["merged via feat/0107-eval-expansion @ 3d6b3b3"]
 refs: ["0076-agent-eval-suite.md", "0090-ci-eval-test-gating-initiative.md", "0102-defense-in-depth-money-path.md"]
 ---
 

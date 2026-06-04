@@ -1,11 +1,13 @@
 ---
 id: 106
 title: "Test coverage backfill: signed-flow error branches, public SPA pages, signoff route, settings writes, onboarding e2e"
-status: in-progress
+status: closed
 priority: high
 type: testing
 source: audit-2026-05-29
 created: 2026-05-29
+updated: 2026-06-04
+prs: ["merged via feat/0106-coverage-backfill @ ef7c289"]
 refs: ["0090-ci-eval-test-gating-initiative.md", "0098-signed-flow-e2e-keplr.md"]
 ---
 
