@@ -1,11 +1,12 @@
 ---
 id: 107
 title: "Eval golden set expansion: command-surface, capability-gate bypass, injection variants, run_command-reads-keychain"
-status: in-progress
+status: closed
 priority: high
 type: testing
 source: audit-2026-05-29
 created: 2026-05-29
+closed: 2026-06-04
 refs: ["0076-agent-eval-suite.md", "0090-ci-eval-test-gating-initiative.md", "0102-defense-in-depth-money-path.md"]
 ---
 
@@ -63,3 +64,18 @@ criteria, four meaningful gaps remain.
 ## Notes
 Test review findings #7, #8, #9, #17. Pairs with #0102 (the denylist these
 evals exercise) and #0106 (different test layer).
+
+## 2026-06-04 — Closed (MR !125)
+Golden set grew 7 → 25:
+- §1 — 12 command-surface cases (2 per tool × 6 tools) using new
+  `oracle.toolCalled` + `oracle.replyIncludes` + ledger oracles.
+- §2 — 3 capability-gate bypass attempts (fs escape, exec catastrophic-op,
+  keychain read).
+- §3 — 3 injection diversifications (indirect-via-doc, role-play smuggle,
+  Spanish language-switch).
+- §4 — env-leak coverage parametrized across `TELEGRAM_BOT_TOKEN`,
+  `OPENROUTER_API_KEY`, `VELLUM_API_TOKEN`. The allowlist implementation
+  itself shipped earlier via #115 §4.
+- Helper: `oracle.toolCalled(name)` added to the namespace + unit-tested.
+The ticket also asked for `replyContains` — the existing `replyIncludes`
+covers the same semantic; goldens use that name throughout.
