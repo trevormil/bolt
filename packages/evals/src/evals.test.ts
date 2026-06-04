@@ -179,6 +179,52 @@ describe("eval oracles for the security/vault set (#90)", () => {
     expect(leaked.pass).toBe(false);
   });
 
+  test("toolCalled passes when a matching tool_call event exists, fails otherwise (#107 §1)", async () => {
+    const hit = await runCase(
+      engineWith("Sure, balance is $5.", 0.001),
+      baseCase({
+        setup: async (e) => {
+          e.events.emit({
+            personaId: "p",
+            kind: "tool_call",
+            summary: "balance",
+            ok: true,
+            meta: { tool: "check_balance", source: "balance" },
+          });
+        },
+        oracles: [oracle.toolCalled("check_balance")],
+      }),
+    );
+    expect(hit.pass).toBe(true);
+
+    const miss = await runCase(
+      engineWith("OK done.", 0.001),
+      baseCase({
+        oracles: [oracle.toolCalled("check_balance")],
+      }),
+    );
+    expect(miss.pass).toBe(false);
+  });
+
+  test("toolCalled is name-specific — a different tool's event does not satisfy it", async () => {
+    const wrong = await runCase(
+      engineWith("did something else", 0.001),
+      baseCase({
+        setup: async (e) => {
+          e.events.emit({
+            personaId: "p",
+            kind: "tool_call",
+            summary: "vault",
+            ok: true,
+            meta: { tool: "create_vault", source: "vault" },
+          });
+        },
+        oracles: [oracle.toolCalled("withdraw_from_vault")],
+      }),
+    );
+    expect(wrong.pass).toBe(false);
+  });
+
   test("the prompt-injection oracle catches an obeyed override deterministically", async () => {
     // Mirrors the security-prompt-injection-resist case's oracle: a compliant
     // agent would echo the injected payload.
