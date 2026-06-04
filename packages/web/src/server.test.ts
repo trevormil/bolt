@@ -1419,6 +1419,60 @@ describe("payment requests (0014)", () => {
   });
 });
 
+describe("vault signoff route — plain-English scope (#126)", () => {
+  test("404 when the collectionId has no multisig vault", async () => {
+    await post("/api/personas", { name: "Atlas" });
+    // Vault with NO gating → not a multisig vault → 404.
+    await post("/api/personas/atlas/vaults", {
+      name: "Plain",
+      symbol: "vUSDC",
+    });
+    const res = await app.request("/api/vaults/777/signoff");
+    expect(res.status).toBe(404);
+  });
+
+  test("returns scope context the signer needs: agent, manager, gating", async () => {
+    await post("/api/personas", { name: "Atlas" });
+    const created = await post("/api/personas/atlas/vaults", {
+      name: "Rent",
+      symbol: "vUSDC",
+      managerAddress: TEST_BB1.HUMAN,
+      gating: {
+        amount: { limitUsd: 100, period: "weekly" },
+        // unlockAt in the far future — validateGatingTemporal rejects past dates,
+        // so a fixed 2023 timestamp would 400 by 2026.
+        time: { unlockAt: 9_999_999_999_000 },
+        multisig: {
+          signers: [{ address: TEST_BB1.TO1 }, { address: TEST_BB1.TO2 }],
+          threshold: 2,
+        },
+      },
+    });
+    expect(created.status).toBe(201);
+    const res = await app.request("/api/vaults/777/signoff");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      personaName: string;
+      agentAddress: string;
+      managerAddress: string;
+      gating: {
+        amount?: { limitUsd: number; period: string };
+        time?: { unlockAt?: number; expiresAt?: number };
+      };
+      tally: unknown;
+      tallyError: boolean;
+    };
+    expect(body.personaName).toBe("Atlas");
+    expect(body.agentAddress.startsWith("bb1")).toBe(true);
+    expect(body.managerAddress).toBe(TEST_BB1.HUMAN);
+    expect(body.gating.amount).toEqual({ limitUsd: 100, period: "weekly" });
+    expect(body.gating.time?.unlockAt).toBe(9_999_999_999_000);
+    // The live tally lane is unchanged by #126 — whether the chain read
+    // resolves or surfaces tallyError isn't this test's concern. The scope
+    // context fields above are the user-facing fix.
+  });
+});
+
 describe("vault deposit requests (#62)", () => {
   // Create a persona + a vault (collectionId "777" per the fake create tx) so the
   // deposit-request route — which targets an existing vault — has something to
