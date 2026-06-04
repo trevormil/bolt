@@ -96,6 +96,21 @@ export const oracle = {
         .some((e) => e.kind === kind),
       detail: `ledger has NO "${kind}" entry`,
     }),
+  // Deterministic oracle for "did the agent actually invoke tool X" (#107 §1).
+  // Reads the per-persona event store; every tool (agent-tools / exec-tools /
+  // mcp-tools) emits a `tool_call` event with meta.tool = its name. Lets
+  // command-surface goldens assert the FIRED tool rather than rely on a judge.
+  toolCalled:
+    (name: string): Oracle =>
+    (ctx) => {
+      const events = ctx.engine.events.recent(ctx.personaId, 200);
+      const ok = events.some(
+        (e) =>
+          e.kind === "tool_call" &&
+          (e.meta as { tool?: string } | undefined)?.tool === name,
+      );
+      return { ok, detail: `tool_call event for "${name}"` };
+    },
 };
 
 // LLM-as-judge for open-ended output. Strict JSON contract; defensive parse.
