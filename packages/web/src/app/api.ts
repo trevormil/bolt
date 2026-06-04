@@ -299,6 +299,11 @@ export const api = {
         // read failed (distinct from a genuine zero).
         tally: VoteTally | null;
         tallyError: boolean;
+        // Scope context (#126) — render the powers the signer is authorizing.
+        personaName: string;
+        agentAddress: string;
+        managerAddress: string;
+        gating: VaultGating;
       }>(r),
     ),
 
