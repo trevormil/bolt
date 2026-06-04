@@ -1,7 +1,7 @@
 ---
 id: 106
 title: "Test coverage backfill: signed-flow error branches, public SPA pages, signoff route, settings writes, onboarding e2e"
-status: open
+status: in-progress
 priority: high
 type: testing
 source: audit-2026-05-29
