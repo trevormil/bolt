@@ -273,4 +273,32 @@ describe("run_command exec tool (#52)", () => {
     });
     expect(out).toContain("PATH_PRESENT=yes");
   });
+
+  // #107 §4: explicit parametrization across the secret-typed env vars the
+  // ticket calls out, even though #115's allowlist already covers them as a
+  // class. The named coverage makes it obvious in `git grep` that each known
+  // secret is asserted; the LLM_BEARER test above proves NEW vars stay
+  // covered automatically.
+  const SECRET_ENV_VARS = [
+    "AGENT_SIGNER_MNEMONIC",
+    "TELEGRAM_BOT_TOKEN",
+    "OPENROUTER_API_KEY",
+    "VELLUM_API_TOKEN",
+  ];
+  for (const name of SECRET_ENV_VARS) {
+    test(`#107 §4: ${name} is stripped from the child env`, async () => {
+      const sentinel = `LEAK-${name}-MARKER`;
+      process.env[name] = sentinel;
+      try {
+        const e = eng();
+        grantExec(e);
+        const out = await execTools(e, "p").invoke("run_command", {
+          command: `echo ${name}=$${name}`,
+        });
+        expect(out).not.toContain(sentinel);
+      } finally {
+        delete process.env[name];
+      }
+    });
+  }
 });
